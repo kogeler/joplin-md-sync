@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      # All logic lives in the Makefile so local runs and CI stay identical.
+      - name: Lint (ruff)
+        shell: bash
+        run: make lint PY=python
+
+      - name: Type check (mypy)
+        shell: bash
+        run: make typecheck PY=python
+
+      - name: Unit and integration tests (fake Joplin server)
+        shell: bash
+        run: make test PY=python
+
+      - name: Verify version/manifest consistency
+        shell: bash
+        run: make verify-release PY=python
+
+      - name: Build wheel, sdist, zipapp + checksums
+        shell: bash
+        run: make package PY=python
+
+      - name: Clean-environment install and CLI/zipapp smoke tests
+        shell: bash
+        run: make smoke PY=python
+
+      - name: Verify artifacts carry no secrets
+        shell: bash
+        run: make verify-release PY=python

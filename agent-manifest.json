@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "joplin-md-sync",
+  "version": "1.0.0",
+  "minimum_python": "3.13",
+  "maximum_python_exclusive": null,
+  "cli": "joplin-md-sync",
+  "protocol_version": 1,
+  "state_schema_version": 1,
+  "output_schema_version": 1
+}

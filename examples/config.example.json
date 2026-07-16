@@ -1,0 +1,11 @@
+{
+  "_comment": ".joplin-sync/workspace.json — written by 'init'; shown here for reference. The token is NEVER stored here.",
+  "schema": 1,
+  "mode": "remote-first",
+  "created_time": 1780000000000,
+  "created_by": "joplin-md-sync 1.0.0",
+  "base_url": "http://127.0.0.1:41184",
+  "options": {
+    "backup_retention": 10
+  }
+}

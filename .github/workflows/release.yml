@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: full test suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Verify tag matches .version
+        shell: bash
+        run: make verify-release PY=python TAG="${GITHUB_REF_NAME}"
+      - name: Full check suite
+        shell: bash
+        run: make check PY=python
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Build all artifacts with checksums
+        run: make package PY=python
+
+      - name: Verify release consistency and artifacts
+        run: make verify-release PY=python TAG="${GITHUB_REF_NAME}"
+
+      - name: Smoke-test the artifacts
+        run: make smoke PY=python
+
+      - name: Create or update GitHub release with assets
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/joplin-md-sync.pyz
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          fail_on_unmatched_files: true

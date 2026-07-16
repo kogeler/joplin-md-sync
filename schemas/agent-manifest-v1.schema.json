@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kogeler/joplin-md-sync/schemas/agent-manifest-v1.schema.json",
+  "title": "joplin-md-sync agent-manifest.json (v1)",
+  "type": "object",
+  "required": [
+    "schema_version", "name", "version", "minimum_python", "cli",
+    "protocol_version", "state_schema_version", "output_schema_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "const": "joplin-md-sync" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "minimum_python": { "type": "string" },
+    "maximum_python_exclusive": { "type": ["string", "null"] },
+    "cli": { "type": "string" },
+    "protocol_version": { "type": "integer" },
+    "state_schema_version": { "type": "integer" },
+    "output_schema_version": { "type": "integer" }
+  }
+}

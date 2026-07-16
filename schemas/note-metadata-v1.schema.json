@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kogeler/joplin-md-sync/schemas/note-metadata-v1.schema.json",
+  "title": "joplin-md-sync managed Markdown metadata header (v1)",
+  "description": "JSON payload of the first-line HTML comment: <!-- joplin-md-sync: {...} -->",
+  "type": "object",
+  "required": ["schema", "tags", "title"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "Joplin note id; absent for a new local note not yet pushed"
+    },
+    "schema": { "const": 1 },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "lowercase, sorted, deduplicated"
+    },
+    "title": { "type": "string" }
+  }
+}

@@ -1,0 +1,30 @@
+# Local-only files (never commit)
+/token
+
+# Local note workspaces used for manual/acceptance testing
+/notes/
+/notes-*/
+/acceptance*/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+venv-dev/
+venv-smoke/
+
+# Build artifacts
+/dist/
+/build/
+
+# Tooling caches
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+plans
