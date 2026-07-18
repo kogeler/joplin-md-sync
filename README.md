@@ -38,8 +38,9 @@ From a checkout, everything is driven by the Makefile:
 
 ```bash
 make venv        # runtime venv/ with the CLI installed (venv/bin/joplin-md-sync)
-make venv-dev    # tooling venv-dev/ (ruff, mypy, build) from the pinned lock
+make venv-dev    # tooling venv-dev/ (ruff, mypy, pytest, build) from the pinned lock
 make check       # lint + typecheck + full test suite
+make test TEST_WORKERS=8  # override the default four parallel test workers
 make package     # dist/: wheel, sdist, standalone .pyz, SHA-256 checksums
 make help        # all targets
 ```

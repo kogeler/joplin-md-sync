@@ -54,6 +54,7 @@ class StateDBTest(unittest.TestCase):
         with self.assertRaises(WorkspaceError) as ctx:
             StateDB(self.path).connect()
         self.assertIn("newer", str(ctx.exception))
+        self.path.unlink()  # Windows proves the failed connection was closed.
 
     def test_migration_path_applied(self):
         store = self.open_store(create=True)
@@ -79,6 +80,7 @@ class StateDBTest(unittest.TestCase):
         with self.assertRaises(WorkspaceError) as ctx:
             StateDB(self.path).connect()
         self.assertIn("no migration path", str(ctx.exception))
+        self.path.unlink()  # Windows proves the failed connection was closed.
 
     def test_move_prefix(self):
         store = self.open_store(create=True)

@@ -3,7 +3,7 @@
 #
 # Two separate local virtual environments:
 #   venv/      runtime  — the package itself (editable), zero third-party deps
-#   venv-dev/  tooling  — ruff, mypy, build (declared in [dependency-groups],
+#   venv-dev/  tooling  — ruff, mypy, pytest, build (declared in [dependency-groups],
 #                          pinned via pip freeze in requirements-dev.txt)
 # CI reuses these targets (see .github/workflows/*.yml).
 
@@ -23,8 +23,9 @@ PYTHON_DEV     := $(VENV_DEV)/$(BIN)/python
 DEPS_STAMP     := $(VENV)/.deps-installed
 DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
 VERSION        := $(shell cat .version)
+TEST_WORKERS   ?= 4
 
-.PHONY: help venv venv-dev freeze test lint typecheck check build zipapp package smoke verify-release clean
+.PHONY: help venv venv-dev freeze test lint typecheck check build zipapp package smoke smoke-artifacts smoke-wheel smoke-zipapp verify-release clean
 
 help:                    ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -58,8 +59,8 @@ freeze:                  ## re-resolve [dependency-groups] dev and refresh the l
 	$(PYTHON_DEV) -m pip freeze > requirements-dev.txt
 	touch $(DEPS_DEV_STAMP)
 
-test: venv-dev           ## full unittest suite (unit + integration, fake Joplin)
-	$(PYTHON_DEV) -m unittest discover -s tests -v
+test: venv-dev           ## full test suite in parallel (override TEST_WORKERS=N)
+	$(PYTHON_DEV) -m pytest -n $(TEST_WORKERS) tests
 
 lint: venv-dev           ## static checks (ruff)
 	$(VENV_DEV)/$(BIN)/ruff check src tests scripts
@@ -82,14 +83,21 @@ package: build zipapp    ## all release artifacts + SHA-256 checksums
 		> SHA256SUMS.txt
 	cat dist/SHA256SUMS.txt
 
-smoke: package           ## install the built wheel into a clean venv and exercise the CLI
+smoke-wheel:             ## install the already-built wheel in a clean venv
 	rm -rf $(VENV_SMOKE)
 	$(PY) -m venv $(VENV_SMOKE)
 	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet dist/joplin_md_sync-$(VERSION)-py3-none-any.whl
 	$(VENV_SMOKE)/$(BIN)/joplin-md-sync version
 	$(VENV_SMOKE)/$(BIN)/python -m joplin_md_sync capabilities --json > /dev/null
-	$(PY) dist/joplin-md-sync.pyz version
 	rm -rf $(VENV_SMOKE)
+
+smoke-zipapp:            ## run the already-built standalone zipapp
+	$(PY) dist/joplin-md-sync.pyz version
+	$(PY) dist/joplin-md-sync.pyz capabilities --json > /dev/null
+
+smoke-artifacts: smoke-wheel smoke-zipapp  ## exercise already-built wheel and zipapp
+
+smoke: package smoke-artifacts  ## build and exercise all release artifacts
 
 verify-release:          ## consistency checks; pass TAG=vX.Y.Z to verify a tag
 	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG))

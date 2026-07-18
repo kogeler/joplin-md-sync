@@ -223,9 +223,16 @@ def build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------------
 
 
-def _setup_logging(args: argparse.Namespace) -> None:
+def _close_logging_handlers() -> None:
     root = logging.getLogger("joplin_md_sync")
-    root.handlers.clear()
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()
+
+
+def _setup_logging(args: argparse.Namespace) -> None:
+    _close_logging_handlers()
+    root = logging.getLogger("joplin_md_sync")
     root.setLevel(logging.DEBUG)
     stderr = logging.StreamHandler(sys.stderr)
     if getattr(args, "quiet", False):
@@ -891,23 +898,24 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(args)
     command = args.command
     try:
-        out = _HANDLERS[command](args)
+        try:
+            out = _HANDLERS[command](args)
+        except JoplinSyncError as exc:
+            out = CommandOutput(
+                exc.exit_code, exc.code,
+                {"error": _redact(str(exc)), "details": _jsonable(exc.details)},
+                [f"error: {_redact(str(exc))}"],
+            )
+        except Exception as exc:  # deterministic internal-error path
+            log.exception("internal error")
+            out = CommandOutput(
+                EXIT_INTERNAL, errors.CODE_INTERNAL_ERROR,
+                {"error": _redact(f"{type(exc).__name__}: {exc}")},
+                [f"internal error: {_redact(f'{type(exc).__name__}: {exc}')}"],
+            )
         return _emit(args, command, out)
-    except JoplinSyncError as exc:
-        out = CommandOutput(
-            exc.exit_code, exc.code,
-            {"error": _redact(str(exc)), "details": _jsonable(exc.details)},
-            [f"error: {_redact(str(exc))}"],
-        )
-        return _emit(args, command, out)
-    except Exception as exc:  # deterministic internal-error path
-        log.exception("internal error")
-        out = CommandOutput(
-            EXIT_INTERNAL, errors.CODE_INTERNAL_ERROR,
-            {"error": _redact(f"{type(exc).__name__}: {exc}")},
-            [f"internal error: {_redact(f'{type(exc).__name__}: {exc}')}"],
-        )
-        return _emit(args, command, out)
+    finally:
+        _close_logging_handlers()
 
 
 def _redact(text: str) -> str:
