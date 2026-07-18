@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  version:
+    name: version increment
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Verify .version was incremented
+        run: >-
+          python scripts/check_version_increment.py
+          --base-ref "${{ github.event.pull_request.base.sha }}"
+
   test:
     name: test (${{ matrix.os }}, py${{ matrix.python }})
     runs-on: ${{ matrix.os }}
@@ -45,9 +64,13 @@ jobs:
         shell: bash
         run: make package PY=python
 
-      - name: Clean-environment install and CLI/zipapp smoke tests
+      - name: Run standalone zipapp
         shell: bash
-        run: make smoke PY=python
+        run: make smoke-zipapp PY=python
+
+      - name: Install wheel in a clean environment and run CLI
+        shell: bash
+        run: make smoke-wheel PY=python
 
       - name: Verify artifacts carry no secrets
         shell: bash

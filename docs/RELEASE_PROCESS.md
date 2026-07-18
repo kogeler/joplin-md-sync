@@ -11,20 +11,18 @@ this in CI.
 
 1. Update `.version`, the `version` field in `agent-manifest.json`, and
    `CHANGELOG.md` (move Unreleased → new version with the date).
-2. Locally: `make check && make package && make verify-release`.
-3. Commit, then tag and push:
-
-   ```bash
-   git tag v1.0.0
-   git push origin main v1.0.0
-   ```
-
-4. The `release.yml` workflow (trigger: tags `v*`) reuses the same Makefile
-   targets: verifies the tag matches `.version`
-   (`make verify-release TAG=…`), reruns `make check` on Linux and Windows,
-   builds all artifacts with checksums (`make package`), smoke-tests them
-   (`make smoke`), and creates/updates the GitHub release with the assets.
-5. Post-release smoke check from a clean machine:
+2. Open a pull request. The `version increment` CI job compares `.version`
+   with the pull request base and requires a strictly newer `X.Y.Z` version.
+3. Locally: `make check && make package && make verify-release`.
+4. Merge the pull request into `main`. Every merge is expected to carry a
+   version increment; no release tag is created manually.
+5. The `release.yml` workflow (trigger: pushes to `main`) reuses the same
+   Makefile targets: reruns `make check` on Linux and Windows, builds all
+   artifacts with checksums (`make package`), verifies and smoke-tests them,
+   creates the annotated `vX.Y.Z` tag from `.version`, and publishes the
+   GitHub release with the assets. A tag that already points to a different
+   commit fails the workflow instead of replacing the existing release.
+6. Post-release smoke check from a clean machine:
 
    ```bash
    python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"

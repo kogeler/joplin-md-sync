@@ -104,6 +104,9 @@ class StateDB:
                 f"state database is corrupt or unreadable ({self.path}): {exc}; "
                 "restore it from a backup or re-run init in a fresh directory"
             ) from exc
+        except Exception:
+            conn.close()
+            raise
         return conn
 
     def _check_integrity(self, conn: sqlite3.Connection) -> None:

@@ -168,6 +168,8 @@ class TokenSafetyTest(WorkspaceTestCase):
         )
         if log_file.exists():
             self._assert_no_token(log_file.read_text(encoding="utf-8"))
+            # Proves the CLI released its FileHandler; Windows refuses to unlink open files.
+            log_file.unlink()
 
     def test_token_not_stored_in_workspace(self):
         self.init_and_pull()

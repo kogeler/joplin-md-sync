@@ -6,18 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-
-- Project tooling reworked around a Makefile (`make help`): two separate
-  local virtual environments — `venv/` (runtime, package installed
-  editable) and `venv-dev/` (ruff/mypy/build) — with dev tools declared in
-  `[dependency-groups]` and pinned via a full `pip freeze` lock in
-  `requirements-dev.txt` (`make freeze`). CI and the release workflow reuse
-  the same Makefile targets.
-- The version's single source moved to the root `.version` file:
-  `pyproject.toml` reads it dynamically and `__version__` is resolved at
-  runtime (zipapp embeds a copy; wheels use distribution metadata).
-
 ## [1.0.0] - 2026-07-17
 
 ### Added
@@ -49,8 +37,29 @@ All notable changes to this project are documented here. The format follows
   needs to be configured; port discovery (41184–41194) remains as fallback
   and CLI/env/workspace settings override it.
 
-### Fixed (during pre-release live testing against real Joplin)
+### Changed
 
+- Project tooling reworked around a Makefile (`make help`): two separate
+  local virtual environments — `venv/` (runtime, package installed
+  editable) and `venv-dev/` (ruff/mypy/pytest/build) — with dev tools
+  declared in `[dependency-groups]` and pinned via a full `pip freeze` lock in
+  `requirements-dev.txt` (`make freeze`). CI and the release workflow reuse
+  the same Makefile targets.
+- The version's single source moved to the root `.version` file:
+  `pyproject.toml` reads it dynamically and `__version__` is resolved at
+  runtime (zipapp embeds a copy; wheels use distribution metadata).
+- Tests run in four isolated pytest-xdist workers by default; set
+  `TEST_WORKERS=N` to override the Makefile default.
+- CI runs the built `.pyz` explicitly on every Windows/Linux and Python
+  matrix entry. Wheel and zipapp smoke tests no longer rebuild artifacts.
+- Merges to `main` create an annotated `vX.Y.Z` tag from `.version` and
+  publish the corresponding GitHub release. Pull requests require a strict
+  version increment relative to their base commit.
+
+### Fixed
+
+- CLI log handlers and failed SQLite connections are closed deterministically,
+  preventing `WinError 32` failures during temporary-directory cleanup.
 - Restoring a trashed note during conflict resolution now uses
   `PUT deleted_time=0` — real Joplin rejects `POST /notes` with an existing
   id (UNIQUE constraint). Recreation via POST is kept for permanently
