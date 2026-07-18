@@ -14,6 +14,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -88,13 +89,17 @@ class JoplinClient:
         *,
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        body: bytes | None = None,
+        content_type: str | None = None,
         raw: bool = False,
     ) -> Any:
         url = self._url(path, params)
-        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if payload is not None and body is not None:
+            raise ValueError("payload and body are mutually exclusive")
+        data = json.dumps(payload).encode("utf-8") if payload is not None else body
         req = urllib.request.Request(url, data=data, method=method)
         if data is not None:
-            req.add_header("Content-Type", "application/json")
+            req.add_header("Content-Type", content_type or "application/json")
 
         idempotent = method == "GET"
         attempts = self._retries if idempotent else 1
@@ -140,14 +145,57 @@ class JoplinClient:
         assert last_exc is not None
         raise last_exc
 
-    def _paginate(self, path: str, *, params: dict[str, Any] | None = None) -> Iterator[dict[str, Any]]:
+    @staticmethod
+    def _multipart_resource_body(
+        data: bytes, *, filename: str, mime: str, props: dict[str, Any]
+    ) -> tuple[bytes, str]:
+        boundary = f"----joplin-md-sync-{secrets.token_hex(16)}"
+        safe_filename = filename.replace("\\", "_").replace('"', "'")
+        safe_filename = safe_filename.replace("\r", "_").replace("\n", "_")
+        safe_mime = mime.replace("\r", "").replace("\n", "")
+        prefix = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="data"; filename="{safe_filename}"\r\n'
+            f"Content-Type: {safe_mime}\r\n\r\n"
+        ).encode()
+        props_part = (
+            f"\r\n--{boundary}\r\n"
+            'Content-Disposition: form-data; name="props"\r\n'
+            "Content-Type: application/json\r\n\r\n"
+        ).encode("ascii")
+        suffix = f"\r\n--{boundary}--\r\n".encode("ascii")
+        body = prefix + data + props_part + json.dumps(props).encode("utf-8") + suffix
+        return body, f"multipart/form-data; boundary={boundary}"
+
+    def _paginate(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        max_results: int | None = None,
+        order_by: str | None = "id",
+        order_dir: str = "ASC",
+    ) -> Iterator[dict[str, Any]]:
         page = 1
+        emitted = 0
         while True:
             merged = dict(params or {})
-            merged.update({"limit": PAGE_LIMIT, "page": page, "order_by": "id", "order_dir": "ASC"})
+            page_limit = PAGE_LIMIT
+            if max_results is not None:
+                page_limit = min(page_limit, max_results - emitted)
+                if page_limit <= 0:
+                    return
+            merged.update({"limit": page_limit, "page": page})
+            if order_by is not None:
+                merged.update({"order_by": order_by, "order_dir": order_dir})
             data = self._request("GET", path, params=merged)
             items = data.get("items", []) if isinstance(data, dict) else []
-            yield from items
+            for item in items:
+                if isinstance(item, dict):
+                    yield item
+                    emitted += 1
+                    if max_results is not None and emitted >= max_results:
+                        return
             if not (isinstance(data, dict) and data.get("has_more")):
                 return
             page += 1
@@ -162,20 +210,39 @@ class JoplinClient:
 
     _NOTE_LIST_FIELDS = "id,parent_id,title,updated_time"
     _NOTE_FIELDS = "id,parent_id,title,body,updated_time,is_conflict,deleted_time"
+    NOTE_METADATA_FIELDS = (
+        "id,parent_id,title,body,created_time,updated_time,is_conflict,deleted_time,"
+        "author,source_url,is_todo,todo_due,todo_completed,user_created_time,"
+        "user_updated_time,markup_language,latitude,longitude,altitude,order,source,"
+        "source_application,application_data,user_data"
+    )
 
     def list_notes(
-        self, *, include_deleted: bool = False, include_conflicts: bool = False
+        self,
+        *,
+        include_deleted: bool = False,
+        include_conflicts: bool = False,
+        fields: str | None = None,
+        max_results: int | None = None,
     ) -> list[dict[str, Any]]:
-        params: dict[str, Any] = {"fields": self._NOTE_LIST_FIELDS + ",is_conflict,deleted_time"}
+        params: dict[str, Any] = {
+            "fields": fields or self._NOTE_LIST_FIELDS + ",is_conflict,deleted_time"
+        }
         if include_deleted:
             params["include_deleted"] = 1
         if include_conflicts:
             params["include_conflicts"] = 1
-        return list(self._paginate("/notes", params=params))
+        return list(self._paginate("/notes", params=params, max_results=max_results))
 
-    def get_note(self, note_id: str, *, include_deleted: bool = False) -> dict[str, Any] | None:
+    def get_note(
+        self,
+        note_id: str,
+        *,
+        include_deleted: bool = False,
+        fields: str | None = None,
+    ) -> dict[str, Any] | None:
         """Fetch one full note; None when it does not exist (404)."""
-        params: dict[str, Any] = {"fields": self._NOTE_FIELDS}
+        params: dict[str, Any] = {"fields": fields or self._NOTE_FIELDS}
         if include_deleted:
             params["include_deleted"] = 1
         try:
@@ -185,9 +252,20 @@ class JoplinClient:
                 return None
             raise
 
-    def create_note(self, *, title: str, body: str, parent_id: str) -> dict[str, Any]:
+    def create_note(
+        self,
+        *,
+        title: str,
+        body: str | None,
+        parent_id: str,
+        extra_fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = dict(extra_fields or {})
+        payload.update({"title": title, "parent_id": parent_id})
+        if body is not None:
+            payload["body"] = body
         return self._request(
-            "POST", "/notes", payload={"title": title, "body": body, "parent_id": parent_id}
+            "POST", "/notes", payload=payload
         )
 
     def create_note_with_id(
@@ -217,18 +295,81 @@ class JoplinClient:
         """
         return self._request("PUT", f"/notes/{note_id}", payload={"deleted_time": 0})
 
+    def search_notes(
+        self,
+        query: str,
+        *,
+        fields: str | None = None,
+        max_results: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Run a Joplin full-text query, preserving relevance ordering."""
+        params: dict[str, Any] = {
+            "query": query,
+            "fields": fields or self._NOTE_LIST_FIELDS + ",is_conflict,deleted_time",
+        }
+        return list(
+            self._paginate(
+                "/search", params=params, max_results=max_results, order_by=None
+            )
+        )
+
     # --- folders ----------------------------------------------------------
 
-    def list_folders(self) -> list[dict[str, Any]]:
-        return list(self._paginate("/folders", params={"fields": "id,parent_id,title"}))
+    FOLDER_METADATA_FIELDS = (
+        "id,parent_id,title,created_time,updated_time,user_created_time,"
+        "user_updated_time,icon,deleted_time"
+    )
 
-    def get_folder(self, folder_id: str) -> dict[str, Any] | None:
+    def list_folders(
+        self,
+        *,
+        include_deleted: bool = False,
+        fields: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"fields": fields or self.FOLDER_METADATA_FIELDS}
+        if include_deleted:
+            params["include_deleted"] = 1
+        return list(self._paginate("/folders", params=params, max_results=max_results))
+
+    def get_folder(
+        self,
+        folder_id: str,
+        *,
+        include_deleted: bool = False,
+        fields: str | None = None,
+    ) -> dict[str, Any] | None:
+        params: dict[str, Any] = {"fields": fields or self.FOLDER_METADATA_FIELDS}
+        if include_deleted:
+            params["include_deleted"] = 1
         try:
-            return self._request("GET", f"/folders/{folder_id}", params={"fields": "id,parent_id,title"})
+            return self._request("GET", f"/folders/{folder_id}", params=params)
         except ApiError as exc:
             if exc.status == 404:
                 return None
             raise
+
+    def list_folder_notes(
+        self,
+        folder_id: str,
+        *,
+        include_deleted: bool = False,
+        include_conflicts: bool = False,
+        fields: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "fields": fields or self._NOTE_LIST_FIELDS + ",is_conflict,deleted_time"
+        }
+        if include_deleted:
+            params["include_deleted"] = 1
+        if include_conflicts:
+            params["include_conflicts"] = 1
+        return list(
+            self._paginate(
+                f"/folders/{folder_id}/notes", params=params, max_results=max_results
+            )
+        )
 
     def create_folder(self, *, title: str, parent_id: str = "") -> dict[str, Any]:
         return self._request("POST", "/folders", payload={"title": title, "parent_id": parent_id})
@@ -236,19 +377,64 @@ class JoplinClient:
     def update_folder(self, folder_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         return self._request("PUT", f"/folders/{folder_id}", payload=fields)
 
+    def delete_folder(self, folder_id: str, *, permanent: bool = False) -> None:
+        params = {"permanent": 1} if permanent else None
+        self._request("DELETE", f"/folders/{folder_id}", params=params)
+
+    def restore_folder(self, folder_id: str) -> dict[str, Any]:
+        return self._request("PUT", f"/folders/{folder_id}", payload={"deleted_time": 0})
+
     # --- tags -------------------------------------------------------------
 
-    def list_tags(self) -> list[dict[str, Any]]:
-        return list(self._paginate("/tags", params={"fields": "id,title"}))
+    TAG_METADATA_FIELDS = "id,title,created_time,updated_time,user_created_time,user_updated_time"
 
-    def list_tag_notes(self, tag_id: str) -> list[dict[str, Any]]:
-        return list(self._paginate(f"/tags/{tag_id}/notes", params={"fields": "id"}))
+    def list_tags(
+        self, *, fields: str | None = None, max_results: int | None = None
+    ) -> list[dict[str, Any]]:
+        return list(
+            self._paginate(
+                "/tags",
+                params={"fields": fields or self.TAG_METADATA_FIELDS},
+                max_results=max_results,
+            )
+        )
+
+    def get_tag(self, tag_id: str, *, fields: str | None = None) -> dict[str, Any] | None:
+        try:
+            return self._request(
+                "GET", f"/tags/{tag_id}", params={"fields": fields or self.TAG_METADATA_FIELDS}
+            )
+        except ApiError as exc:
+            if exc.status == 404:
+                return None
+            raise
+
+    def list_tag_notes(
+        self,
+        tag_id: str,
+        *,
+        fields: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return list(
+            self._paginate(
+                f"/tags/{tag_id}/notes",
+                params={"fields": fields or self._NOTE_LIST_FIELDS},
+                max_results=max_results,
+            )
+        )
 
     def list_note_tags(self, note_id: str) -> list[dict[str, Any]]:
         return list(self._paginate(f"/notes/{note_id}/tags", params={"fields": "id,title"}))
 
     def create_tag(self, title: str) -> dict[str, Any]:
         return self._request("POST", "/tags", payload={"title": title})
+
+    def update_tag(self, tag_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return self._request("PUT", f"/tags/{tag_id}", payload=fields)
+
+    def delete_tag(self, tag_id: str) -> None:
+        self._request("DELETE", f"/tags/{tag_id}")
 
     def add_tag_to_note(self, tag_id: str, note_id: str) -> None:
         self._request("POST", f"/tags/{tag_id}/notes", payload={"id": note_id})
@@ -258,15 +444,45 @@ class JoplinClient:
 
     # --- resources ----------------------------------------------------------
 
-    def list_note_resources(self, note_id: str) -> list[dict[str, Any]]:
+    RESOURCE_METADATA_FIELDS = (
+        "id,title,mime,filename,file_extension,size,created_time,updated_time,"
+        "user_created_time,user_updated_time,blob_updated_time,ocr_status,ocr_error"
+    )
+
+    def list_resources(
+        self, *, fields: str | None = None, max_results: int | None = None
+    ) -> list[dict[str, Any]]:
         return list(
-            self._paginate(f"/notes/{note_id}/resources", params={"fields": "id,title,mime,filename"})
+            self._paginate(
+                "/resources",
+                params={"fields": fields or self.RESOURCE_METADATA_FIELDS},
+                max_results=max_results,
+            )
         )
 
-    def get_resource(self, resource_id: str) -> dict[str, Any] | None:
+    def list_note_resources(
+        self,
+        note_id: str,
+        *,
+        fields: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return list(
+            self._paginate(
+                f"/notes/{note_id}/resources",
+                params={"fields": fields or self.RESOURCE_METADATA_FIELDS},
+                max_results=max_results,
+            )
+        )
+
+    def get_resource(
+        self, resource_id: str, *, fields: str | None = None
+    ) -> dict[str, Any] | None:
         try:
             return self._request(
-                "GET", f"/resources/{resource_id}", params={"fields": "id,title,mime,filename"}
+                "GET",
+                f"/resources/{resource_id}",
+                params={"fields": fields or self.RESOURCE_METADATA_FIELDS},
             )
         except ApiError as exc:
             if exc.status == 404:
@@ -275,6 +491,81 @@ class JoplinClient:
 
     def get_resource_file(self, resource_id: str) -> bytes:
         return self._request("GET", f"/resources/{resource_id}/file", raw=True)
+
+    def list_resource_notes(
+        self,
+        resource_id: str,
+        *,
+        fields: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        requested_fields = fields or self._NOTE_LIST_FIELDS
+        linked = list(
+            self._paginate(
+                f"/resources/{resource_id}/notes",
+                params={"fields": requested_fields},
+                max_results=max_results,
+            )
+        )
+        if linked:
+            return linked
+
+        # Some Joplin Desktop versions return an empty reverse relation even
+        # while /notes/:id/resources resolves the same Markdown link. Fall
+        # back to the canonical :/resource-id representation in note bodies.
+        scan_fields = requested_fields
+        if "body" not in {field.strip() for field in scan_fields.split(",")}:
+            scan_fields += ",body"
+        matches: list[dict[str, Any]] = []
+        requested_keys = [field.strip() for field in requested_fields.split(",")]
+        for note in self.list_notes(
+            include_deleted=True,
+            include_conflicts=True,
+            fields=scan_fields,
+        ):
+            if f":/{resource_id}" not in str(note.get("body") or ""):
+                continue
+            matches.append({key: note.get(key) for key in requested_keys})
+            if max_results is not None and len(matches) >= max_results:
+                break
+        return matches
+
+    def create_resource(
+        self,
+        data: bytes,
+        *,
+        filename: str,
+        mime: str,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        props = {"title": title if title is not None else filename}
+        body, content_type = self._multipart_resource_body(
+            data, filename=filename, mime=mime, props=props
+        )
+        return self._request("POST", "/resources", body=body, content_type=content_type)
+
+    def update_resource(
+        self,
+        resource_id: str,
+        fields: dict[str, Any],
+        *,
+        data: bytes | None = None,
+        filename: str | None = None,
+        mime: str | None = None,
+    ) -> dict[str, Any]:
+        if data is None:
+            return self._request("PUT", f"/resources/{resource_id}", payload=fields)
+        if filename is None or mime is None:
+            raise ValueError("filename and mime are required when replacing resource data")
+        body, content_type = self._multipart_resource_body(
+            data, filename=filename, mime=mime, props=fields
+        )
+        return self._request(
+            "PUT", f"/resources/{resource_id}", body=body, content_type=content_type
+        )
+
+    def delete_resource(self, resource_id: str) -> None:
+        self._request("DELETE", f"/resources/{resource_id}")
 
     # --- events / revisions (diagnostics only, see plan amendment 4/9) -------
 

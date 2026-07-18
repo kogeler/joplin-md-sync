@@ -57,6 +57,7 @@ From a checkout, everything is driven by the Makefile:
 make venv        # runtime venv/ with the CLI installed (venv/bin/joplin-md-sync)
 make venv-dev    # tooling venv-dev/ (ruff, mypy, pytest, PyInstaller, build)
 make check       # lint + typecheck + full test suite
+make test-live   # opt-in real-Joplin MCP suite; reads ./token (never run by CI)
 make test TEST_WORKERS=8  # override the default four parallel test workers
 make package     # wheel, sdist, .pyz, current-platform executable, checksums
 make help        # all targets
@@ -87,12 +88,31 @@ in `[dependency-groups]` with a pip-freeze lock in `requirements-dev.txt`.
 4. If both sides changed the same note, you get exit code 2 and a conflict
    bundle: `joplin-md-sync conflicts list` / `conflicts resolve ID --take-local|--take-remote|--merged-file PATH`.
 
+## MCP server
+
+The CLI can also run as a long-lived MCP Streamable HTTP bridge directly to
+the Joplin Data API. It exposes complete note, notebook, tag, and resource
+operations, including HTML notes and binary attachments:
+
+```bash
+export JOPLIN_TOKEN=...
+joplin-md-sync mcp serve
+# MCP endpoint: http://127.0.0.1:8765/mcp
+```
+
+The server starts even while Joplin is offline, returns retryable MCP tool
+errors during the outage, and recovers on later calls without a restart. MCP
+bearer authorization is optional and disabled by default; enable it with a
+separate `--auth-token-file`. See [docs/MCP.md](docs/MCP.md) for client setup,
+tool schemas, security, a systemd user unit, and Windows Task Scheduler setup.
+
 ## Architecture overview
 
 ```
 cli  ->  planner (pure three-way classification: base/local/remote)
      ->  executor (guard -> apply -> verify -> commit base, journaled)
 api: stdlib urllib client for the Joplin Data API (pagination, retries)
+mcp: Streamable HTTP/JSON-RPC transport -> validated Joplin service -> api
 state: SQLite base snapshots, conflicts, tombstones, run journal
 workspace: scanning, atomic writes, backups, quarantine, cross-platform lock
 ```
@@ -103,11 +123,11 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 | Supported | Out of scope |
 | --- | --- |
-| notes, notebooks (nested), tags | editing/uploading binary attachments |
+| notes, notebooks (nested), tags, binary attachments | editing settings, revisions, or encryption state |
 | two-way sync with conflict bundles | Nextcloud/WebDAV or any direct sync target |
-| resource download for inspection | replacing Joplin's own device sync |
+| resource download/upload/edit through MCP | replacing Joplin's own device sync |
 | crash recovery, backups, quarantine | automatic text merging (only explicit `--merged-file`) |
-| Windows + Linux, Python 3.13/3.14 | daemon/watch mode, mobile, self-update, permanent deletion |
+| Windows + Linux, Python 3.13/3.14; MCP daemon | filesystem watch mode, mobile, self-update, permanent note/notebook deletion |
 
 ## Versioning
 

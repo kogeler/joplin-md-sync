@@ -62,9 +62,10 @@ class FakeStore:
         deleted_time: int = 0,
     ) -> str:
         nid = note_id or uuid.uuid4().hex
+        timestamp = self.tick()
         self.notes[nid] = {
             "id": nid, "title": title, "body": body, "parent_id": parent_id,
-            "updated_time": self.tick(), "is_conflict": is_conflict,
+            "created_time": timestamp, "updated_time": timestamp, "is_conflict": is_conflict,
             "deleted_time": deleted_time,
         }
         return nid
@@ -79,10 +80,20 @@ class FakeStore:
 
     def add_resource(
         self, data: bytes, *, mime: str = "image/png", filename: str = "",
+        title: str | None = None,
         resource_id: str | None = None,
     ) -> str:
         rid = resource_id or uuid.uuid4().hex
-        self.resources[rid] = {"id": rid, "title": filename or rid, "mime": mime, "filename": filename}
+        timestamp = self.tick()
+        self.resources[rid] = {
+            "id": rid,
+            "title": title if title is not None else filename or rid,
+            "mime": mime,
+            "filename": filename,
+            "size": len(data),
+            "created_time": timestamp,
+            "updated_time": timestamp,
+        }
         self.resource_files[rid] = data
         return rid
 
@@ -119,6 +130,37 @@ class _Handler(BaseHTTPRequestHandler):
         if not length:
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def _read_multipart(self) -> tuple[bytes, dict[str, Any], str, str]:
+        content_type = self.headers.get("Content-Type") or ""
+        marker = "boundary="
+        if marker not in content_type:
+            raise ValueError("multipart boundary missing")
+        boundary = content_type.split(marker, 1)[1].strip().strip('"').encode("ascii")
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length)
+        data = b""
+        props: dict[str, Any] = {}
+        filename = ""
+        mime = "application/octet-stream"
+        for part in raw.split(b"--" + boundary):
+            headers_raw, separator, content = part.partition(b"\r\n\r\n")
+            if not separator:
+                continue
+            content = content.removesuffix(b"\r\n")
+            headers = headers_raw.decode("utf-8", "replace")
+            if 'name="data"' in headers:
+                data = content
+                for segment in headers.split(";"):
+                    segment = segment.strip()
+                    if segment.startswith("filename="):
+                        filename = segment.split("=", 1)[1].strip().strip('"')
+                for line in headers.splitlines():
+                    if line.lower().startswith("content-type:"):
+                        mime = line.split(":", 1)[1].strip()
+            elif 'name="props"' in headers:
+                props = json.loads(content.decode("utf-8"))
+        return data, props, filename, mime
 
     def _handle(self, method: str) -> None:
         split = urllib.parse.urlsplit(self.path)
@@ -192,9 +234,17 @@ class _Handler(BaseHTTPRequestHandler):
                         })
                         return
                     store.add_note(
-                        data.get("title", ""), data.get("body", ""),
+                        data.get("title", ""), data.get("body", data.get("body_html", "")),
                         data.get("parent_id", ""), note_id=nid,
                     )
+                    for key in (
+                        "author", "source_url", "is_todo", "todo_due", "todo_completed",
+                        "user_created_time", "user_updated_time", "latitude", "longitude",
+                        "altitude", "source", "source_application", "application_data",
+                        "user_data", "order", "markup_language",
+                    ):
+                        if key in data:
+                            store.notes[nid][key] = data[key]
                     self._reply(200, store.notes[nid])
                     return
             note = store.notes[parts[1]]
@@ -213,7 +263,13 @@ class _Handler(BaseHTTPRequestHandler):
                     # Real Joplin applies PUT to trashed notes too, and
                     # accepts deleted_time (=0 restores from trash).
                     data = self._read_json()
-                    for key in ("title", "body", "parent_id", "deleted_time"):
+                    for key in (
+                        "title", "body", "parent_id", "deleted_time", "author", "source_url",
+                        "is_todo", "todo_due", "todo_completed", "user_created_time",
+                        "user_updated_time", "latitude", "longitude", "altitude",
+                        "source", "source_application", "application_data", "user_data",
+                        "order", "markup_language", "body_html", "base_url",
+                    ):
                         if key in data:
                             note[key] = data[key]
                     note["updated_time"] = store.tick()
@@ -243,27 +299,75 @@ class _Handler(BaseHTTPRequestHandler):
                 self._reply(200, self._paginate(linked, {**query, "order_by": "id", "order_dir": "ASC"}))
                 return
 
+        elif parts[0] == "search" and method == "GET":
+            raw_query = query.get("query", "").strip().lower()
+            terms = [term for term in raw_query.split() if ":" not in term]
+            notes = [
+                note for note in store.notes.values()
+                if not note.get("deleted_time")
+                and not note.get("is_conflict")
+                and all(
+                    term in f"{note.get('title', '')}\n{note.get('body', '')}".lower()
+                    for term in terms
+                )
+            ]
+            self._reply(200, self._paginate(notes, query))
+            return
+
         elif parts[0] == "folders":
             if len(parts) == 1:
                 if method == "GET":
-                    self._reply(200, self._paginate(list(store.folders.values()), query))
+                    folders = list(store.folders.values())
+                    if not query.get("include_deleted"):
+                        folders = [folder for folder in folders if not folder.get("deleted_time")]
+                    self._reply(200, self._paginate(folders, query))
                     return
                 if method == "POST":
                     data = self._read_json()
                     fid = store.add_folder(data.get("title", ""), data.get("parent_id", ""))
+                    for key in ("icon", "user_created_time", "user_updated_time"):
+                        if key in data:
+                            store.folders[fid][key] = data[key]
                     self._reply(200, store.folders[fid])
                     return
             folder = store.folders[parts[1]]
-            if method == "GET":
-                self._reply(200, folder)
-                return
-            if method == "PUT":
-                data = self._read_json()
-                for key in ("title", "parent_id"):
-                    if key in data:
-                        folder[key] = data[key]
-                folder["updated_time"] = store.tick()
-                self._reply(200, folder)
+            if len(parts) == 2:
+                if method == "GET":
+                    fields = query.get("fields")
+                    if fields:
+                        keys = [field.strip() for field in fields.split(",")]
+                        self._reply(200, {key: folder.get(key) for key in keys})
+                    else:
+                        self._reply(200, folder)
+                    return
+                if method == "PUT":
+                    data = self._read_json()
+                    for key in (
+                        "title", "parent_id", "icon", "user_created_time",
+                        "user_updated_time", "deleted_time",
+                    ):
+                        if key in data:
+                            folder[key] = data[key]
+                    folder["updated_time"] = store.tick()
+                    self._reply(200, folder)
+                    return
+                if method == "DELETE":
+                    if query.get("permanent") == "1":
+                        del store.folders[parts[1]]
+                    else:
+                        folder["deleted_time"] = store.tick()
+                    self._reply(200, {})
+                    return
+            if len(parts) == 3 and parts[2] == "notes" and method == "GET":
+                notes = [
+                    note for note in store.notes.values()
+                    if note.get("parent_id") == parts[1]
+                ]
+                if not query.get("include_deleted"):
+                    notes = [note for note in notes if not note.get("deleted_time")]
+                if not query.get("include_conflicts"):
+                    notes = [note for note in notes if not note.get("is_conflict")]
+                self._reply(200, self._paginate(notes, query))
                 return
 
         elif parts[0] == "tags":
@@ -281,10 +385,21 @@ class _Handler(BaseHTTPRequestHandler):
                     tid = store.add_tag(title)
                     self._reply(200, store.tags[tid])
                     return
+            if len(parts) == 2 and method == "GET":
+                tag = store.tags[parts[1]]
+                fields = query.get("fields")
+                if fields:
+                    keys = [field.strip() for field in fields.split(",")]
+                    self._reply(200, {key: tag.get(key) for key in keys})
+                else:
+                    self._reply(200, tag)
+                return
             if len(parts) == 3 and parts[2] == "notes":
                 if method == "GET":
                     notes = [
-                        {"id": nid} for tid, nid in store.note_tags if tid == parts[1]
+                        store.notes[nid]
+                        for tid, nid in store.note_tags
+                        if tid == parts[1] and nid in store.notes
                     ]
                     self._reply(200, self._paginate(notes, {**query, "order_by": "id", "order_dir": "ASC"}))
                     return
@@ -298,14 +413,71 @@ class _Handler(BaseHTTPRequestHandler):
                 store.note_tags.discard((parts[1], parts[3]))
                 self._reply(200, {})
                 return
+            if len(parts) == 2 and method == "DELETE":
+                del store.tags[parts[1]]
+                store.note_tags = {
+                    (tag_id, note_id)
+                    for tag_id, note_id in store.note_tags
+                    if tag_id != parts[1]
+                }
+                self._reply(200, {})
+                return
+            if len(parts) == 2 and method == "PUT":
+                data = self._read_json()
+                if "title" in data:
+                    store.tags[parts[1]]["title"] = str(data["title"]).strip().lower()
+                store.tags[parts[1]]["updated_time"] = store.tick()
+                self._reply(200, store.tags[parts[1]])
+                return
 
         elif parts[0] == "resources":
+            if len(parts) == 1:
+                if method == "GET":
+                    self._reply(200, self._paginate(list(store.resources.values()), query))
+                    return
+                if method == "POST":
+                    data, props, filename, mime = self._read_multipart()
+                    rid = store.add_resource(
+                        data,
+                        filename=filename,
+                        mime=mime,
+                        title=str(props.get("title") or filename),
+                    )
+                    self._reply(200, store.resources[rid])
+                    return
             resource = store.resources[parts[1]]
-            if len(parts) == 2 and method == "GET":
-                self._reply(200, resource)
-                return
+            if len(parts) == 2:
+                if method == "GET":
+                    fields = query.get("fields")
+                    if fields:
+                        keys = [field.strip() for field in fields.split(",")]
+                        self._reply(200, {key: resource.get(key) for key in keys})
+                    else:
+                        self._reply(200, resource)
+                    return
+                if method == "PUT":
+                    if (self.headers.get("Content-Type") or "").startswith("multipart/form-data"):
+                        data, props, filename, mime = self._read_multipart()
+                        store.resource_files[parts[1]] = data
+                        resource.update(props)
+                        resource.update({"filename": filename, "mime": mime, "size": len(data)})
+                    else:
+                        resource.update(self._read_json())
+                    resource["updated_time"] = store.tick()
+                    self._reply(200, resource)
+                    return
+                if method == "DELETE":
+                    del store.resources[parts[1]]
+                    store.resource_files.pop(parts[1], None)
+                    self._reply(200, {})
+                    return
             if len(parts) == 3 and parts[2] == "file" and method == "GET":
                 self._reply(200, raw=store.resource_files[parts[1]])
+                return
+            if len(parts) == 3 and parts[2] == "notes" and method == "GET":
+                # Matches observed Joplin Desktop behavior: the documented
+                # reverse relation can be empty while note -> resources works.
+                self._reply(200, self._paginate([], query))
                 return
 
         elif parts[0] == "events" and method == "GET":

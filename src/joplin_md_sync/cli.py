@@ -14,6 +14,7 @@ import json
 import logging
 import platform
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -87,11 +88,17 @@ def _add_output_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--log-file", metavar="PATH", help="also write debug logs to PATH")
 
 
-def _add_conn_args(p: argparse.ArgumentParser) -> None:
+def _add_conn_args(p: argparse.ArgumentParser, *, timeout_default: float = 30.0) -> None:
     p.add_argument("--base-url", metavar="URL", help="Joplin API base URL (e.g. http://127.0.0.1:41184)")
     p.add_argument("--port", type=int, metavar="PORT", help="Joplin API port on 127.0.0.1")
     p.add_argument("--token-file", metavar="PATH", help="file containing the Joplin token")
-    p.add_argument("--timeout", type=float, default=30.0, metavar="SECONDS", help="HTTP timeout (default 30)")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=timeout_default,
+        metavar="SECONDS",
+        help=f"HTTP timeout (default {timeout_default:g})",
+    )
     p.add_argument(
         "--allow-remote-api", action="store_true",
         help="allow a non-loopback Joplin API address (off by default)",
@@ -215,6 +222,53 @@ def build_parser() -> argparse.ArgumentParser:
     _add_conn_args(rp)
     _add_root_arg(rp)
 
+    p = sub.add_parser("mcp", help="run the Joplin MCP server")
+    msub = p.add_subparsers(dest="mcp_command", required=True, metavar="SUBCOMMAND")
+    mp = msub.add_parser("serve", help="serve MCP over Streamable HTTP in the foreground")
+    _add_output_args(mp)
+    _add_conn_args(mp, timeout_default=5.0)
+    mp.add_argument("--host", default="127.0.0.1", help="MCP bind host (default: 127.0.0.1)")
+    mp.add_argument("--mcp-port", type=int, default=8765, metavar="PORT", help="MCP listen port (default: 8765)")
+    mp.add_argument("--mcp-path", default="/mcp", metavar="PATH", help="MCP endpoint path (default: /mcp)")
+    mp.add_argument(
+        "--auth-token-file",
+        metavar="PATH",
+        help="enable MCP bearer authentication using a token stored in PATH",
+    )
+    mp.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=[],
+        metavar="ORIGIN",
+        help="allow an HTTP Origin (repeatable; loopback origins are allowed locally)",
+    )
+    mp.add_argument(
+        "--allow-remote-mcp",
+        action="store_true",
+        help="allow non-loopback MCP bind (also requires --auth-token-file)",
+    )
+    mp.add_argument(
+        "--retry-timeout",
+        type=float,
+        default=10.0,
+        metavar="SECONDS",
+        help="bounded wait for Joplin per tool call (default: 10)",
+    )
+    mp.add_argument(
+        "--retry-delay",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="delay between Joplin availability attempts (default: 1)",
+    )
+    mp.add_argument(
+        "--discovery-timeout",
+        type=float,
+        default=0.25,
+        metavar="SECONDS",
+        help="timeout per Joplin discovery port (default: 0.25)",
+    )
+
     return parser
 
 
@@ -335,14 +389,20 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "pull", "push", "sync", "diff", "recover",
             "conflicts list", "conflicts show", "conflicts resolve", "conflicts discard",
             "note set-title", "note set-tags", "note validate", "resources pull",
+            "mcp serve",
         ],
         "features": {
             "propagate_deletes_flag": True,
             "automatic_text_merge": False,
             "resource_download": True,
-            "resource_upload": False,
+            "resource_upload": True,
             "events_optimization": False,
             "permanent_deletion": False,
+            "mcp_streamable_http": True,
+            "mcp_optional_bearer_auth": True,
+            "mcp_notebook_tag_resource_crud": True,
+            "mcp_html_and_binary_note_content": True,
+            "mcp_permanent_tag_resource_deletion": True,
         },
         "exit_codes": {
             "0": "ok / no differences", "1": "differences or pending actions",
@@ -853,6 +913,74 @@ def cmd_resources(args: argparse.Namespace) -> CommandOutput:
     return CommandOutput(EXIT_OK, errors.CODE_OK, result, text, str(ws.root))
 
 
+def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
+    if args.mcp_command != "serve":
+        raise errors.InternalError(f"unknown MCP subcommand: {args.mcp_command}")
+
+    from joplin_md_sync.mcp_server import (
+        McpDispatcher,
+        is_loopback_host,
+        serve_mcp_http,
+    )
+    from joplin_md_sync.mcp_service import JoplinMcpService
+
+    if not 1 <= args.mcp_port <= 65535:
+        raise UnsafeOperationError("--mcp-port must be between 1 and 65535")
+    if not args.mcp_path.startswith("/") or "?" in args.mcp_path or "#" in args.mcp_path:
+        raise UnsafeOperationError("--mcp-path must be an absolute URL path without query or fragment")
+    if args.retry_timeout < 0:
+        raise UnsafeOperationError("--retry-timeout must be non-negative")
+    if args.retry_delay <= 0:
+        raise UnsafeOperationError("--retry-delay must be positive")
+    if args.discovery_timeout <= 0:
+        raise UnsafeOperationError("--discovery-timeout must be positive")
+    if not is_loopback_host(args.host):
+        if not args.allow_remote_mcp:
+            raise UnsafeOperationError(
+                f"refusing non-loopback MCP bind {args.host}; pass --allow-remote-mcp to override"
+            )
+        if not args.auth_token_file:
+            raise UnsafeOperationError(
+                "a non-loopback MCP bind requires --auth-token-file"
+            )
+
+    allowed_origins: set[str] = set()
+    for origin in args.allowed_origin:
+        normalized = origin.rstrip("/")
+        split = urllib.parse.urlsplit(normalized)
+        if split.scheme not in ("http", "https") or not split.hostname:
+            raise UnsafeOperationError(f"invalid --allowed-origin value: {origin!r}")
+        allowed_origins.add(normalized)
+
+    def client_factory() -> JoplinClient:
+        token = resolve_token(args.token_file)
+        if token not in _REDACT_TOKENS:
+            _REDACT_TOKENS.append(token)
+        return build_client(
+            cli_base_url=args.base_url,
+            cli_port=args.port,
+            token_file=args.token_file,
+            allow_remote=args.allow_remote_api,
+            timeout=args.timeout,
+            discovery_timeout=args.discovery_timeout,
+        )
+
+    service = JoplinMcpService(
+        client_factory,
+        availability_timeout=args.retry_timeout,
+        retry_delay=args.retry_delay,
+    )
+    serve_mcp_http(
+        McpDispatcher(service),
+        host=args.host,
+        port=args.mcp_port,
+        endpoint=args.mcp_path,
+        auth_token_file=Path(args.auth_token_file) if args.auth_token_file else None,
+        allowed_origins=frozenset(allowed_origins),
+    )
+    return CommandOutput(EXIT_OK, errors.CODE_OK, text=["MCP server stopped"])
+
+
 # --------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------
@@ -872,6 +1000,7 @@ _HANDLERS = {
     "conflicts": cmd_conflicts,
     "note": cmd_note,
     "resources": cmd_resources,
+    "mcp": cmd_mcp,
 }
 
 
