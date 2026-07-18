@@ -273,6 +273,8 @@ def _client_for(args: argparse.Namespace, config: dict[str, Any] | None = None) 
 
 
 def _distribution() -> str:
+    if getattr(sys, "frozen", False):
+        return "standalone"
     module_path = str(Path(__file__))
     if ".pyz" in module_path or ".zip" in module_path:
         return "zipapp"

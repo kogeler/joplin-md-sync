@@ -31,7 +31,7 @@ dependencies = []
 [dependency-groups]
 # Declared (unpinned) development tools; the committed pip-freeze lock lives
 # in requirements-dev.txt and is regenerated with `make freeze`.
-dev = ["ruff", "mypy", "build", "pytest", "pytest-xdist"]
+dev = ["ruff", "mypy", "build", "pyinstaller", "pytest", "pytest-xdist"]
 
 [project.urls]
 Repository = "https://github.com/kogeler/joplin-md-sync"

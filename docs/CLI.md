@@ -24,7 +24,7 @@ Every `--json` response contains:
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.0.0",
+  "tool_version": "1.1.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -45,7 +45,7 @@ the public contract. Priority when several apply to one run:
 ### `version`, `capabilities`, `update-check`
 
 - `version --json` → tool, python, protocol/state/output schema versions,
-  distribution kind (`wheel` / `zipapp` / `source`).
+  distribution kind (`standalone` / `wheel` / `zipapp` / `source`).
 - `capabilities --json` → command list, feature flags, exit-code table.
 - `update-check --json [--include-prerelease] [--offline]` → queries the
   GitHub Releases API. Exit 0 current, 8 outdated

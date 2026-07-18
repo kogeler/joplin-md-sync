@@ -3,18 +3,25 @@
 #
 # Two separate local virtual environments:
 #   venv/      runtime  — the package itself (editable), zero third-party deps
-#   venv-dev/  tooling  — ruff, mypy, pytest, build (declared in [dependency-groups],
+#   venv-dev/  tooling  — ruff, mypy, pytest, PyInstaller, build
+#                          (declared in [dependency-groups],
 #                          pinned via pip freeze in requirements-dev.txt)
 # CI reuses these targets (see .github/workflows/*.yml).
 
 ifeq ($(OS),Windows_NT)
 PY  ?= python
 BIN := Scripts
+EXE := .exe
+PLATFORM := windows
 else
 PY  ?= python3
 BIN := bin
+EXE :=
+PLATFORM := linux
 endif
 
+ARCH             ?= $(shell $(PY) -c "from scripts.build_standalone import standalone_architecture; print(standalone_architecture())" 2>/dev/null)
+STANDALONE       := dist/joplin-md-sync-$(PLATFORM)-$(ARCH)$(EXE)
 VENV           := venv
 VENV_DEV       := venv-dev
 VENV_SMOKE     := venv-smoke
@@ -25,7 +32,7 @@ DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
 VERSION        := $(shell cat .version)
 TEST_WORKERS   ?= 4
 
-.PHONY: help venv venv-dev freeze test lint typecheck check build zipapp package smoke smoke-artifacts smoke-wheel smoke-zipapp verify-release clean
+.PHONY: help venv venv-dev freeze test lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
 
 help:                    ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -71,17 +78,22 @@ typecheck: venv-dev      ## strict typing (mypy)
 check: lint typecheck test  ## everything CI runs before building
 
 build: venv-dev          ## wheel + sdist into dist/
+	rm -rf dist build
 	$(PYTHON_DEV) -m build
 
 zipapp:                  ## standalone dist/joplin-md-sync.pyz (stdlib only)
 	$(PY) scripts/build_zipapp.py
 
-package: build zipapp    ## all release artifacts + SHA-256 checksums
-	cd dist && $(PY) -c "import hashlib, pathlib; \
-		print('\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}' \
-		for p in sorted(pathlib.Path().iterdir()) if p.name != 'SHA256SUMS.txt'))" \
-		> SHA256SUMS.txt
-	cat dist/SHA256SUMS.txt
+standalone: venv-dev     ## current platform's one-file executable
+	$(PYTHON_DEV) scripts/build_standalone.py
+
+checksums:               ## checksums for all files already in dist/
+	$(PY) -c "import hashlib, pathlib; root = pathlib.Path('dist'); (root / 'SHA256SUMS.txt').write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in sorted(root.iterdir()) if path.name != 'SHA256SUMS.txt'), encoding='ascii')"
+	$(PY) -c "print(open('dist/SHA256SUMS.txt', encoding='ascii').read(), end='')"
+
+package: build zipapp    ## wheel, sdist, pyz, native executable, checksums
+	$(MAKE) standalone
+	$(MAKE) checksums
 
 smoke-wheel:             ## install the already-built wheel in a clean venv
 	rm -rf $(VENV_SMOKE)
@@ -95,12 +107,16 @@ smoke-zipapp:            ## run the already-built standalone zipapp
 	$(PY) dist/joplin-md-sync.pyz version
 	$(PY) dist/joplin-md-sync.pyz capabilities --json > /dev/null
 
-smoke-artifacts: smoke-wheel smoke-zipapp  ## exercise already-built wheel and zipapp
+smoke-standalone:        ## run the current platform's native executable
+	$(STANDALONE) version
+	$(STANDALONE) capabilities --json > /dev/null
+
+smoke-artifacts: smoke-wheel smoke-zipapp smoke-standalone  ## exercise built artifacts
 
 smoke: package smoke-artifacts  ## build and exercise all release artifacts
 
 verify-release:          ## consistency checks; pass TAG=vX.Y.Z to verify a tag
-	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG))
+	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG)) $(if $(REQUIRE_ALL_STANDALONES),--require-all-standalones)
 
 clean:                   ## remove venvs, build artifacts, and caches
 	rm -rf $(VENV) $(VENV_DEV) $(VENV_SMOKE) dist build src/*.egg-info \

@@ -6,7 +6,8 @@ output, stable exit codes, no silent overwrites.
 
 ## Requirements
 
-- CPython **>= 3.13** (tested on 3.13 and 3.14), Windows or Linux.
+- CPython **>= 3.13** (tested on 3.13 and 3.14), Windows or Linux, when using
+  source/wheel/zipapp distributions. Native release executables include Python.
 - Joplin desktop running locally with the **Web Clipper service** enabled
   (Tools > Options > Web Clipper). Default port `41184`.
 - The Joplin **token** (shown in the Web Clipper options page).
@@ -14,11 +15,13 @@ output, stable exit codes, no silent overwrites.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
 # or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
 # or run the standalone zipapp from a GitHub release asset:
 python joplin-md-sync.pyz --help
+# or run a native release executable without installing Python:
+./joplin-md-sync-linux-amd64 version
 ```
 
 Verify the install and check freshness:
@@ -36,7 +39,7 @@ Everything is driven by the Makefile (CI runs the same targets):
 make venv        # runtime venv/ with the CLI installed:  venv/bin/joplin-md-sync
 make venv-dev    # tooling venv-dev/ from the requirements-dev.txt lock
 make check       # lint (ruff) + typecheck (mypy) + full test suite
-make package     # dist/: wheel, sdist, joplin-md-sync.pyz, SHA256SUMS.txt
+make package     # wheel, sdist, pyz, current-platform executable, checksums
 make smoke       # install the built wheel into a clean venv and exercise it
 make help        # list all targets
 ```
