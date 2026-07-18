@@ -26,22 +26,39 @@ If you are an agent (or configuring one), start with **[AGENTS.md](AGENTS.md)**.
 
 ## Installation
 
-Requires CPython **>= 3.13** on Windows or Linux. Zero runtime dependencies.
+Source, wheel, and zipapp installations require CPython **>= 3.13** on
+Windows or Linux. Native release executables include Python and have no
+external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
+```
+
+Native GitHub Release assets:
+
+| Platform | Architecture | Asset |
+| --- | --- | --- |
+| Linux | AMD64 | `joplin-md-sync-linux-amd64` |
+| Linux | ARM64 | `joplin-md-sync-linux-arm64` |
+| Windows | AMD64 | `joplin-md-sync-windows-amd64.exe` |
+
+On Linux, mark the downloaded executable as executable before running it:
+
+```bash
+chmod +x joplin-md-sync-linux-amd64
+./joplin-md-sync-linux-amd64 version
 ```
 
 From a checkout, everything is driven by the Makefile:
 
 ```bash
 make venv        # runtime venv/ with the CLI installed (venv/bin/joplin-md-sync)
-make venv-dev    # tooling venv-dev/ (ruff, mypy, pytest, build) from the pinned lock
+make venv-dev    # tooling venv-dev/ (ruff, mypy, pytest, PyInstaller, build)
 make check       # lint + typecheck + full test suite
 make test TEST_WORKERS=8  # override the default four parallel test workers
-make package     # dist/: wheel, sdist, standalone .pyz, SHA-256 checksums
+make package     # wheel, sdist, .pyz, current-platform executable, checksums
 make help        # all targets
 ```
 
@@ -95,8 +112,9 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Versioning
 
 Semantic versioning; Git tags `vX.Y.Z` with GitHub releases carrying the
-wheel, sdist, `.pyz`, and SHA-256 checksums. `joplin-md-sync update-check
---json` compares the installed version against the latest stable release
+wheel, sdist, `.pyz`, native executables, and SHA-256 checksums.
+`joplin-md-sync update-check --json` compares the installed version against
+the latest stable release
 (exit 8 when outdated). JSON output, exit codes, and the state schema are
 versioned and stable across patch releases. See [CHANGELOG.md](CHANGELOG.md).
 

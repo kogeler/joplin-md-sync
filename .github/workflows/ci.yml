@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: make verify-release PY=python
 
-      - name: Build wheel, sdist, zipapp + checksums
+      - name: Build wheel, sdist, zipapp, native executable + checksums
         shell: bash
         run: make package PY=python
 
@@ -71,6 +71,10 @@ jobs:
       - name: Install wheel in a clean environment and run CLI
         shell: bash
         run: make smoke-wheel PY=python
+
+      - name: Run native executable
+        shell: bash
+        run: make smoke-standalone PY=python
 
       - name: Verify artifacts carry no secrets
         shell: bash

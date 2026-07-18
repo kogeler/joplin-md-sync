@@ -3,7 +3,8 @@
 Single source of version truth: the **`.version` file at the repository
 root**. `pyproject.toml` reads it via setuptools dynamic metadata, the
 package resolves `__version__` from it at runtime (embedded copy in the
-zipapp, repo file in a checkout, distribution metadata in a wheel), and
+zipapp/standalone executable, repo file in a checkout, distribution metadata
+in a wheel), and
 `agent-manifest.json` must match — `make verify-release` enforces all of
 this in CI.
 
@@ -16,16 +17,18 @@ this in CI.
 3. Locally: `make check && make package && make verify-release`.
 4. Merge the pull request into `main`. Every merge is expected to carry a
    version increment; no release tag is created manually.
-5. The `release.yml` workflow (trigger: pushes to `main`) reuses the same
-   Makefile targets: reruns `make check` on Linux and Windows, builds all
-   artifacts with checksums (`make package`), verifies and smoke-tests them,
-   creates the annotated `vX.Y.Z` tag from `.version`, and publishes the
-   GitHub release with the assets. A tag that already points to a different
-   commit fails the workflow instead of replacing the existing release.
+5. The `release.yml` workflow (trigger: pushes to `main`) reruns `make check`
+   on Linux AMD64/ARM64 and Windows AMD64. Each runner builds, launches, and
+   uploads its native executable. The release job builds the wheel, sdist,
+   and zipapp, downloads only those smoke-tested executables, writes one
+   `SHA256SUMS.txt`, verifies the complete inventory, creates the annotated
+   `vX.Y.Z` tag from `.version`, and publishes all artifacts. A tag that
+   already points to a different commit fails the workflow instead of
+   replacing the existing release.
 6. Post-release smoke check from a clean machine:
 
    ```bash
-   python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.0.0"
+   python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
    joplin-md-sync version --json
    joplin-md-sync update-check --json   # expect exit 0
    ```

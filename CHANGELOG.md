@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-18
+
+### Added
+
+- Native one-file executables for Linux AMD64, Linux ARM64, and Windows AMD64.
+  Each executable is built and smoke-tested on its target GitHub Actions runner
+  before inclusion in the release and the shared `SHA256SUMS.txt` inventory.
+
 ## [1.0.0] - 2026-07-17
 
 ### Added

@@ -3,7 +3,7 @@
 The version's single source is the ``.version`` file at the repository
 root (pyproject.toml reads it via setuptools dynamic metadata; the agent
 manifest and CI verify against it). At runtime it is resolved from, in
-order: a copy shipped inside the package (zipapp), the repository root
+order: a copy shipped inside the package (zipapp/standalone), the repository root
 (source checkout), or the installed distribution metadata (wheel/sdist).
 """
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 
 def _resolve_version() -> str:
-    # 1) Copy shipped next to the package (the zipapp build embeds one).
+    # 1) Copy shipped next to the package (zipapp/standalone builds embed one).
     try:
         from importlib import resources
 
