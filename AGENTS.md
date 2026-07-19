@@ -39,6 +39,7 @@ Everything is driven by the Makefile (CI runs the same targets):
 make venv        # runtime venv/ with the CLI installed:  venv/bin/joplin-md-sync
 make venv-dev    # tooling venv-dev/ from the requirements-dev.txt lock
 make check       # lint (ruff) + typecheck (mypy) + full test suite
+make test-live   # opt-in live MCP tests against Joplin; reads ./token; not CI
 make package     # wheel, sdist, pyz, current-platform executable, checksums
 make smoke       # install the built wheel into a clean venv and exercise it
 make help        # list all targets
@@ -131,9 +132,15 @@ The exact Joplin Markdown body begins here.
 | `conflicts list/show/resolve/discard` | conflict handling | varies |
 | `note set-title/set-tags/validate` | header editing | local file |
 | `resources pull --root P` | download attachments | `.joplin-sync/` only |
+| `mcp serve [--host H --mcp-port N]` | MCP Joplin API daemon | notes, notebooks, tags, resources |
 
 All operational commands accept `--json`, `--verbose`, `--quiet`,
 `--log-file PATH`. JSON goes to stdout; logs go to stderr.
+
+`mcp serve` is a foreground Streamable HTTP daemon and does not require a
+workspace. It listens at `http://127.0.0.1:8765/mcp` by default; see
+[docs/MCP.md](docs/MCP.md). MCP bearer authorization is disabled by default
+and enabled with a separate `--auth-token-file`.
 
 Deletions are **never propagated by default** — they are reported. Pass
 `--propagate-deletes` to apply them (local files go to quarantine under

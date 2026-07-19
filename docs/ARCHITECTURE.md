@@ -7,6 +7,10 @@ cli.py          argparse tree, JSON envelope, exit-code mapping, logging
 config.py       connection resolution: CLI > env > workspace > discovery
 api.py          Joplin Data API client (urllib): pagination, GET retries,
                 ambiguous-write surfacing, token redaction, port discovery
+mcp_service.py  validated note/notebook/tag/resource operations, relationship
+                traversal, base64 limits, bounded Joplin availability waits
+mcp_server.py   MCP JSON-RPC dispatcher, tool registry, Streamable HTTP,
+                Origin checks and optional bearer authorization
 canonical.py    body/tag canonicalization + SHA-256 component hashing
 metadata.py     managed Markdown header parse/emit (single-line JSON comment)
 paths.py        cross-platform filename sanitization, traversal guards
@@ -29,6 +33,17 @@ Separation rule: transport (api), state (state/workspace), decision
 (planner — pure, no I/O), execution (sync), rendering (cli/diff) never
 blur. The planner is exhaustively unit-testable because it takes plain
 data structures.
+
+The MCP path is deliberately separate from the workspace sync engine:
+
+```
+MCP client -> mcp_server (HTTP + JSON-RPC) -> mcp_service -> api -> Joplin
+```
+
+It directly manages Joplin notes, notebooks, tags, and resources and does not
+mutate workspace state. The service layer is transport-independent, so future
+transports can reuse its validation, metadata shaping, relationship handling,
+multipart uploads, and outage behavior.
 
 ## Data flow of a mutating command
 

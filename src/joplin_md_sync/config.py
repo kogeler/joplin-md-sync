@@ -66,6 +66,7 @@ def resolve_base_url(
     allow_remote: bool = False,
     env: Mapping[str, str] | None = None,
     discover: bool = True,
+    discovery_timeout: float = 2.0,
 ) -> str:
     env = os.environ if env is None else env
     base_url: str | None = None
@@ -87,7 +88,11 @@ def resolve_base_url(
         # Built-in default first: Joplin's standard Clipper endpoint. Only
         # when it does not answer, probe the documented 41184-41194 range.
         default_url = f"http://127.0.0.1:{DEFAULT_PORT}"
-        base_url = default_url if ping_url(default_url) else discover_base_url()
+        base_url = (
+            default_url
+            if ping_url(default_url, timeout=discovery_timeout)
+            else discover_base_url(timeout=discovery_timeout)
+        )
     else:
         base_url = f"http://127.0.0.1:{DEFAULT_PORT}"
 
@@ -110,6 +115,7 @@ def build_client(
     workspace_base_url: str | None = None,
     allow_remote: bool = False,
     timeout: float = 30.0,
+    discovery_timeout: float = 2.0,
 ) -> JoplinClient:
     token = resolve_token(token_file)
     base_url = resolve_base_url(
@@ -117,5 +123,6 @@ def build_client(
         cli_port=cli_port,
         workspace_base_url=workspace_base_url,
         allow_remote=allow_remote,
+        discovery_timeout=discovery_timeout,
     )
     return JoplinClient(base_url, token, timeout=timeout)

@@ -32,7 +32,7 @@ DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
 VERSION        := $(shell cat .version)
 TEST_WORKERS   ?= 4
 
-.PHONY: help venv venv-dev freeze test lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
+.PHONY: help venv venv-dev freeze test test-live lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
 
 help:                    ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -69,8 +69,11 @@ freeze:                  ## re-resolve [dependency-groups] dev and refresh the l
 test: venv-dev           ## full test suite in parallel (override TEST_WORKERS=N)
 	$(PYTHON_DEV) -m pytest -n $(TEST_WORKERS) tests
 
+test-live: venv-dev      ## opt-in live MCP tests against local Joplin (reads ./token)
+	$(PYTHON_DEV) -m pytest -q tests_live
+
 lint: venv-dev           ## static checks (ruff)
-	$(VENV_DEV)/$(BIN)/ruff check src tests scripts
+	$(VENV_DEV)/$(BIN)/ruff check src tests tests_live scripts
 
 typecheck: venv-dev      ## strict typing (mypy)
 	$(VENV_DEV)/$(BIN)/mypy

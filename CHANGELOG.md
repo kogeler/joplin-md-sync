@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-18
+
+### Added
+
+- Foreground MCP Streamable HTTP server (`mcp serve`) with tools for notebook
+  and note listing, full note/metadata reads, create/update/tag/trash actions,
+  and Joplin full-text search.
+- Complete MCP CRUD for nested notebooks and tags, note/notebook restore,
+  entity relationship traversal, and explicit permanent-delete annotations for
+  tags and resources.
+- HTML note creation plus binary resource list/read/upload/update/delete and
+  one-call note creation with bounded base64 attachments and generated Joplin
+  `:/resource-id` links.
+- Resilient Joplin availability handling for MCP: lazy startup, bounded retry
+  waits, structured retryable tool errors, and recovery without daemon restart.
+- Optional independent MCP bearer authorization with token-file rotation,
+  loopback/Origin protections, a systemd user unit, and a Windows Task
+  Scheduler installer.
+- Opt-in `make test-live` acceptance suite against a real local Joplin profile.
+  It uses randomized object names, refuses to update/delete non-owned note IDs,
+  verifies pre-existing note state, and cleans up only its own objects.
+
 ## [1.1.0] - 2026-07-18
 
 ### Added

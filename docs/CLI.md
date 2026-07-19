@@ -107,3 +107,29 @@ validation (exit 3 for a malformed header).
 
 Downloads every `:/resource-id` referenced by managed notes into
 `.joplin-sync/resources/<id>[.ext]`. Markdown links are never rewritten.
+
+### `mcp serve [connection and server options]`
+
+Runs a foreground MCP Streamable HTTP server at
+`http://127.0.0.1:8765/mcp` by default. It exposes note, notebook, tag, and
+binary-resource CRUD, trash/restore where Joplin supports it, Markdown/HTML
+content, attachments, relationship traversal, and full-text search. No
+workspace is required.
+
+For note creation, pass an existing `parent_id` or a `notebook_title` to
+find/create a notebook. With neither, `MCP Notes` is found or created.
+
+Joplin connection options are the normal `--base-url`, `--port`,
+`--token-file`, `--timeout`, and `--allow-remote-api`. Server options:
+
+- `--host HOST`, `--mcp-port PORT`, `--mcp-path PATH`
+- `--retry-timeout SECONDS`, `--retry-delay SECONDS`,
+  `--discovery-timeout SECONDS`
+- `--auth-token-file PATH` to enable MCP pre-shared bearer authorization
+- repeatable `--allowed-origin ORIGIN`
+- `--allow-remote-mcp` for an explicit non-loopback bind; this also requires
+  `--auth-token-file`
+
+The command intentionally stays in the foreground. Full protocol behavior,
+security guidance, MCP client configuration, and service-manager examples are
+in [MCP.md](MCP.md).
