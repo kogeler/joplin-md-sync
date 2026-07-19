@@ -1,0 +1,16 @@
+[project]
+name = "joplin-terminal-service-tools"
+version = "0.1.0"
+description = "Rootless Joplin Terminal and MCP systemd user-service installer"
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+# Keep the installer parseable one version back so its explicit 3.14 runtime
+# error is shown instead of a SyntaxError.
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+ignore = ["E501"]
