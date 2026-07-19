@@ -1,16 +1,18 @@
 [Unit]
 Description=Joplin Markdown Sync MCP server
 Documentation=https://github.com/kogeler/joplin-md-sync
-After=graphical-session.target
+Requires=joplin-terminal.service
+After=joplin-terminal.service
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/joplin-md-sync mcp serve --token-file %h/.config/joplin-md-sync/joplin-token --auth-token-file %h/.config/joplin-md-sync/mcp-token
+ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5s
-Environment=PYTHONUNBUFFERED=1
+TimeoutStopSec=30s
+KillMode=mixed
+UMask=0077
 
-# The daemon only needs read access to its executable and token files.
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateTmp=true

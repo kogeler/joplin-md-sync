@@ -1,0 +1,14 @@
+[project]
+name = "joplin-terminal-service-tools"
+version = "0.1.0"
+description = "Rootless Joplin Terminal and MCP systemd user-service installer"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+# Python 3.13.5 and 3.14 are exercised locally; 3.14 remains recommended.
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+ignore = ["E501"]

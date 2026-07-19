@@ -1,0 +1,22 @@
+[Unit]
+Description=Joplin Terminal, recurrent sync, and local Data API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={exec_start}
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillMode=mixed
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+
+NoNewPrivileges=true
+{mount_namespace_hardening}
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

@@ -123,7 +123,7 @@ put a separate secret in a protected file and pass `--auth-token-file`:
 
 ```bash
 umask 077
-python -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.config/joplin-md-sync/mcp-token
+python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.config/joplin-md-sync/mcp-token
 joplin-md-sync mcp serve \
   --auth-token-file ~/.config/joplin-md-sync/mcp-token
 ```
@@ -146,21 +146,12 @@ are accepted on a loopback listener; add exact origins with repeatable
 
 ## Linux systemd user service
 
-The example [user unit](../examples/systemd/joplin-md-sync-mcp.service) assumes
-the executable is in `~/.local/bin` and both secret files exist with mode 0600:
-
-```bash
-install -Dm644 examples/systemd/joplin-md-sync-mcp.service \
-  ~/.config/systemd/user/joplin-md-sync-mcp.service
-install -d -m700 ~/.config/joplin-md-sync
-printf '%s\n' '<Joplin token>' > ~/.config/joplin-md-sync/joplin-token
-python -c "import secrets; print(secrets.token_urlsafe(32))" \
-  > ~/.config/joplin-md-sync/mcp-token
-chmod 600 ~/.config/joplin-md-sync/*-token
-systemctl --user daemon-reload
-systemctl --user enable --now joplin-md-sync-mcp.service
-journalctl --user -u joplin-md-sync-mcp.service -f
-```
+The rootless Python installer documented in
+[Headless Joplin Terminal and MCP services](joplin-terminal-service.md)
+downloads and verifies a released Linux standalone executable, generates the
+Joplin and MCP user units from one API-port setting, configures optional MCP
+bearer authentication and opt-in `0.0.0.0` binding, checks user lingering, and
+verifies both services. It supersedes the former static example unit.
 
 ## Windows autostart
 
