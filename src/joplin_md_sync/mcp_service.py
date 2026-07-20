@@ -1,9 +1,10 @@
-"""Joplin note operations exposed to MCP, independent of the transport."""
+"""Joplin note operations shared by MCP and GPT Actions transports."""
 
 from __future__ import annotations
 
 import base64
 import binascii
+import json
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -131,6 +132,52 @@ class JoplinMcpService:
         if not isinstance(value, str) or not value.strip():
             raise ToolServiceError(f"{name} must be a non-empty string", code="INVALID_ARGUMENT")
         return value.strip()
+
+    @staticmethod
+    def _folder_icon(value: object) -> str:
+        if not isinstance(value, str):
+            raise ToolServiceError("icon must be a string", code="INVALID_ARGUMENT")
+        if not value:
+            return ""
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            raise ToolServiceError(
+                "icon must be a JSON-serialized Joplin FolderIcon object",
+                code="INVALID_ARGUMENT",
+            ) from None
+        if not isinstance(parsed, dict) or any(not isinstance(key, str) for key in parsed):
+            raise ToolServiceError(
+                "icon must encode one JSON object", code="INVALID_ARGUMENT"
+            )
+        allowed = {"type", "emoji", "name", "dataUrl"}
+        unknown = set(parsed) - allowed
+        if unknown:
+            raise ToolServiceError(
+                f"icon contains unsupported field(s): {', '.join(sorted(unknown))}",
+                code="INVALID_ARGUMENT",
+            )
+        icon_type = parsed.get("type")
+        if isinstance(icon_type, bool) or not isinstance(icon_type, int) or icon_type not in {1, 2, 3}:
+            raise ToolServiceError(
+                "icon.type must be 1 (emoji), 2 (data URL), or 3 (Font Awesome)",
+                code="INVALID_ARGUMENT",
+            )
+        normalized: dict[str, object] = {"type": icon_type}
+        for field in ("emoji", "name", "dataUrl"):
+            field_value = parsed.get(field, "")
+            if not isinstance(field_value, str):
+                raise ToolServiceError(
+                    f"icon.{field} must be a string", code="INVALID_ARGUMENT"
+                )
+            normalized[field] = field_value
+        required_field = {1: "emoji", 2: "dataUrl", 3: "name"}[icon_type]
+        if not str(normalized[required_field]).strip():
+            raise ToolServiceError(
+                f"icon.{required_field} must be non-empty for icon.type {icon_type}",
+                code="INVALID_ARGUMENT",
+            )
+        return json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
 
     @staticmethod
     def _limit(value: object, *, default: int = 100) -> int:
@@ -389,12 +436,8 @@ class JoplinMcpService:
             raise ToolServiceError("parent_id must be a string", code="INVALID_ARGUMENT")
         parent_id = parent_id_value.strip()
         fields: dict[str, Any] = {}
-        for name in ("icon",):
-            if name in arguments:
-                value = arguments[name]
-                if not isinstance(value, str):
-                    raise ToolServiceError(f"{name} must be a string", code="INVALID_ARGUMENT")
-                fields[name] = value
+        if "icon" in arguments:
+            fields["icon"] = self._folder_icon(arguments["icon"])
         for name in ("user_created_time", "user_updated_time"):
             if name in arguments:
                 value = arguments[name]
@@ -425,7 +468,7 @@ class JoplinMcpService:
             )
         notebook_id = self._notebook_id(arguments.get("notebook_id"))
         fields: dict[str, Any] = {}
-        for name in ("title", "parent_id", "icon"):
+        for name in ("title", "parent_id"):
             if name in arguments:
                 value = arguments[name]
                 if not isinstance(value, str):
@@ -433,6 +476,8 @@ class JoplinMcpService:
                 if name == "title" and not value.strip():
                     raise ToolServiceError("title must be a non-empty string", code="INVALID_ARGUMENT")
                 fields[name] = value.strip() if name in {"title", "parent_id"} else value
+        if "icon" in arguments:
+            fields["icon"] = self._folder_icon(arguments["icon"])
         for name in ("user_created_time", "user_updated_time"):
             if name in arguments:
                 value = arguments[name]

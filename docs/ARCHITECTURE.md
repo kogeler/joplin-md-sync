@@ -9,8 +9,12 @@ api.py          Joplin Data API client (urllib): pagination, GET retries,
                 ambiguous-write surfacing, token redaction, port discovery
 mcp_service.py  validated note/notebook/tag/resource operations, relationship
                 traversal, base64 limits, bounded Joplin availability waits
-mcp_server.py   MCP JSON-RPC dispatcher, tool registry, Streamable HTTP,
-                Origin checks and optional bearer authorization
+mcp_server.py   combined HTTP listener and MCP JSON-RPC protocol adapter
+tool_registry.py shared immutable definitions, Actions exposure, effect mapping
+tool_schema.py  dependency-free JSON Schema subset validation
+tool_executor.py shared handler invocation and failure classification
+gpt_actions.py  authenticated Actions routing, limits, envelopes, audit metadata
+gpt_openapi.py  deterministic OpenAPI 3.1 generation and registry hash
 canonical.py    body/tag canonicalization + SHA-256 component hashing
 metadata.py     managed Markdown header parse/emit (single-line JSON comment)
 paths.py        cross-platform filename sanitization, traversal guards
@@ -34,16 +38,25 @@ Separation rule: transport (api), state (state/workspace), decision
 blur. The planner is exhaustively unit-testable because it takes plain
 data structures.
 
-The MCP path is deliberately separate from the workspace sync engine:
+The direct Joplin adapters are deliberately separate from the workspace sync
+engine:
 
 ```
-MCP client -> mcp_server (HTTP + JSON-RPC) -> mcp_service -> api -> Joplin
+MCP client --------> MCP protocol adapter --+
+                                             +-> tool registry/executor -> mcp_service -> api -> Joplin
+Custom GPT Action -> Actions HTTP adapter ---+
 ```
 
 It directly manages Joplin notes, notebooks, tags, and resources and does not
 mutate workspace state. The service layer is transport-independent, so future
 transports can reuse its validation, metadata shaping, relationship handling,
 multipart uploads, and outage behavior.
+
+The two transports share the same in-process executor. The Actions adapter
+never calls `/mcp`, and HTTP controllers never bypass the registry to call the
+Joplin client directly. Binary resource read/create/update stays available to
+MCP but is explicitly disabled in Actions exposure metadata because its 10 MiB
+contract cannot fit the Actions text/payload limit.
 
 ## Data flow of a mutating command
 

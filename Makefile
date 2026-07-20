@@ -69,7 +69,7 @@ freeze:                  ## re-resolve [dependency-groups] dev and refresh the l
 test: venv-dev           ## full test suite in parallel (override TEST_WORKERS=N)
 	$(PYTHON_DEV) -m pytest -n $(TEST_WORKERS) tests
 
-test-live: venv-dev      ## opt-in live MCP tests against local Joplin (reads ./token)
+test-live: venv-dev      ## opt-in live MCP + GPT Actions tests (reads ./token)
 	$(PYTHON_DEV) -m pytest -q tests_live
 
 lint: venv-dev           ## static checks (ruff)
@@ -104,15 +104,23 @@ smoke-wheel:             ## install the already-built wheel in a clean venv
 	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet dist/joplin_md_sync-$(VERSION)-py3-none-any.whl
 	$(VENV_SMOKE)/$(BIN)/joplin-md-sync version
 	$(VENV_SMOKE)/$(BIN)/python -m joplin_md_sync capabilities --json > /dev/null
+	$(VENV_SMOKE)/$(BIN)/joplin-md-sync gpt-actions export-openapi --server-url https://joplin.example.invalid --output $(VENV_SMOKE)/chatgpt-action.openapi.json > /dev/null
+	$(VENV_SMOKE)/$(BIN)/python -c "import json, pathlib; doc=json.loads(pathlib.Path('$(VENV_SMOKE)/chatgpt-action.openapi.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -rf $(VENV_SMOKE)
 
 smoke-zipapp:            ## run the already-built standalone zipapp
 	$(PY) dist/joplin-md-sync.pyz version
 	$(PY) dist/joplin-md-sync.pyz capabilities --json > /dev/null
+	$(PY) dist/joplin-md-sync.pyz gpt-actions export-openapi --server-url https://joplin.example.invalid --output dist/chatgpt-action-zipapp.json > /dev/null
+	$(PY) -c "import json, pathlib; doc=json.loads(pathlib.Path('dist/chatgpt-action-zipapp.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
+	rm -f dist/chatgpt-action-zipapp.json
 
 smoke-standalone:        ## run the current platform's native executable
 	$(STANDALONE) version
 	$(STANDALONE) capabilities --json > /dev/null
+	$(STANDALONE) gpt-actions export-openapi --server-url https://joplin.example.invalid --output dist/chatgpt-action-standalone.json > /dev/null
+	$(PY) -c "import json, pathlib; doc=json.loads(pathlib.Path('dist/chatgpt-action-standalone.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
+	rm -f dist/chatgpt-action-standalone.json
 
 smoke-artifacts: smoke-wheel smoke-zipapp smoke-standalone  ## exercise built artifacts
 

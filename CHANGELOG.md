@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-20
+
+### Added
+
+- Optional authenticated ChatGPT Custom GPT Actions routes in the existing MCP
+  listener, backed by the same tool registry, JSON Schema validator, executor,
+  Joplin service, and client factory.
+- Deterministic on-demand OpenAPI 3.1 export, dedicated
+  rotatable token-file authentication, request/response limits, bounded
+  concurrency, rate limiting, health endpoints, and redacted audit metadata.
+- Separate service deployment and Custom GPT editor guides, paste-ready GPT
+  instructions, and a unified systemd installer.
+- Opt-in real-Joplin GPT Actions acceptance coverage for every exposed tool,
+  credential isolation and rotation, transport and validation failures, limits,
+  unavailable upstreams, and failure-safe cleanup of randomized test content.
+
+### Changed
+
+- Consolidate MCP and Actions deployment into one `joplin-md-sync.service`,
+  with a mandatory separate Actions token and optional MCP bearer token, and
+  consolidate service installation and operations into `docs/SERVICE.md`.
+- Name the combined adapter release selector `--joplin-md-sync-version` and
+  include the complete headless service installer in source distributions.
+
+### Fixed
+
+- Validate notebook icons as JSON-serialized Joplin `FolderIcon` objects before
+  any create or update request, preventing malformed icon strings from crashing
+  the Joplin Desktop sidebar.
+
 ## [1.2.0] - 2026-07-18
 
 ### Added

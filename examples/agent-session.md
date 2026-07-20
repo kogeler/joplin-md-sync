@@ -5,7 +5,7 @@ elided; JSON abbreviated to the relevant fields).
 
 ```console
 $ joplin-md-sync version --json
-{"code": "OK", "exit_code": 0, "tool_version": "1.1.0", "protocol_version": 1, ...}
+{"code": "OK", "exit_code": 0, "tool_version": "1.3.0", "protocol_version": 1, ...}
 
 $ joplin-md-sync update-check --json
 {"code": "UPDATE_CHECK_FAILED", "exit_code": 4, ...}   # offline CI runner — non-fatal

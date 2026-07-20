@@ -24,7 +24,7 @@ Every `--json` response contains:
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.1.0",
+  "tool_version": "1.3.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -129,7 +129,30 @@ Joplin connection options are the normal `--base-url`, `--port`,
 - repeatable `--allowed-origin ORIGIN`
 - `--allow-remote-mcp` for an explicit non-loopback bind; this also requires
   `--auth-token-file`
+- `--gpt-actions` to add authenticated `/api/gpt/v1/tools/*` routes to the
+  same listener
+- `--gpt-actions-token-file PATH` (required with `--gpt-actions`)
+- `--gpt-actions-max-request-bytes N`,
+  `--gpt-actions-max-response-chars N`,
+  `--gpt-actions-max-concurrency N`, and
+  `--gpt-actions-rate-limit REQUESTS_PER_MINUTE`
 
 The command intentionally stays in the foreground. Full protocol behavior,
 security guidance, MCP client configuration, and service-manager examples are
-in [MCP.md](MCP.md).
+split by purpose between [MCP API](MCP_API.md) and
+[Joplin API Service](SERVICE.md).
+
+Actions-only options are rejected unless `--gpt-actions` is present. The
+Actions token file is required, re-read on each request, protected by strict
+POSIX permissions, and must differ from the Joplin and MCP credentials.
+
+### `gpt-actions export-openapi --server-url URL --output PATH`
+
+Generates deterministic OpenAPI 3.1 JSON from the shared tool registry without
+contacting Joplin. `URL` must be an HTTPS origin on port 443 with no path,
+query, fragment, or credentials. The JSON result reports `operation_count`,
+`registry_hash`, `server_url`, and `output`.
+
+The repository does not store a generated contract. Export it with the real
+public hostname immediately before importing or updating a Custom GPT. See
+[Joplin API Service](SERVICE.md).

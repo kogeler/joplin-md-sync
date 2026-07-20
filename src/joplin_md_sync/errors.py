@@ -82,9 +82,11 @@ class ApiError(JoplinSyncError):
         status: int | None = None,
         code: str | None = None,
         details: object = None,
+        timed_out: bool = False,
     ) -> None:
         super().__init__(message, code=code, details=details)
         self.status = status
+        self.timed_out = timed_out
 
 
 class AuthError(ApiError):

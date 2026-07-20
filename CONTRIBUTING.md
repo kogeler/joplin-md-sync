@@ -48,8 +48,9 @@ package/checkout/metadata, and `make verify-release` enforces that
 - One logical change per PR; add or extend tests for observable behavior
   (not implementation details).
 - `make check` and `make verify-release` must pass on Python 3.13 and 3.14.
-- `make test-live` is an explicit local acceptance target for MCP changes. It
-  reads the ignored `./token` file and is intentionally excluded from CI.
+- `make test-live` is an explicit local acceptance target for MCP and GPT
+  Actions changes. It reads the ignored `./token` file and is intentionally
+  excluded from CI.
 - Update `CHANGELOG.md` under an "Unreleased" heading.
 
 ## Release process

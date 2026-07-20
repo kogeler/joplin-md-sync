@@ -236,6 +236,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="enable MCP bearer authentication using a token stored in PATH",
     )
     mp.add_argument(
+        "--gpt-actions",
+        action="store_true",
+        help="enable authenticated GPT Actions routes on the same listener",
+    )
+    mp.add_argument(
+        "--gpt-actions-token-file",
+        metavar="PATH",
+        help="dedicated GPT Actions bearer token file (required when enabled)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-request-bytes",
+        type=int,
+        metavar="N",
+        help="maximum Actions request bytes (default: 95000)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-response-chars",
+        type=int,
+        metavar="N",
+        help="maximum serialized Actions response characters (default: 95000)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-concurrency",
+        type=int,
+        metavar="N",
+        help="maximum concurrent Actions requests (default: 4)",
+    )
+    mp.add_argument(
+        "--gpt-actions-rate-limit",
+        type=int,
+        metavar="REQUESTS_PER_MINUTE",
+        help="authenticated Actions token-bucket rate (default: 60/minute)",
+    )
+    mp.add_argument(
         "--allowed-origin",
         action="append",
         default=[],
@@ -267,6 +301,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.25,
         metavar="SECONDS",
         help="timeout per Joplin discovery port (default: 0.25)",
+    )
+
+    p = sub.add_parser("gpt-actions", help="export and operate ChatGPT GPT Actions")
+    gsub = p.add_subparsers(dest="gpt_actions_command", required=True, metavar="SUBCOMMAND")
+    gp = gsub.add_parser(
+        "export-openapi", help="export the Actions OpenAPI 3.1 JSON contract"
+    )
+    _add_output_args(gp)
+    gp.add_argument(
+        "--server-url",
+        required=True,
+        metavar="HTTPS_URL",
+        help="public HTTPS origin on port 443",
+    )
+    gp.add_argument(
+        "--output",
+        required=True,
+        metavar="PATH",
+        help="destination JSON file",
     )
 
     return parser
@@ -389,7 +442,7 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "pull", "push", "sync", "diff", "recover",
             "conflicts list", "conflicts show", "conflicts resolve", "conflicts discard",
             "note set-title", "note set-tags", "note validate", "resources pull",
-            "mcp serve",
+            "mcp serve", "gpt-actions export-openapi",
         ],
         "features": {
             "propagate_deletes_flag": True,
@@ -403,6 +456,8 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "mcp_notebook_tag_resource_crud": True,
             "mcp_html_and_binary_note_content": True,
             "mcp_permanent_tag_resource_deletion": True,
+            "gpt_actions_optional_transport": True,
+            "gpt_actions_openapi_export": True,
         },
         "exit_codes": {
             "0": "ok / no differences", "1": "differences or pending actions",
@@ -924,6 +979,20 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
     )
     from joplin_md_sync.mcp_service import JoplinMcpService
 
+    actions_only_options = (
+        args.gpt_actions_token_file,
+        args.gpt_actions_max_request_bytes,
+        args.gpt_actions_max_response_chars,
+        args.gpt_actions_max_concurrency,
+        args.gpt_actions_rate_limit,
+    )
+    if not args.gpt_actions and any(value is not None for value in actions_only_options):
+        raise UnsafeOperationError("GPT Actions options require --gpt-actions")
+    if args.gpt_actions and not args.gpt_actions_token_file:
+        raise UnsafeOperationError(
+            "--gpt-actions requires --gpt-actions-token-file"
+        )
+
     if not 1 <= args.mcp_port <= 65535:
         raise UnsafeOperationError("--mcp-port must be between 1 and 65535")
     if not args.mcp_path.startswith("/") or "?" in args.mcp_path or "#" in args.mcp_path:
@@ -970,15 +1039,106 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
         availability_timeout=args.retry_timeout,
         retry_delay=args.retry_delay,
     )
+    dispatcher = McpDispatcher(service)
+    actions_transport = None
+    if args.gpt_actions:
+        from joplin_md_sync.gpt_actions import (
+            DEFAULT_MAX_CONCURRENCY,
+            DEFAULT_MAX_REQUEST_BYTES,
+            DEFAULT_MAX_RESPONSE_CHARS,
+            DEFAULT_RATE_LIMIT_PER_MINUTE,
+            ActionsConfig,
+            ActionsTokenSource,
+            GptActionsTransport,
+            validate_distinct_actions_token,
+        )
+        from joplin_md_sync.mcp_server import BearerTokenSource
+
+        try:
+            actions_source = ActionsTokenSource(Path(args.gpt_actions_token_file))
+            actions_token = actions_source.read()
+            joplin_token = resolve_token(args.token_file)
+            mcp_token = (
+                BearerTokenSource(Path(args.auth_token_file)).read()
+                if args.auth_token_file
+                else None
+            )
+            validate_distinct_actions_token(
+                actions_token, joplin_token=joplin_token, mcp_token=mcp_token
+            )
+            actions_config = ActionsConfig(
+                max_request_bytes=(
+                    args.gpt_actions_max_request_bytes
+                    if args.gpt_actions_max_request_bytes is not None
+                    else DEFAULT_MAX_REQUEST_BYTES
+                ),
+                max_response_chars=(
+                    args.gpt_actions_max_response_chars
+                    if args.gpt_actions_max_response_chars is not None
+                    else DEFAULT_MAX_RESPONSE_CHARS
+                ),
+                max_concurrency=(
+                    args.gpt_actions_max_concurrency
+                    if args.gpt_actions_max_concurrency is not None
+                    else DEFAULT_MAX_CONCURRENCY
+                ),
+                rate_limit_per_minute=(
+                    args.gpt_actions_rate_limit
+                    if args.gpt_actions_rate_limit is not None
+                    else DEFAULT_RATE_LIMIT_PER_MINUTE
+                ),
+            )
+        except ValueError as exc:
+            raise UnsafeOperationError(str(exc)) from exc
+        if actions_token not in _REDACT_TOKENS:
+            _REDACT_TOKENS.append(actions_token)
+        actions_transport = GptActionsTransport(
+            dispatcher.registry,
+            dispatcher.executor,
+            actions_source,
+            config=actions_config,
+        )
     serve_mcp_http(
-        McpDispatcher(service),
+        dispatcher,
         host=args.host,
         port=args.mcp_port,
         endpoint=args.mcp_path,
         auth_token_file=Path(args.auth_token_file) if args.auth_token_file else None,
         allowed_origins=frozenset(allowed_origins),
+        actions_transport=actions_transport,
     )
     return CommandOutput(EXIT_OK, errors.CODE_OK, text=["MCP server stopped"])
+
+
+def cmd_gpt_actions(args: argparse.Namespace) -> CommandOutput:
+    if args.gpt_actions_command != "export-openapi":
+        raise errors.InternalError(
+            f"unknown GPT Actions subcommand: {args.gpt_actions_command}"
+        )
+    from joplin_md_sync.gpt_openapi import (
+        export_openapi,
+        registry_for_export,
+        validate_server_url,
+    )
+
+    try:
+        server_url = validate_server_url(args.server_url)
+        output = Path(args.output)
+        registry_digest = export_openapi(output, server_url)
+    except ValueError as exc:
+        raise UnsafeOperationError(str(exc)) from exc
+    payload = {
+        "output": str(output),
+        "server_url": server_url,
+        "operation_count": len(registry_for_export().exposed),
+        "registry_hash": registry_digest,
+    }
+    return CommandOutput(
+        EXIT_OK,
+        errors.CODE_OK,
+        payload,
+        [f"exported {payload['operation_count']} Actions to {output}"],
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1001,6 +1161,7 @@ _HANDLERS = {
     "note": cmd_note,
     "resources": cmd_resources,
     "mcp": cmd_mcp,
+    "gpt-actions": cmd_gpt_actions,
 }
 
 

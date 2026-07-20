@@ -168,7 +168,12 @@ class LiveMcpTest(unittest.TestCase):
             stderr=subprocess.PIPE,
             text=True,
         )
-        cls._wait_until_ready()
+        try:
+            cls._wait_until_ready()
+        except Exception:
+            cls._stop_process()
+            cls.auth_tmp.cleanup()
+            raise
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -218,7 +223,8 @@ class LiveMcpTest(unittest.TestCase):
                 errors.append(f"cleanup resource {resource_id}: {exc}")
         for tag_id in sorted(cls.owned_tag_ids):
             try:
-                cls.api.delete_tag(tag_id)
+                if cls.api.get_tag(tag_id) is not None:
+                    cls.api.delete_tag(tag_id)
             except Exception as exc:
                 errors.append(f"cleanup tag {tag_id}: {exc}")
         for folder_id in sorted(cls.owned_folder_ids):
@@ -273,18 +279,43 @@ class LiveMcpTest(unittest.TestCase):
             }
             if after_resources != cls.initial_resources:
                 errors.append("pre-existing Joplin resource metadata changed during live tests")
+            for label, entity_ids, getter in (
+                (
+                    "notes",
+                    cls.owned_note_ids,
+                    lambda entity_id: cls.api.get_note(entity_id, include_deleted=True),
+                ),
+                (
+                    "notebooks",
+                    cls.owned_folder_ids,
+                    lambda entity_id: cls.api.get_folder(entity_id, include_deleted=True),
+                ),
+                ("tags", cls.owned_tag_ids, cls.api.get_tag),
+                ("resources", cls.owned_resource_ids, cls.api.get_resource),
+            ):
+                remaining = [entity_id for entity_id in entity_ids if getter(entity_id) is not None]
+                if remaining:
+                    errors.append(f"MCP cleanup left {label}: {', '.join(remaining)}")
         except Exception as exc:
             errors.append(f"pre-existing note verification: {exc}")
 
+        try:
+            cls._stop_process()
+        finally:
+            cls.auth_tmp.cleanup()
+        if errors:
+            raise AssertionError("; ".join(errors))
+
+    @classmethod
+    def _stop_process(cls) -> None:
+        if cls.process.poll() is not None:
+            return
         cls.process.terminate()
         try:
             cls.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             cls.process.kill()
             cls.process.wait(timeout=5)
-        cls.auth_tmp.cleanup()
-        if errors:
-            raise AssertionError("; ".join(errors))
 
     @classmethod
     def _wait_until_ready(cls) -> None:
@@ -496,9 +527,7 @@ class LiveMcpTest(unittest.TestCase):
     def _delete_owned_tag(cls, tag_id: str) -> dict[str, Any]:
         if tag_id not in cls.owned_tag_ids:
             raise AssertionError(f"refusing to delete non-owned tag: {tag_id}")
-        result = cls._tool("joplin_delete_tag", {"tag_id": tag_id})
-        cls.owned_tag_ids.discard(tag_id)
-        return result
+        return cls._tool("joplin_delete_tag", {"tag_id": tag_id})
 
     @classmethod
     def _create_owned_resource(
@@ -531,9 +560,7 @@ class LiveMcpTest(unittest.TestCase):
     def _delete_owned_resource(cls, resource_id: str) -> dict[str, Any]:
         if resource_id not in cls.owned_resource_ids:
             raise AssertionError(f"refusing to delete non-owned resource: {resource_id}")
-        result = cls._tool("joplin_delete_resource", {"resource_id": resource_id})
-        cls.owned_resource_ids.discard(resource_id)
-        return result
+        return cls._tool("joplin_delete_resource", {"resource_id": resource_id})
 
     def test_01_lifecycle_tools_auth_and_transport(self) -> None:
         status, _, _ = self._request(
@@ -666,7 +693,6 @@ class LiveMcpTest(unittest.TestCase):
             {
                 "title": f"jms-live-child-{self.run_id}",
                 "parent_id": parent_id,
-                "icon": "fas fa-book",
             },
         )["notebook"]
         child_id = str(child["id"])
@@ -814,6 +840,11 @@ class LiveMcpTest(unittest.TestCase):
         self._tool(
             "joplin_update_note",
             {"note_id": missing_id},
+            expect_error="INVALID_ARGUMENT",
+        )
+        self._tool(
+            "joplin_create_notebook",
+            {"title": f"invalid-icon-{self.run_id}", "icon": "fas fa-book"},
             expect_error="INVALID_ARGUMENT",
         )
 

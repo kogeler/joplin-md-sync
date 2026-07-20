@@ -15,9 +15,9 @@ output, stable exit codes, no silent overwrites.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.3.0"
 # or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.1.0"
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.3.0"
 # or run the standalone zipapp from a GitHub release asset:
 python joplin-md-sync.pyz --help
 # or run a native release executable without installing Python:
@@ -39,7 +39,7 @@ Everything is driven by the Makefile (CI runs the same targets):
 make venv        # runtime venv/ with the CLI installed:  venv/bin/joplin-md-sync
 make venv-dev    # tooling venv-dev/ from the requirements-dev.txt lock
 make check       # lint (ruff) + typecheck (mypy) + full test suite
-make test-live   # opt-in live MCP tests against Joplin; reads ./token; not CI
+make test-live   # opt-in live MCP + GPT Actions tests; reads ./token; not CI
 make package     # wheel, sdist, pyz, current-platform executable, checksums
 make smoke       # install the built wheel into a clean venv and exercise it
 make help        # list all targets
@@ -132,15 +132,23 @@ The exact Joplin Markdown body begins here.
 | `conflicts list/show/resolve/discard` | conflict handling | varies |
 | `note set-title/set-tags/validate` | header editing | local file |
 | `resources pull --root P` | download attachments | `.joplin-sync/` only |
-| `mcp serve [--host H --mcp-port N]` | MCP Joplin API daemon | notes, notebooks, tags, resources |
+| `mcp serve [--host H --mcp-port N]` | combined MCP/Actions Joplin API daemon | notes, notebooks, tags, resources |
+| `gpt-actions export-openapi --server-url U --output P` | generate Custom GPT Actions contract | output file |
 
 All operational commands accept `--json`, `--verbose`, `--quiet`,
 `--log-file PATH`. JSON goes to stdout; logs go to stderr.
 
 `mcp serve` is a foreground Streamable HTTP daemon and does not require a
 workspace. It listens at `http://127.0.0.1:8765/mcp` by default; see
-[docs/MCP.md](docs/MCP.md). MCP bearer authorization is disabled by default
+[docs/MCP_API.md](docs/MCP_API.md). MCP bearer authorization is disabled by default
 and enabled with a separate `--auth-token-file`.
+
+The same binary and listener expose authenticated Custom GPT Actions with
+`--gpt-actions --gpt-actions-token-file PATH`. A production HTTPS publishing
+layer must expose only `/api/gpt/v1/*`; `/mcp`, health routes, and Joplin remain
+private. The headless installer always enables Actions in the single
+`joplin-md-sync.service`, requires their token separately, and keeps MCP bearer
+authentication optional. See [docs/SERVICE.md](docs/SERVICE.md).
 
 Deletions are **never propagated by default** — they are reported. Pass
 `--propagate-deletes` to apply them (local files go to quarantine under

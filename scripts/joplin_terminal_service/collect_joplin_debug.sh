@@ -5,7 +5,7 @@ set -u
 set -o pipefail
 
 SERVICE_NAME="joplin-terminal.service"
-MCP_SERVICE_NAME="joplin-md-sync-mcp.service"
+ADAPTER_SERVICE_NAME="joplin-md-sync.service"
 PREFIX="${JOPLIN_INSTALL_PREFIX:-$HOME/.local}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -13,7 +13,7 @@ CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 PROFILE="${JOPLIN_PROFILE_DIR:-$DATA_HOME/joplin-agent/profile}"
 STATE_DIR="$STATE_HOME/joplin-agent"
 JOPLIN_BIN="$PREFIX/bin/joplin"
-MCP_BIN="$PREFIX/bin/joplin-md-sync"
+ADAPTER_BIN="$PREFIX/bin/joplin-md-sync"
 SUPERVISOR="$PREFIX/lib/joplin-terminal-service/run_joplin_terminal.py"
 COMMON="$PREFIX/lib/joplin-terminal-service/joplin_terminal_common.py"
 API_PORT="${JOPLIN_API_PORT:-41185}"
@@ -106,12 +106,13 @@ printf 'prefix=%s\nprofile=%s\nstate=%s\napi_port=%s\nmcp_port=%s\n' \
     "$PREFIX" "$PROFILE" "$STATE_DIR" "$API_PORT" "$MCP_PORT"
 for path in \
     "$JOPLIN_BIN" \
-    "$MCP_BIN" \
+    "$ADAPTER_BIN" \
     "$SUPERVISOR" \
     "$COMMON" \
     "$PROFILE" \
     "$STATE_DIR" \
     "$CONFIG_HOME/joplin-agent/api-token" \
+    "$CONFIG_HOME/joplin-md-sync/gpt-actions-token" \
     "$CONFIG_HOME/joplin-md-sync/mcp-token"; do
     metadata "$path"
 done
@@ -122,11 +123,11 @@ run_shell "df -hT '$PROFILE' '$STATE_DIR' 2>/dev/null || true"
 run_shell "df -i '$PROFILE' '$STATE_DIR' 2>/dev/null || true"
 
 section "deployed file identity"
-run sha256sum "$SUPERVISOR" "$COMMON"
+run sha256sum "$ADAPTER_BIN" "$SUPERVISOR" "$COMMON"
 run_shell "grep -nE '_check_node_runtime|_check_profile_writable|absolute_path' '$SUPERVISOR' '$COMMON' || true"
 
 section "systemd units"
-for service in "$SERVICE_NAME" "$MCP_SERVICE_NAME"; do
+for service in "$SERVICE_NAME" "$ADAPTER_SERVICE_NAME"; do
     run systemctl --user status "$service" --no-pager -l
     run systemctl --user show "$service" \
         -p LoadState -p ActiveState -p SubState -p Result \
@@ -136,11 +137,11 @@ for service in "$SERVICE_NAME" "$MCP_SERVICE_NAME"; do
 done
 run systemd-analyze --user verify \
     "$CONFIG_HOME/systemd/user/$SERVICE_NAME" \
-    "$CONFIG_HOME/systemd/user/$MCP_SERVICE_NAME"
+    "$CONFIG_HOME/systemd/user/$ADAPTER_SERVICE_NAME"
 
 section "service journals"
 run journalctl --user -u "$SERVICE_NAME" --no-pager -n 250 -o short-precise
-run journalctl --user -u "$MCP_SERVICE_NAME" --no-pager -n 100 -o short-precise
+run journalctl --user -u "$ADAPTER_SERVICE_NAME" --no-pager -n 100 -o short-precise
 
 section "listeners and health"
 run ss -ltnp

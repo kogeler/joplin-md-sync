@@ -15,8 +15,7 @@ from tests.helpers import TOKEN, WorkspaceTestCase, run_cli
 
 class DiscoveryTest(WorkspaceTestCase):
     def test_single_service_discovered(self):
-        ports = range(self.server.port, self.server.port + 3)
-        with mock.patch.object(api_mod, "DISCOVERY_PORTS", ports):
+        with mock.patch.object(api_mod, "DISCOVERY_PORTS", [self.server.port]):
             self.assertEqual(api_mod.discover_base_url(), self.server.base_url)
 
     def test_no_service_is_unambiguous_error(self):

@@ -37,6 +37,25 @@ files dropped into the workspace, and the local network.
   mode is not an OAuth authorization-server flow; network deployments need TLS
   termination and access controls in a trusted reverse proxy.
 
+**GPT Actions.**
+- Disabled by default and enabled only with `--gpt-actions` plus a dedicated
+  protected token file. The token is re-read per request and compared in
+  constant time; startup rejects equality with Joplin or MCP credentials.
+- Every public tool route authenticates before route lookup. Requests have
+  strict JSON schemas and size limits; execution has bounded concurrency and
+  authenticated rate limiting. Logs contain request IDs, timings, sizes,
+  effect, status, and result class, never headers, arguments, results, or note
+  content.
+- Only `/api/gpt/v1/*` is intended for public HTTPS exposure. The generated
+  OpenAPI contract contains no credential, user data, local path, MCP route,
+  health route, or Joplin URL.
+- Joplin content is untrusted data. Server controls enforce schemas,
+  authentication, exposure metadata, and effect classification; model
+  instructions are defense-in-depth, not an authorization boundary.
+- Arguments and results used by a Custom GPT pass through OpenAI's systems.
+  Operators should request and return only the content needed for the current
+  task.
+
 **Filesystem.**
 - Symlinks are never followed (reported as `INVALID_LOCAL_FILE`).
 - Every path derived from remote titles is sanitized (Windows-invalid
@@ -66,3 +85,6 @@ files dropped into the workspace, and the local network.
 - Note and notebook deletion uses Joplin trash. Tag and resource deletion is
   permanent because Joplin has no trash API for those types; both tools are
   advertised as destructive and should remain confirmation-gated by clients.
+- A client-side timeout does not cancel an in-flight Python thread. The server
+  does not add a handler timeout or automatically retry writes; ambiguous and
+  partial writes must be inspected in Joplin before another attempt.
