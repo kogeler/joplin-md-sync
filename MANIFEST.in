@@ -1,2 +1,8 @@
 include .version
-recursive-include examples *.json *.md *.ps1 *.service
+recursive-include docs *.md
+recursive-include examples *.json *.md *.ps1
+include scripts/joplin_terminal_service/collect_joplin_debug.sh
+include scripts/joplin_terminal_service/install_joplin_terminal.py
+include scripts/joplin_terminal_service/joplin_terminal_common.py
+include scripts/joplin_terminal_service/run_joplin_terminal.py
+recursive-include scripts/joplin_terminal_service/systemd *.service

@@ -6,9 +6,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$JoplinTokenFile,
 
+    [Parameter(Mandatory = $true)]
+    [string]$GptActionsTokenFile,
+
     [string]$McpAuthTokenFile = "",
     [int]$Port = 8765,
-    [string]$TaskName = "joplin-md-sync-mcp"
+    [string]$TaskName = "joplin-md-sync"
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +21,9 @@ if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $JoplinTokenFile -PathType Leaf)) {
     throw "Joplin token file not found: $JoplinTokenFile"
+}
+if (-not (Test-Path -LiteralPath $GptActionsTokenFile -PathType Leaf)) {
+    throw "GPT Actions token file not found: $GptActionsTokenFile"
 }
 if ($Port -lt 1 -or $Port -gt 65535) {
     throw "Port must be between 1 and 65535"
@@ -36,7 +42,10 @@ $arguments = @(
     "--token-file",
     (Quote-TaskArgument $JoplinTokenFile),
     "--mcp-port",
-    $Port
+    $Port,
+    "--gpt-actions",
+    "--gpt-actions-token-file",
+    (Quote-TaskArgument $GptActionsTokenFile)
 )
 if ($McpAuthTokenFile) {
     $arguments += @("--auth-token-file", (Quote-TaskArgument $McpAuthTokenFile))
@@ -60,14 +69,14 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -StartWhenAvailable
 
-if ($PSCmdlet.ShouldProcess($TaskName, "Register per-user MCP server task")) {
+if ($PSCmdlet.ShouldProcess($TaskName, "Register per-user MCP and GPT Actions service task")) {
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
         -Trigger $trigger `
         -Principal $principal `
         -Settings $settings `
-        -Description "Joplin Markdown Sync MCP server" `
+        -Description "Joplin Markdown Sync MCP and GPT Actions service" `
         -Force | Out-Null
     Start-ScheduledTask -TaskName $TaskName
     Write-Output "Registered and started task '$TaskName'."

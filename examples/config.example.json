@@ -3,7 +3,7 @@
   "schema": 1,
   "mode": "remote-first",
   "created_time": 1780000000000,
-  "created_by": "joplin-md-sync 1.1.0",
+  "created_by": "joplin-md-sync 1.3.0",
   "base_url": "http://127.0.0.1:41184",
   "options": {
     "backup_retention": 10

@@ -141,7 +141,14 @@ class JoplinClient:
                     raise AmbiguousWriteError(
                         f"ambiguous failure during {method} {path}: {reason}"
                     ) from None
-                last_exc = ApiError(f"Joplin API unreachable for {method} {path}: {reason}")
+                timed_out = isinstance(exc, TimeoutError) or (
+                    isinstance(exc, urllib.error.URLError)
+                    and isinstance(exc.reason, TimeoutError)
+                )
+                last_exc = ApiError(
+                    f"Joplin API unreachable for {method} {path}: {reason}",
+                    timed_out=timed_out,
+                )
         assert last_exc is not None
         raise last_exc
 

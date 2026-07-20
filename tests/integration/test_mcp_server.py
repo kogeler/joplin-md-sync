@@ -233,10 +233,16 @@ class McpHttpTest(WorkspaceTestCase):
         created = self.call_tool(
             1,
             "joplin_create_notebook",
-            {"title": "MCP notebook", "icon": "fas fa-book"},
+            {
+                "title": "MCP notebook",
+                "icon": json.dumps(
+                    {"type": 3, "emoji": "", "name": "fas fa-book", "dataUrl": ""}
+                ),
+            },
         )["structuredContent"]["notebook"]
         notebook_id = created["id"]
         self.assertEqual(created["title"], "MCP notebook")
+        self.assertEqual(json.loads(created["icon"])["name"], "fas fa-book")
 
         read = self.call_tool(
             2, "joplin_get_notebook", {"notebook_id": notebook_id}
@@ -453,6 +459,16 @@ class McpHttpTest(WorkspaceTestCase):
         )
 
     def test_entity_and_content_validation_errors_are_structured(self) -> None:
+        invalid_icon = self.call_tool(
+            0,
+            "joplin_create_notebook",
+            {"title": "invalid icon", "icon": "fas fa-book"},
+        )
+        self.assertTrue(invalid_icon["isError"])
+        self.assertEqual(
+            invalid_icon["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
+        )
+
         both_bodies = self.call_tool(
             1,
             "joplin_create_note",

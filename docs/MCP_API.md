@@ -1,20 +1,15 @@
-# MCP server
+# MCP API
 
 `joplin-md-sync mcp serve` runs a foreground
 [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
 server backed by the Joplin Data API. It does not require a sync workspace and
 does not read or write `.joplin-sync/`.
 
-## Start
+## Endpoint and transport
 
-```bash
-export JOPLIN_TOKEN=...                  # upstream Joplin Data API token
-joplin-md-sync mcp serve --verbose
-```
-
-The MCP endpoint is `http://127.0.0.1:8765/mcp`. The server runs in the
-foreground; use systemd, Task Scheduler, or another supervisor for autostart
-and restart behavior.
+The MCP endpoint is `http://127.0.0.1:8765/mcp`. Deployment, credentials,
+systemd, Task Scheduler, and live acceptance are documented once in
+[Joplin API Service](SERVICE.md).
 
 Example MCP client settings without MCP authorization:
 
@@ -28,6 +23,16 @@ Example MCP client settings without MCP authorization:
 Joplin is resolved with the normal connection precedence. `--base-url`,
 `--port`, `--token-file`, `--timeout`, and `--allow-remote-api` configure the
 upstream Joplin connection. They do not configure the MCP listener.
+
+The listener also routes GPT Actions in the same process when enabled. MCP
+discovery/calls and Actions operations use one immutable tool
+registry, validator, executor, service, and Joplin client factory. Actions do
+not issue JSON-RPC or make a loopback call to `/mcp`. Actions configuration
+does not change the MCP endpoint, headers, or authentication semantics.
+
+`GET /healthz` and `GET /readyz` return only `{"ok": true}` to loopback
+clients. They are not part of either public protocol and must not be exposed by
+the operator's HTTPS publishing layer.
 
 ## Tools
 
@@ -116,81 +121,11 @@ Relevant tuning options:
 --discovery-timeout SECONDS   timeout for each discovery port (default 0.25)
 ```
 
-## MCP authorization
+## Authorization behavior
 
-MCP authorization is disabled by default. To require a pre-shared bearer token,
-put a separate secret in a protected file and pass `--auth-token-file`:
-
-```bash
-umask 077
-python3 -c "import secrets; print(secrets.token_urlsafe(32))" > ~/.config/joplin-md-sync/mcp-token
-joplin-md-sync mcp serve \
-  --auth-token-file ~/.config/joplin-md-sync/mcp-token
-```
-
-Clients must then send `Authorization: Bearer <secret>` on every request. The
-file is re-read for each request, so replacing it rotates the token without a
-server restart. This secret is independent of the upstream Joplin token and is
-never forwarded to Joplin.
-
-This mode is deliberately a small pre-shared bearer check, not an OAuth 2.1
-authorization server or discovery flow. Keep the default loopback bind for
-local clients. A non-loopback bind is rejected unless both
-`--allow-remote-mcp` and `--auth-token-file` are present; when accessing MCP
-over a network, terminate TLS in a trusted reverse proxy and restrict network
-access as well.
-
-Browser-originated requests are checked against the listener. Loopback origins
-are accepted on a loopback listener; add exact origins with repeatable
-`--allowed-origin https://host.example` when a trusted web client requires it.
-
-## Linux systemd user service
-
-The rootless Python installer documented in
-[Headless Joplin Terminal and MCP services](joplin-terminal-service.md)
-downloads and verifies a released Linux standalone executable, generates the
-Joplin and MCP user units from one API-port setting, configures optional MCP
-bearer authentication and opt-in `0.0.0.0` binding, checks user lingering, and
-verifies both services. It supersedes the former static example unit.
-
-## Windows autostart
-
-The example [PowerShell installer](../examples/windows/install-mcp-task.ps1)
-registers a per-user Task Scheduler task at logon and configures restart on
-failure:
-
-```powershell
-New-Item -ItemType Directory -Force "$env:APPDATA\joplin-md-sync"
-Set-Content "$env:APPDATA\joplin-md-sync\joplin-token" "<Joplin token>"
-Set-Content "$env:APPDATA\joplin-md-sync\mcp-token" "<separate MCP secret>"
-.\examples\windows\install-mcp-task.ps1 `
-  -Executable "$env:USERPROFILE\.local\bin\joplin-md-sync.exe" `
-  -JoplinTokenFile "$env:APPDATA\joplin-md-sync\joplin-token" `
-  -McpAuthTokenFile "$env:APPDATA\joplin-md-sync\mcp-token"
-```
-
-Use Windows ACLs to restrict both files to the current account. Run
-`Unregister-ScheduledTask -TaskName joplin-md-sync-mcp -Confirm:$false` to
-remove the task.
-
-## Live acceptance tests
-
-The real-Joplin suite is deliberately outside `tests/`, so `make test`,
-`make check`, and CI never collect it. From a checkout, place the Joplin token
-in the ignored repository-root `token` file and run:
-
-```bash
-chmod 600 token
-make test-live
-```
-
-The suite launches the real CLI MCP daemon and checks initialization, all note
-tools, notebook creation/selection, metadata and tag replacement, note moves,
-Joplin full-text search, trash semantics, authorization, Origin handling, and
-unavailable-upstream errors.
-
-Every test object name contains a random UUID. Update and delete helpers refuse
-IDs not returned by the current run. Teardown discovers partial writes by that
-UUID, excludes every pre-existing ID, permanently removes only allowlisted test
-notes/tags/notebooks, and verifies that the original note update/deletion state
-did not change.
+MCP bearer authentication is optional and independent of the required Actions
+credential. When configured, the token file is re-read for every request and
+clients send `Authorization: Bearer <secret>`. Missing or invalid credentials
+return `401`. Browser-originated requests are also checked against the allowed
+Origin set. See [Joplin API Service](SERVICE.md) for secure token creation,
+listener binding, and operational commands.

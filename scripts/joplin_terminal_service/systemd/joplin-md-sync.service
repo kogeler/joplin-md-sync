@@ -1,5 +1,5 @@
 [Unit]
-Description=Joplin Markdown Sync MCP server
+Description=Joplin Markdown Sync MCP and GPT Actions service
 Documentation=https://github.com/kogeler/joplin-md-sync
 Requires=joplin-terminal.service
 After=joplin-terminal.service
