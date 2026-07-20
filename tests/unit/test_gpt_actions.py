@@ -59,6 +59,17 @@ def test_token_file_rejects_empty_short_nonregular_and_insecure(tmp_path: Path) 
             ActionsTokenSource(symlink)
 
 
+def test_token_directory_is_rejected_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_open(*args: object, **kwargs: object) -> int:
+        raise AssertionError("os.open must not be called for a directory")
+
+    monkeypatch.setattr("joplin_md_sync.gpt_actions.os.open", unexpected_open)
+    with pytest.raises(ValueError, match="regular"):
+        ActionsTokenSource(tmp_path)
+
+
 def test_actions_secret_must_be_distinct() -> None:
     with pytest.raises(ValueError, match="Joplin"):
         validate_distinct_actions_token("a" * 43, joplin_token="a" * 43, mcp_token=None)

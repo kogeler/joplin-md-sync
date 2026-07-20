@@ -48,6 +48,11 @@ class ActionsTokenSource:
             flags |= os.O_NOFOLLOW
         descriptor = -1
         try:
+            path_info = os.stat(self.path, follow_symlinks=False)
+            if not stat.S_ISREG(path_info.st_mode):
+                raise ValueError(
+                    f"GPT Actions token file must be a regular file: {self.path}"
+                )
             descriptor = os.open(self.path, flags)
             info = os.fstat(descriptor)
             if not stat.S_ISREG(info.st_mode):
