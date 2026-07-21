@@ -639,7 +639,7 @@ class McpHttpTest(WorkspaceTestCase):
             rejected.sendall(b"GET /mcp HTTP/1.1\r\nHost: localhost\r\n\r\n")
             try:
                 self.assertEqual(rejected.recv(1024), b"")
-            except (ConnectionAbortedError, ConnectionResetError):
+            except ConnectionError:
                 pass
         finally:
             rejected.close()
@@ -652,7 +652,7 @@ class McpHttpTest(WorkspaceTestCase):
             while True:
                 try:
                     status = self.request(payload, url=url)[0]
-                except (ConnectionResetError, urllib.error.URLError):
+                except (ConnectionError, urllib.error.URLError):
                     if time.monotonic() >= deadline:
                         raise
                     time.sleep(0.01)
