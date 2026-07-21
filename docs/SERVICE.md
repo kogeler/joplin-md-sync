@@ -52,7 +52,9 @@ joplin-md-sync mcp serve \
 This exposes `http://127.0.0.1:8765/mcp` and authenticated Actions routes under
 `http://127.0.0.1:8765/api/gpt/v1/` in one foreground process. Add
 `--auth-token-file ~/.config/joplin-md-sync/mcp-token` only when MCP clients
-must authenticate. Actions cannot be enabled without their token file.
+must authenticate. Generate that file with the same `secrets.token_urlsafe(32)`
+command and `0600` mode used above. Use a different value for each file.
+Actions cannot be enabled without their token file.
 
 For Windows secret-file ACLs and Task Scheduler, use the combined
 [`install-service-task.ps1`](../examples/windows/install-service-task.ps1)
@@ -69,9 +71,9 @@ set -o pipefail; curl --proto '=https' --tlsv1.2 --fail --silent --show-error --
 ```
 
 `python3 -` reads the program from standard input; the remaining arguments are
-passed to the installer. It will interactively handle lingering and request
-the required Actions token, optional MCP token, Nextcloud password, and E2EE
-password through the controlling terminal (`/dev/tty`), not through standard
+passed to the installer. It generates separate Actions and MCP bearer tokens,
+then interactively handles lingering and requests only the Nextcloud and E2EE
+passwords through the controlling terminal (`/dev/tty`), not through standard
 input. Run this form from an
 interactive terminal. In an automation environment without a terminal, use
 `--non-interactive` and provide all required choices and secrets explicitly.
@@ -146,8 +148,8 @@ Defaults:
 ~/.local/lib/joplin-terminal-service/        deployed Python supervisor
 ~/.local/state/joplin-agent/                 profile lock
 ~/.config/joplin-agent/api-token             Data API token, mode 0600
-~/.config/joplin-md-sync/gpt-actions-token    required Actions token, mode 0600
-~/.config/joplin-md-sync/mcp-token            optional MCP token, mode 0600
+~/.config/joplin-md-sync/gpt-actions-token    generated Actions token, mode 0600
+~/.config/joplin-md-sync/mcp-token            generated MCP token, mode 0600
 ~/.config/systemd/user/joplin-terminal.service
 ~/.config/systemd/user/joplin-md-sync.service combined MCP and Actions adapter
 ```
@@ -208,13 +210,10 @@ JOPLIN_API_PORT
 JOPLIN_SYNC_INTERVAL
 JOPLIN_MD_SYNC_VERSION
 JOPLIN_MCP_PORT
-JOPLIN_MCP_AUTH_TOKEN
-JOPLIN_GPT_ACTIONS_TOKEN
 ```
 
-`JOPLIN_MCP_AUTH_TOKEN` and `JOPLIN_GPT_ACTIONS_TOKEN` are secrets and receive
-the same redaction and child-environment filtering as password variables. The
-other values in this list are non-secret.
+The installer does not accept service bearer tokens through command-line
+arguments or environment variables. It creates both token files itself.
 
 By default, every full installation resolves the npm `latest` tag for Joplin
 and the latest stable GitHub Release for the joplin-md-sync standalone. Use
@@ -232,12 +231,18 @@ not written to a systemd unit, an EnvironmentFile, adapter configuration, logs,
 or installer-created password files. Joplin itself persists the sync password
 and E2EE key cache inside its protected profile so it can restart unattended.
 
-The Joplin API token, required Actions bearer token, and optional MCP bearer
-token are technical service credentials, not Nextcloud/E2EE passwords. They
-are stored only in the files shown above with mode `0600`; units contain paths,
-never token values. When MCP authentication is disabled, `mcp-token` is removed
-and its path is omitted from the generated unit. The Actions token file and
-flags are always present in an installed adapter unit.
+The Joplin API token, Actions bearer token, and MCP bearer token are technical
+service credentials, not Nextcloud/E2EE passwords. The installer generates
+separate Actions and MCP values with `secrets.token_urlsafe(32)`. They are
+stored only in the files shown above with mode `0600`; units contain paths,
+never token values. Both token-file flags are always present in an installed
+adapter unit, so MCP authentication cannot be disabled for this deployment.
+After a successful installation, the installer prints only the two file paths,
+not their contents.
+
+An idempotent rerun preserves valid existing service token files. It does not
+rotate them. A missing file is generated, while an invalid or unreadable
+existing file stops the run instead of being silently replaced.
 
 ### Interactive input
 
@@ -249,26 +254,15 @@ python3 install_joplin_terminal.py \
   --nextcloud-user "user"
 ```
 
-Before requesting secrets, the installer checks whether systemd user lingering
-is enabled. When it is disabled, interactive mode asks whether to enable it.
-It then uses hidden `getpass` prompts:
+Before requesting passwords, the installer creates the two service credentials
+in memory and checks whether systemd user lingering is enabled. When lingering
+is disabled, interactive mode asks whether to enable it. It then uses hidden
+`getpass` prompts:
 
 ```text
-GPT Actions bearer token (required; empty preserves existing):
-MCP bearer token (empty disables authentication):
 Nextcloud password:
 Joplin E2EE password:
 ```
-
-The Actions token is mandatory, must contain at least 32 non-whitespace
-characters, and must differ from the Joplin and MCP tokens. On first install it
-cannot be empty. On a rerun, an empty answer preserves the existing protected
-Actions token file.
-
-The MCP token must contain at least 32 non-whitespace characters. Pressing
-Enter at its prompt disables MCP authentication on the default loopback
-listener. On a rerun this also removes an existing MCP token, so clients must
-be updated accordingly. An empty token is rejected with `--allow-remote-mcp`.
 
 On an idempotent rerun, Joplin's already-validated E2EE key cache is reused and
 the E2EE prompt is skipped. The Nextcloud password is still required because
@@ -279,8 +273,6 @@ the installer never reads the stored secure setting.
 ```bash
 export JOPLIN_NEXTCLOUD_PASSWORD='...'
 export JOPLIN_E2EE_PASSWORD='...'
-export JOPLIN_GPT_ACTIONS_TOKEN='required-separate-random-value...'
-export JOPLIN_MCP_AUTH_TOKEN='at-least-32-random-characters...'
 
 python3 install_joplin_terminal.py \
   --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
@@ -288,8 +280,6 @@ python3 install_joplin_terminal.py \
 
 unset JOPLIN_NEXTCLOUD_PASSWORD
 unset JOPLIN_E2EE_PASSWORD
-unset JOPLIN_GPT_ACTIONS_TOKEN
-unset JOPLIN_MCP_AUTH_TOKEN
 ```
 
 To avoid typing a password as a normal shell command:
@@ -302,14 +292,6 @@ export JOPLIN_NEXTCLOUD_PASSWORD
 read -rsp "E2EE password: " JOPLIN_E2EE_PASSWORD
 echo
 export JOPLIN_E2EE_PASSWORD
-
-read -rsp "GPT Actions bearer token (required): " JOPLIN_GPT_ACTIONS_TOKEN
-echo
-export JOPLIN_GPT_ACTIONS_TOKEN
-
-read -rsp "MCP bearer token (empty disables authentication): " JOPLIN_MCP_AUTH_TOKEN
-echo
-export JOPLIN_MCP_AUTH_TOKEN
 ```
 
 Environment variables may be inspectable by same-user processes or root on
@@ -324,8 +306,7 @@ python3 install_joplin_terminal.py \
   --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
   --nextcloud-user "user" \
   --nextcloud-password "..." \
-  --e2ee-password "..." \
-  --mcp-auth-token "at-least-32-random-characters..."
+  --e2ee-password "..."
 ```
 
 This supported form can remain in shell history and can be briefly visible in
@@ -336,25 +317,10 @@ dedicated secret-stdin interface. Commands are redacted in installer logs.
 
 Python cannot guarantee physical erasure of immutable strings from process
 memory. The installer drops references as soon as practical and never includes
-secrets in raised errors or debug output. `--mcp-auth-token` has the same shell
-history and process-list exposure as password arguments; prefer its hidden
-prompt or temporary environment variable. The required Actions token
-intentionally has no raw CLI option; use its hidden prompt,
-`JOPLIN_GPT_ACTIONS_TOKEN`, or an existing protected file.
-
-In non-interactive mode, an explicitly supplied empty value disables loopback
-authentication:
-
-```bash
-python3 install_joplin_terminal.py --non-interactive --mcp-auth-token '' ...
-```
-
-When neither CLI nor environment supplies an MCP token, non-interactive mode
-preserves an existing protected token or leaves MCP authentication disabled.
-Interactive mode always asks; CLI overrides environment, and environment
-overrides the prompt. Non-interactive installation requires
-`JOPLIN_GPT_ACTIONS_TOKEN` unless a valid protected Actions token file already
-exists.
+secrets in raised errors or debug output. There is no raw CLI or environment
+input for either service bearer token. Non-interactive mode therefore needs
+only the normal installation choices plus the Nextcloud and, when required,
+E2EE password sources.
 
 ## Nextcloud URL
 
@@ -386,12 +352,13 @@ python3 install_joplin_terminal.py \
 
 `--dry-run` does not prompt, install npm or adapter content, open or modify the
 profile, sync, create files, stop a service, reload systemd, or start anything.
-With `--non-interactive`, required secret sources must still be present.
+With `--non-interactive`, required Nextcloud and E2EE password sources must
+still be present. Service tokens are not generated during a dry run.
 
 Run the same command without `--dry-run`. The installer:
 
 1. checks systemd user lingering and, in interactive mode, offers to enable it;
-2. asks separately for the required Actions token and optional MCP token;
+2. generates separate Actions and MCP bearer tokens when their files are absent;
 3. stops the active adapter and Joplin services in order and acquires the
    profile lock;
 4. resolves the npm `latest` tag and installs that Joplin version in the
@@ -410,14 +377,15 @@ Run the same command without `--dry-run`. The installer:
     `--joplin-md-sync-version` pins it, downloads the host-architecture asset, verifies
     its release SHA-256, standalone identity, version, and MCP capability, then
     installs it atomically;
-13. verifies that the Actions token differs from both other service tokens,
-    stores it with mode `0600`, and stores or removes the optional MCP token;
+13. verifies that all three service tokens differ and stores both generated
+    adapter tokens with mode `0600`;
 14. deploys the supervisor plus `joplin-terminal.service` and the one combined
     `joplin-md-sync.service`, backs up changed units, and reloads systemd;
 15. enables and restarts Joplin followed by the adapter, verifies `/ping`,
     initializes `/mcp` and calls `joplin_list_notebooks`, then verifies that
     `/api/gpt/v1/*` rejects an unauthenticated probe and accepts the dedicated
-    Actions token without exposing a real tool.
+    Actions token without exposing a real tool. Only after successful completion
+    does it report the Actions and MCP token file paths.
 
 The initial sync, E2EE decryption, fresh-process E2EE verification, and second
 sync each wait for Joplin to finish and allow up to 24 hours. Large stores may
@@ -451,7 +419,6 @@ Useful control flags:
 --api-port PORT
 --mcp-port PORT
 --allow-remote-mcp
---mcp-auth-token TOKEN
 --sync-interval SECONDS
 --joplin-version VERSION
 --joplin-md-sync-version VERSION
@@ -523,20 +490,18 @@ the port. Never expose it directly to the internet.
 
 ## MCP integration
 
-The default endpoint is `http://127.0.0.1:8765/mcp`. When a bearer token was
-entered or preserved, it is stored in `~/.config/joplin-md-sync/mcp-token`;
-configure a Streamable HTTP MCP client with the URL and an
+The default endpoint is `http://127.0.0.1:8765/mcp`. Its generated bearer token
+is stored in `~/.config/joplin-md-sync/mcp-token`; configure a Streamable HTTP
+MCP client with the URL and an
 `Authorization: Bearer <token>` header. Do not use the Joplin API token as the
-MCP bearer token; they have different purposes. When the installer was given
-an empty MCP token, omit the Authorization header.
+MCP bearer token; they have different purposes.
 
-The installer first performs a readiness `GET`, authenticated when auth is
-enabled. A healthy endpoint returns HTTP `405` with `Allow: POST`. It then sends
+The installer first performs an authenticated readiness `GET`. A healthy
+endpoint returns HTTP `405` with `Allow: POST`. It then sends
 MCP `initialize` and calls the read-only `joplin_list_notebooks` tool with
 `limit: 1`. Installation succeeds only when the result contains a valid Joplin
-object listing. The same bearer token is used for all three requests when
-authentication is configured; no Authorization header is sent when it is
-disabled. Responses, notebook names, and tokens are not logged.
+object listing. The same bearer token is used for all three requests. Responses,
+notebook names, and tokens are not logged.
 
 Check basic readiness manually without placing the token in a process argument:
 
@@ -548,10 +513,9 @@ header = "Authorization: Bearer $(<~/.config/joplin-md-sync/mcp-token)"
 EOF
 ```
 
-Expected status is `405`. A missing or incorrect bearer token returns `401`
-when authentication is enabled. For an unauthenticated loopback installation,
-run the same request without the `header` line. The upstream Joplin token
-remains local to the joplin-md-sync process and is never sent to MCP clients.
+Expected status is `405`. A missing or incorrect bearer token returns `401`.
+The upstream Joplin token remains local to the joplin-md-sync process and is
+never sent to MCP clients.
 
 ### Remote MCP access
 
@@ -560,18 +524,17 @@ Remote access is opt-in:
 ```bash
 python3 install_joplin_terminal.py \
   --allow-remote-mcp \
-  --mcp-auth-token 'at-least-32-random-characters...' \
   ...
 ```
 
 This renders `--host 0.0.0.0 --allow-remote-mcp` and keeps the Joplin Data API
-on `127.0.0.1`. A non-empty token is mandatory; the installer and unit renderer
-both reject remote unauthenticated operation. `0.0.0.0` exposes plain HTTP on
-every IPv4 interface. Restrict the port with the host firewall and normally
-use a trusted TLS publishing layer or private network. The installer does not
-alter firewall or public HTTPS configuration. Browser clients that send an
-`Origin` header may additionally require an origin configured by the MCP
-server; the generated service is intended for non-browser MCP clients.
+on `127.0.0.1`. The generated MCP token remains mandatory. `0.0.0.0` exposes
+plain HTTP on every IPv4 interface. Restrict the port with the host firewall
+and normally use a trusted TLS publishing layer or private network. The
+installer does not alter firewall or public HTTPS configuration. Browser
+clients that send an `Origin` header may additionally require an origin
+configured by the MCP server; the generated service is intended for
+non-browser MCP clients.
 
 ## ChatGPT Actions integration
 
@@ -699,8 +662,8 @@ before stopping either service. It then stops the adapter and Joplin, acquires t
 profile lock, updates and verifies both components, restarts both services, and
 runs Joplin API, MCP `joplin_list_notebooks`, and Actions authentication smoke
 tests. Nextcloud and E2EE passwords are not requested. The required Actions
-token is read from `JOPLIN_GPT_ACTIONS_TOKEN`, requested interactively, or
-preserved from its protected file; the optional MCP token is preserved.
+and MCP tokens are preserved from their protected files. If either file is
+missing, the installer generates it; it never rotates an existing valid token.
 
 Pin only Joplin while updating the adapter to latest:
 
@@ -765,8 +728,8 @@ set -o pipefail; curl --proto '=https' --tlsv1.2 --fail --silent --show-error --
 Purge stops and disables both user units, verifies that they are inactive,
 takes the exclusive profile lock, then removes the units and their installer
 backups, isolated npm prefix, Joplin launcher, standalone adapter binary,
-deployed supervisor, profile, API token, required Actions token, optional MCP
-token, and Joplin-specific state directories. It leaves
+deployed supervisor, profile, API token, Actions token, MCP token, and
+Joplin-specific state directories. It leaves
 unrelated files below `~/.local`, `~/.config`, and the systemd user directory
 untouched. Repeating purge is safe.
 
@@ -924,9 +887,8 @@ For adapter restart loops, inspect
 `journalctl --user -u joplin-md-sync.service`. Verify the standalone binary
 is executable, the Joplin API token is readable by the user, port 8765 is free,
 and `joplin-terminal.service` is active. The required Actions token file must
-be readable and mode `0600`. When MCP authentication is enabled, its token must
-also be readable. When it is disabled, that file should be absent and the unit
-should omit `--auth-token-file`.
+be readable and mode `0600`. The MCP token file is also required, readable, and
+mode `0600`; the unit must include both token-file arguments.
 
 ### systemd user bus is unavailable
 
@@ -952,22 +914,22 @@ Confirm the joplin-md-sync process runs as the same user, the path is
 Use the contents of `~/.config/joplin-md-sync/gpt-actions-token` only as the
 Bearer credential in the Custom GPT editor. Confirm the unit includes
 `--gpt-actions` and the matching `--gpt-actions-token-file` path. Do not replace
-it with the Joplin API token, optional MCP token, or an OpenAI API key.
+it with the Joplin API token, MCP token, or an OpenAI API key. On a clean
+installation this file is generated with the required entropy before the
+service unit is started.
 
 ### MCP client receives 401
 
 Use the contents of `~/.config/joplin-md-sync/mcp-token` as the MCP bearer
-token. It is not the Joplin API token. Non-interactive reruns and upgrades
-preserve an existing valid token. Interactive full runs ask again; entering an
-empty value intentionally disables authentication and removes the file.
+token. It is not the Joplin API token. Reruns and upgrades preserve an existing
+valid token; the headless installer does not provide an unauthenticated mode.
 
 ### Remote MCP bind is rejected
 
-`--allow-remote-mcp` requires a non-empty token of at least 32 characters. An
-empty token is supported only for loopback. Verify the generated unit contains
-`--host 0.0.0.0`, `--allow-remote-mcp`, and `--auth-token-file`, then inspect
-the MCP journal. A firewall may still block access even when the process is
-listening successfully.
+`--allow-remote-mcp` uses the generated MCP token. Verify the generated unit
+contains `--host 0.0.0.0`, `--allow-remote-mcp`, and `--auth-token-file`, then
+inspect the MCP journal. A firewall may still block access even when the
+process is listening successfully.
 
 ## Live acceptance
 
@@ -998,8 +960,7 @@ transport.
 3. Confirm existing notes decrypt and no new E2EE key appears on other clients.
 4. Confirm both generated services are active and that the installer reports
    successful MCP and Actions smoke checks.
-5. Configure an MCP client with the selected bearer token, when enabled, and
-   read a note.
+5. Configure an MCP client with the generated bearer token and read a note.
 6. Change a note on a phone and sync the phone.
 7. Wait for the headless recurrent interval and confirm MCP sees the change.
 8. Change a note through MCP.
@@ -1023,7 +984,7 @@ podman run --rm \
 
 The suite checks PTY prompts, secret non-echo, dynamic latest-version
 resolution, release architecture selection, SHA-256 verification, combined
-upgrades, the single adapter unit, mandatory Actions and optional MCP tokens,
+upgrades, the single adapter unit, mandatory generated Actions and MCP tokens,
 both URI smoke checks, lingering decisions, API health loss, signals, forced
 shutdown, and orphan prevention. Real Nextcloud
 credentials, phone propagation, and reboot persistence remain explicit manual

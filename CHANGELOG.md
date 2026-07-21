@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Add a copyable agent-notes repository template with a guarded Markdown sync
+  runbook and verified latest standalone installer.
+
+### Changed
+
+- Make the headless installer generate separate Actions and MCP bearer tokens,
+  always enable MCP authentication, and report only the protected token-file
+  paths after successful installation.
+
+### Fixed
+
+- Validate generated and preserved Actions tokens using the same decoded
+  32-byte entropy requirement as the running service.
+- Harden MCP and Actions authentication against weak or unsafe token files,
+  non-ASCII and duplicated Authorization headers, malformed URL targets,
+  deeply nested JSON, and unbounded pre-authentication connection threads.
+
 ## [1.3.0] - 2026-07-20
 
 ### Added

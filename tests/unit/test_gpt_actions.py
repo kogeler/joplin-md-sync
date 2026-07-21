@@ -43,7 +43,7 @@ def test_token_file_rejects_empty_short_nonregular_and_insecure(tmp_path: Path) 
     with pytest.raises(ValueError, match="empty"):
         ActionsTokenSource(empty)
     short = protected_token(tmp_path / "short", "short")
-    with pytest.raises(ValueError, match=r"URL-safe|32 random bytes"):
+    with pytest.raises(ValueError, match=r"URL-safe|32 bytes"):
         ActionsTokenSource(short)
     with pytest.raises(ValueError, match="regular"):
         ActionsTokenSource(tmp_path)
@@ -65,7 +65,7 @@ def test_token_directory_is_rejected_before_open(
     def unexpected_open(*args: object, **kwargs: object) -> int:
         raise AssertionError("os.open must not be called for a directory")
 
-    monkeypatch.setattr("joplin_md_sync.gpt_actions.os.open", unexpected_open)
+    monkeypatch.setattr("joplin_md_sync.auth.os.open", unexpected_open)
     with pytest.raises(ValueError, match="regular"):
         ActionsTokenSource(tmp_path)
 
@@ -131,3 +131,31 @@ def test_cli_rejects_invalid_actions_configuration_before_listen(tmp_path: Path)
     )
     assert result.exit_code == 7
     assert "differ from the MCP token" in result.stdout
+
+    weak_mcp = protected_token(tmp_path / "weak-mcp", "c2hvcnQ")
+    result = run_cli(
+        "mcp",
+        "serve",
+        "--gpt-actions",
+        "--gpt-actions-token-file",
+        str(token_file),
+        "--auth-token-file",
+        str(weak_mcp),
+        env={"JOPLIN_TOKEN": "j" * 43},
+    )
+    assert result.exit_code == 7
+    assert "32 bytes" in result.stdout
+
+    reused_mcp = protected_token(tmp_path / "reused-mcp", "j" * 43)
+    result = run_cli(
+        "mcp",
+        "serve",
+        "--gpt-actions",
+        "--gpt-actions-token-file",
+        str(token_file),
+        "--auth-token-file",
+        str(reused_mcp),
+        env={"JOPLIN_TOKEN": "j" * 43},
+    )
+    assert result.exit_code == 7
+    assert "MCP token must differ from the Joplin token" in result.stdout

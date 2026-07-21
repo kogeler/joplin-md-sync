@@ -147,8 +147,8 @@ The same binary and listener expose authenticated Custom GPT Actions with
 `--gpt-actions --gpt-actions-token-file PATH`. A production HTTPS publishing
 layer must expose only `/api/gpt/v1/*`; `/mcp`, health routes, and Joplin remain
 private. The headless installer always enables Actions in the single
-`joplin-md-sync.service`, requires their token separately, and keeps MCP bearer
-authentication optional. See [docs/SERVICE.md](docs/SERVICE.md).
+`joplin-md-sync.service`, generates separate Actions and MCP bearer tokens, and
+always enables MCP authentication. See [docs/SERVICE.md](docs/SERVICE.md).
 
 Deletions are **never propagated by default** — they are reported. Pass
 `--propagate-deletes` to apply them (local files go to quarantine under

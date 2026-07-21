@@ -126,6 +126,10 @@ Relevant tuning options:
 MCP bearer authentication is optional and independent of the required Actions
 credential. When configured, the token file is re-read for every request and
 clients send `Authorization: Bearer <secret>`. Missing or invalid credentials
-return `401`. Browser-originated requests are also checked against the allowed
-Origin set. See [Joplin API Service](SERVICE.md) for secure token creation,
-listener binding, and operational commands.
+return `401`. The file must be a protected, current-user-owned regular file
+containing one URL-safe Base64 token that encodes at least 32 bytes;
+generate it with `secrets.token_urlsafe(32)`. Symlinks, weak or oversized
+tokens, insecure POSIX modes, non-ASCII headers, and duplicate Authorization
+headers are rejected. Browser-originated requests are also checked against the
+allowed Origin set. See [Joplin API Service](SERVICE.md) for secure token
+creation, listener binding, and operational commands.

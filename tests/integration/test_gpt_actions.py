@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -136,6 +137,33 @@ class GptActionsHttpTest(WorkspaceTestCase):
             200,
         )
 
+    def test_malformed_and_duplicate_authorization_fail_closed(self) -> None:
+        path = self.tool_path("joplin_list_notes")
+
+        def raw_request(authorizations: tuple[str, ...]) -> int:
+            payload = b"{}"
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", self.httpd.server_address[1], timeout=3
+            )
+            try:
+                connection.putrequest("POST", path)
+                connection.putheader("Content-Type", "application/json")
+                connection.putheader("Content-Length", str(len(payload)))
+                for authorization in authorizations:
+                    connection.putheader("Authorization", authorization)
+                connection.endheaders(payload)
+                response = connection.getresponse()
+                response.read()
+                return response.status
+            finally:
+                connection.close()
+
+        valid = f"Bearer {ACTIONS_TOKEN}"
+        self.assertEqual(raw_request((valid, valid)), 401)
+        self.assertEqual(raw_request((valid, "Bearer wrong-token")), 401)
+        self.assertEqual(raw_request(("Bearer \x80",)), 401)
+        self.assertEqual(self.request(path, {})[0], 200)
+
     def test_route_is_fail_closed_and_auth_hides_route_details(self) -> None:
         disabled = self.tool_path("joplin_read_resource")
         unknown = self.tool_path("definitely_absent")
@@ -148,6 +176,10 @@ class GptActionsHttpTest(WorkspaceTestCase):
         path = self.tool_path("joplin_create_tag")
         before = len(self.server.store.tags)
         self.assertEqual(self.request(path, raw=b"{", token=ACTIONS_TOKEN)[0], 400)
+        deeply_nested = b"[" * 10_000 + b"]" * 10_000
+        self.assertEqual(
+            self.request(path, raw=deeply_nested, token=ACTIONS_TOKEN)[0], 400
+        )
         self.assertEqual(
             self.request(path, {}, content_type="text/plain")[0], 415
         )
@@ -241,9 +273,11 @@ class GptActionsHttpTest(WorkspaceTestCase):
         self.assertIn("Retry-After", headers)
 
     def test_mcp_actions_and_joplin_credentials_are_independent(self) -> None:
-        mcp_token = "mcp-token-0123456789abcdef-0123456789abcdef"
+        mcp_token = "bWNwLXRva2VuLW1jcC10b2tlbi1tY3AtdG9rZW4tMTIzNDU2Nzg5"
         mcp_file = Path(self._auth_tmp.name) / "mcp-token"
         mcp_file.write_text(mcp_token + "\n", encoding="utf-8")
+        if os.name == "posix":
+            mcp_file.chmod(0o600)
         self.httpd.token_source = BearerTokenSource(mcp_file)
         payload = json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "ping"}

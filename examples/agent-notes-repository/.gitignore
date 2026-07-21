@@ -1,0 +1,16 @@
+# Locally installed joplin-md-sync standalone executable
+.tools/
+
+# Local credentials; never commit or share these files
+.secrets/
+
+# joplin-md-sync state, backups, conflict bundles, and downloaded resources
+**/.joplin-sync/
+
+# Local logs and bootstrap caches
+*.log
+__pycache__/
+
+# Common OS metadata
+.DS_Store
+Thumbs.db
