@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
+import os
+import socket
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -516,10 +520,37 @@ class McpHttpTest(WorkspaceTestCase):
         assert body is not None
         self.assertIn("Unsupported", body["error"]["message"])
 
+        deeply_nested = b"[" * 10_000 + b"]" * 10_000
+        request = urllib.request.Request(
+            self.url,
+            data=deeply_nested,
+            method="POST",
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+            },
+        )
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(caught.exception.code, 400)
+        caught.exception.read()
+
+        malformed = socket.create_connection(self.httpd.server_address, timeout=2)
+        try:
+            malformed.sendall(b"GET http://[ HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            self.assertIn(b" 400 ", malformed.recv(1024).split(b"\r\n", 1)[0])
+        finally:
+            malformed.close()
+        self.assertEqual(self.request(payload)[0], 200)
+
     def test_bearer_authentication_and_rotation(self) -> None:
         with tempfile.TemporaryDirectory(prefix="mcp-auth-") as tmp:
             token_file = Path(tmp) / "token"
-            token_file.write_text("first-secret\n", encoding="utf-8")
+            first_token = "Zmlyc3Qtc2VjcmV0LWZpcnN0LXNlY3JldC0xMjM0NTY3ODkwMTI"
+            second_token = "c2Vjb25kLXNlY3JldC1zZWNvbmQtc2VjcmV0LTEyMzQ1Njc4OTA"
+            token_file.write_text(first_token + "\n", encoding="utf-8")
+            if os.name == "posix":
+                token_file.chmod(0o600)
             auth_httpd = McpHttpServer(
                 ("127.0.0.1", 0),
                 self.dispatcher,
@@ -531,16 +562,107 @@ class McpHttpTest(WorkspaceTestCase):
             try:
                 payload = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
                 self.assertEqual(self.request(payload, url=url)[0], 401)
-                headers = {"Authorization": "Bearer first-secret"}
+                headers = {"Authorization": f"Bearer {first_token}"}
                 self.assertEqual(self.request(payload, url=url, headers=headers)[0], 200)
-                token_file.write_text("second-secret\n", encoding="utf-8")
+                token_file.write_text(second_token + "\n", encoding="utf-8")
                 self.assertEqual(self.request(payload, url=url, headers=headers)[0], 401)
-                headers = {"Authorization": "Bearer second-secret"}
+                headers = {"Authorization": f"Bearer {second_token}"}
                 self.assertEqual(self.request(payload, url=url, headers=headers)[0], 200)
+
+                raw = json.dumps(payload).encode("utf-8")
+
+                def raw_request(authorizations: tuple[str, ...]) -> int:
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", auth_httpd.server_address[1], timeout=3
+                    )
+                    try:
+                        connection.putrequest("POST", "/mcp")
+                        connection.putheader(
+                            "Accept", "application/json, text/event-stream"
+                        )
+                        connection.putheader("Content-Type", "application/json")
+                        connection.putheader("Content-Length", str(len(raw)))
+                        for authorization in authorizations:
+                            connection.putheader("Authorization", authorization)
+                        connection.endheaders(raw)
+                        response = connection.getresponse()
+                        response.read()
+                        return response.status
+                    finally:
+                        connection.close()
+
+                valid = f"Bearer {second_token}"
+                self.assertEqual(raw_request((valid, valid)), 401)
+                self.assertEqual(raw_request((valid, "Bearer wrong-token")), 401)
+                self.assertEqual(raw_request(("Bearer \x80",)), 401)
+                self.assertEqual(self.request(payload, url=url, headers=headers)[0], 200)
+
+                for authorization, expected_status in ((None, 401), (valid, 405)):
+                    connection = http.client.HTTPConnection(
+                        "127.0.0.1", auth_httpd.server_address[1], timeout=3
+                    )
+                    try:
+                        method_headers = (
+                            {} if authorization is None else {"Authorization": authorization}
+                        )
+                        connection.request("HEAD", "/mcp", headers=method_headers)
+                        response = connection.getresponse()
+                        response.read()
+                        self.assertEqual(response.status, expected_status)
+                    finally:
+                        connection.close()
             finally:
                 auth_httpd.shutdown()
                 auth_httpd.server_close()
                 thread.join(timeout=2)
+
+    def test_pre_auth_connection_count_is_bounded(self) -> None:
+        limited = McpHttpServer(
+            ("127.0.0.1", 0),
+            self.dispatcher,
+            max_http_connections=1,
+            connection_timeout=1,
+        )
+        thread = threading.Thread(target=limited.serve_forever, daemon=True)
+        thread.start()
+        stalled = socket.create_connection(limited.server_address, timeout=2)
+        stalled.sendall(b"GET /mcp HTTP/1.1\r\nHost: localhost\r\n")
+        deadline = time.monotonic() + 1
+        while limited._request_slots.acquire(blocking=False):
+            limited._request_slots.release()
+            if time.monotonic() >= deadline:
+                self.fail("stalled request did not occupy the bounded handler slot")
+            time.sleep(0.01)
+
+        rejected = socket.create_connection(limited.server_address, timeout=2)
+        try:
+            rejected.sendall(b"GET /mcp HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            try:
+                self.assertEqual(rejected.recv(1024), b"")
+            except ConnectionError:
+                pass
+        finally:
+            rejected.close()
+            stalled.close()
+
+        try:
+            payload = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+            url = f"http://127.0.0.1:{limited.server_address[1]}/mcp"
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    status = self.request(payload, url=url)[0]
+                except (ConnectionError, urllib.error.URLError):
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.01)
+                    continue
+                self.assertEqual(status, 200)
+                break
+        finally:
+            limited.shutdown()
+            limited.server_close()
+            thread.join(timeout=2)
 
 
 class McpCliSafetyTest(WorkspaceTestCase):

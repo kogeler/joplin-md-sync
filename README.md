@@ -31,8 +31,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.3.0"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.3.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 
@@ -88,6 +88,25 @@ in `[dependency-groups]` with a pip-freeze lock in `requirements-dev.txt`.
 4. If both sides changed the same note, you get exit code 2 and a conflict
    bundle: `joplin-md-sync conflicts list` / `conflicts resolve ID --take-local|--take-remote|--merged-file PATH`.
 
+## Agent notes repository template
+
+[`examples/agent-notes-repository/`](examples/agent-notes-repository/) is a
+copyable starter repository for users who want an agent to work on their
+Joplin notes as ordinary Markdown files. It includes:
+
+- a repository-specific `AGENTS.md` with the guarded pull/edit/diff/dry-run/push
+  workflow and an optional MCP setup path;
+- a human runbook that starts with enabling Web Clipper in Joplin Desktop and
+  storing its token outside the sync workspace;
+- a `.gitignore` for credentials, the local standalone binary, and all sync
+  state; and
+- a standard-library installer that downloads the latest compatible native
+  release into `.tools/`, verifies `SHA256SUMS.txt`, and validates the binary
+  before replacing an existing installation.
+
+Start with the template's [README](examples/agent-notes-repository/README.md),
+not the development instructions for this source checkout.
+
 ## MCP and ChatGPT Actions service
 
 One foreground `joplin-md-sync` process exposes MCP and authenticated REST
@@ -109,7 +128,9 @@ joplin-md-sync gpt-actions export-openapi \
 The Actions token is mandatory when Actions are enabled and is reloaded from a
 protected file. MCP bearer authentication remains optional through a separate
 `--auth-token-file`. The headless installer always installs both APIs as one
-`joplin-md-sync.service`; it never creates a separate Actions service.
+`joplin-md-sync.service`; it generates separate mandatory Actions and MCP
+tokens, stores them in protected files, and reports only their paths after a
+successful install. It never creates a separate Actions service.
 
 Use [service installation and operations](docs/SERVICE.md) for Linux, Windows,
 credentials, URI isolation, and live tests; [MCP API](docs/MCP_API.md) for the

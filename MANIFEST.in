@@ -1,6 +1,7 @@
 include .version
 recursive-include docs *.md
-recursive-include examples *.json *.md *.ps1
+recursive-include examples *.json *.md *.ps1 *.py
+include examples/agent-notes-repository/.gitignore
 include scripts/joplin_terminal_service/collect_joplin_debug.sh
 include scripts/joplin_terminal_service/install_joplin_terminal.py
 include scripts/joplin_terminal_service/joplin_terminal_common.py

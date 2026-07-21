@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
-import hmac
 import json
 import logging
 import math
-import os
 import secrets
-import stat
 import threading
 import time
 import urllib.parse
@@ -19,7 +14,14 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
+from joplin_md_sync.auth import (
+    accepts_bearer_token,
+    bearer_token_syntax_valid,
+    read_protected_bearer_token,
+    token_values_equal,
+)
 from joplin_md_sync.gpt_openapi import ACTION_PATH_PREFIX
+from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.tool_executor import ToolExecution, ToolExecutor
 from joplin_md_sync.tool_registry import ToolDefinition, ToolRegistry, tool_effect
 
@@ -43,72 +45,25 @@ class ActionsTokenSource:
         self.read()
 
     def read(self) -> str:
-        flags = os.O_RDONLY
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        descriptor = -1
-        try:
-            path_info = os.stat(self.path, follow_symlinks=False)
-            if not stat.S_ISREG(path_info.st_mode):
-                raise ValueError(
-                    f"GPT Actions token file must be a regular file: {self.path}"
-                )
-            descriptor = os.open(self.path, flags)
-            info = os.fstat(descriptor)
-            if not stat.S_ISREG(info.st_mode):
-                raise ValueError(
-                    f"GPT Actions token file must be a regular file: {self.path}"
-                )
-            if os.name == "posix" and info.st_mode & 0o077:
-                raise ValueError(
-                    "GPT Actions token file must not be accessible by group or others: "
-                    f"{self.path}"
-                )
-            with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
-                descriptor = -1
-                token = handle.read().strip()
-        except ValueError:
-            if descriptor >= 0:
-                os.close(descriptor)
-            raise
-        except (OSError, UnicodeError) as exc:
-            if descriptor >= 0:
-                os.close(descriptor)
-            raise ValueError(f"GPT Actions token file cannot be read: {self.path}: {exc}") from None
-        if not token:
-            raise ValueError(f"GPT Actions token file is empty: {self.path}")
-        try:
-            decoded = base64.b64decode(
-                token + "=" * (-len(token) % 4), altchars=b"-_", validate=True
-            )
-        except (UnicodeEncodeError, ValueError, binascii.Error):
-            raise ValueError("GPT Actions token must use URL-safe base64 encoding") from None
-        if len(decoded) < 32:
-            raise ValueError(
-                "GPT Actions token must encode at least 32 random bytes"
-            )
-        return token
+        return read_protected_bearer_token(self.path, label="GPT Actions")
 
     def accepts(self, authorization: str | None) -> bool:
-        if authorization is None:
-            return False
-        scheme, separator, supplied = authorization.partition(" ")
-        if separator != " " or scheme != "Bearer" or not supplied or supplied != supplied.strip():
+        if not bearer_token_syntax_valid(authorization):
             return False
         try:
             expected = self.read()
         except ValueError:
             log.error("GPT Actions token reload failed")
             return False
-        return hmac.compare_digest(supplied, expected)
+        return accepts_bearer_token(authorization, expected)
 
 
 def validate_distinct_actions_token(
     actions_token: str, *, joplin_token: str, mcp_token: str | None
 ) -> None:
-    if hmac.compare_digest(actions_token, joplin_token):
+    if token_values_equal(actions_token, joplin_token):
         raise ValueError("GPT Actions token must differ from the Joplin token")
-    if mcp_token is not None and hmac.compare_digest(actions_token, mcp_token):
+    if mcp_token is not None and token_values_equal(actions_token, mcp_token):
         raise ValueError("GPT Actions token must differ from the MCP token")
 
 
@@ -182,7 +137,10 @@ class GptActionsTransport:
         self._auth_failure_limit = TokenBucket(max(10, config.rate_limit_per_minute))
 
     def handles(self, path: str) -> bool:
-        clean = urllib.parse.urlsplit(path).path
+        try:
+            clean = urllib.parse.urlsplit(path).path
+        except (UnicodeError, ValueError):
+            return False
         return clean == ACTIONS_NAMESPACE or clean.startswith(f"{ACTIONS_NAMESPACE}/")
 
     def handle(self, handler: Any, method: str) -> bool:
@@ -192,6 +150,7 @@ class GptActionsTransport:
         started = time.monotonic()
         request_size = 0
         if not self._capacity.acquire(blocking=False):
+            handler.close_connection = True
             self._complete(
                 handler,
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -246,7 +205,12 @@ class GptActionsTransport:
                     )
                     return True
 
-            if not self.token_source.accepts(handler.headers.get("Authorization")):
+            authorization_values = handler.headers.get_all("Authorization", [])
+            authorization = (
+                authorization_values[0] if len(authorization_values) == 1 else None
+            )
+            if not self.token_source.accepts(authorization):
+                handler.close_connection = True
                 allowed, retry_after = self._auth_failure_limit.consume()
                 if not allowed:
                     self._complete(
@@ -354,13 +318,15 @@ class GptActionsTransport:
 
             try:
                 raw = handler.rfile.read(request_size)
+                if json_nesting_exceeds(raw):
+                    raise ValueError("JSON nesting is too deep")
                 arguments = json.loads(
                     raw.decode("utf-8"),
                     parse_constant=lambda value: (_ for _ in ()).throw(
                         ValueError(f"invalid JSON constant: {value}")
                     ),
                 )
-            except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
                 self._complete(
                     handler,
                     HTTPStatus.BAD_REQUEST,
@@ -559,6 +525,8 @@ class GptActionsTransport:
         handler.send_header("Content-Length", str(len(body)))
         handler.send_header("Cache-Control", "no-store")
         handler.send_header("X-Request-ID", request_id)
+        if handler.close_connection:
+            handler.send_header("Connection", "close")
         if authenticate:
             handler.send_header(
                 "WWW-Authenticate", 'Bearer realm="joplin-md-sync-gpt-actions"'

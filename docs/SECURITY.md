@@ -25,14 +25,21 @@ files dropped into the workspace, and the local network.
 - Discovery accepts only servers answering `GET /ping` with the exact
   Clipper banner and errors out when zero or multiple match.
 - MCP Streamable HTTP binds to `127.0.0.1` by default, validates browser
-  `Origin`, caps request bodies, and rejects remote binds unless both an
-  explicit override and MCP bearer authorization are configured.
+  `Origin`, caps request bodies, limits simultaneous HTTP handlers, times out
+  stalled connections, and rejects remote binds unless both an explicit
+  override and MCP bearer authorization are configured.
 
 **MCP authorization.**
 - Disabled by default for the loopback-only listener.
 - `--auth-token-file` enables constant-time comparison of a pre-shared bearer
-  secret. The file is re-read per request for rotation, and its token is never
-  forwarded to Joplin or accepted in a URL/CLI value.
+  secret. MCP and Actions token files must be current-user-owned regular files,
+  inaccessible to group/others on POSIX, never symlinks, and contain one
+  bounded URL-safe Base64 value encoding at least 32 bytes. Files are re-read
+  per request, and tokens are never forwarded to Joplin or accepted in a
+  URL/CLI value.
+- Malformed, non-ASCII, oversized, or duplicated `Authorization` values fail
+  closed. Comparisons use `hmac.compare_digest` on ASCII bytes, so malformed
+  text cannot raise from the comparison boundary.
 - The MCP bearer and Joplin API token are separate credentials. The built-in
   mode is not an OAuth authorization-server flow; network deployments need TLS
   termination and access controls in a trusted reverse proxy.
@@ -82,9 +89,13 @@ files dropped into the workspace, and the local network.
 - MCP requests are capped at 16 MiB and decoded resource bodies at 10 MiB per
   item. Binary input is accepted only as base64 request data; MCP tools never
   accept a server-side filesystem path.
+- A generated 32-byte bearer secret has a 256-bit search space. Online request
+  throttling is not a substitute for that entropy; operators must not replace
+  generated credentials with human-chosen strings.
 - Note and notebook deletion uses Joplin trash. Tag and resource deletion is
   permanent because Joplin has no trash API for those types; both tools are
   advertised as destructive and should remain confirmation-gated by clients.
-- A client-side timeout does not cancel an in-flight Python thread. The server
-  does not add a handler timeout or automatically retry writes; ambiguous and
-  partial writes must be inspected in Joplin before another attempt.
+- The incoming socket timeout bounds stalled network reads, but a client-side
+  timeout does not cancel an in-flight tool execution thread. The server does
+  not automatically retry writes; ambiguous and partial writes must be
+  inspected in Joplin before another attempt.

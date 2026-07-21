@@ -33,6 +33,9 @@ from joplin_terminal_common import (  # noqa: E402
     safe_command,
 )
 
+GPT_ACTIONS_TOKEN = "g" * 43
+MCP_TOKEN = "m" * 43
+
 
 class ParserTests(unittest.TestCase):
     def test_cli_overrides_environment(self) -> None:
@@ -65,7 +68,7 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(args.sync_interval, 300)
         self.assertFalse(args.upgrade)
         self.assertFalse(args.allow_remote_mcp)
-        self.assertIsNone(args.mcp_auth_token)
+        self.assertNotIn("mcp_auth_token", vars(args))
         self.assertFalse(args.purge)
         self.assertFalse(args.yes)
 
@@ -108,10 +111,10 @@ class ParserTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "must be different"):
             installer.validate_args(args)
 
-    def test_remote_mcp_requires_nonempty_auth_token(self) -> None:
-        with self.assertRaisesRegex(ToolError, "requires a non-empty"):
-            installer.validate_mcp_auth_token(None, allow_remote=True)
-        installer.validate_mcp_auth_token("t" * 32, allow_remote=True)
+    def test_generated_mcp_token_requirement(self) -> None:
+        with self.assertRaisesRegex(ToolError, "at least 32"):
+            installer.validate_mcp_auth_token("c2hvcnQ")
+        installer.validate_mcp_auth_token(MCP_TOKEN)
 
     def test_purge_does_not_require_nextcloud_and_rejects_upgrade(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(["--purge"])
@@ -277,127 +280,98 @@ class SecretTests(unittest.TestCase):
         self.assertIn("initial sync still running", logs)
         self.assertNotIn(private_text, logs)
 
-    def test_mcp_token_cli_environment_and_prompt_precedence(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            redactor = SecretRedactor()
-            env = {"HOME": temporary, "JOPLIN_MCP_AUTH_TOKEN": "e" * 32}
-            cli_args = installer.build_parser(env).parse_args(["--mcp-auth-token", "c" * 32])
-            cli_paths = installer.build_paths(cli_args, env)
-            prompt = mock.Mock(side_effect=AssertionError("must not prompt"))
-            self.assertEqual(
-                installer.resolve_mcp_auth_token(
-                    cli_args,
-                    cli_paths,
-                    redactor,
-                    getpass_fn=prompt,
-                ),
-                "c" * 32,
-            )
-            env_args = installer.build_parser(env).parse_args([])
-            self.assertEqual(
-                installer.resolve_mcp_auth_token(
-                    env_args,
-                    installer.build_paths(env_args, env),
-                    redactor,
-                    getpass_fn=prompt,
-                ),
-                "e" * 32,
-            )
-            interactive_env = {"HOME": str(root / "interactive")}
-            interactive_args = installer.build_parser(interactive_env).parse_args([])
-            empty_prompt = mock.Mock(return_value="")
-            self.assertIsNone(
-                installer.resolve_mcp_auth_token(
-                    interactive_args,
-                    installer.build_paths(interactive_args, interactive_env),
-                    redactor,
-                    getpass_fn=empty_prompt,
-                )
-            )
-            empty_prompt.assert_called_once()
-
-    def test_mcp_token_prompt_eof_is_a_tool_error(self) -> None:
+    def test_service_tokens_are_generated_and_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             env = {"HOME": temporary}
             args = installer.build_parser(env).parse_args([])
             paths = installer.build_paths(args, env)
-            with self.assertRaisesRegex(ToolError, "MCP token input is unavailable"):
-                installer.resolve_mcp_auth_token(
-                    args,
+            with mock.patch.object(
+                installer.secrets,
+                "token_urlsafe",
+                side_effect=[MCP_TOKEN, GPT_ACTIONS_TOKEN],
+            ) as generate:
+                mcp_token, actions_token = installer.resolve_service_tokens(
                     paths,
                     SecretRedactor(),
-                    getpass_fn=mock.Mock(side_effect=EOFError),
                 )
+            self.assertEqual((mcp_token, actions_token), (MCP_TOKEN, GPT_ACTIONS_TOKEN))
+            self.assertEqual(generate.call_count, 2)
 
-    def test_noninteractive_mcp_token_is_optional_and_preserved_when_configured(self) -> None:
+            installer.configure_mcp_auth_token(paths, mcp_token)
+            installer.configure_gpt_actions_token(paths, actions_token)
+            self.assertEqual(stat.S_IMODE(paths.mcp_auth_token_file.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(paths.gpt_actions_token_file.stat().st_mode), 0o600)
+
+            with mock.patch.object(
+                installer.secrets,
+                "token_urlsafe",
+                side_effect=AssertionError("valid tokens must be preserved"),
+            ):
+                preserved = installer.resolve_service_tokens(paths, SecretRedactor())
+            self.assertEqual(preserved, (MCP_TOKEN, GPT_ACTIONS_TOKEN))
+
+    def test_invalid_existing_tokens_are_rejected_without_rotation(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             env = {"HOME": temporary}
-            args = installer.build_parser(env).parse_args(["--non-interactive"])
+            args = installer.build_parser(env).parse_args([])
             paths = installer.build_paths(args, env)
-            redactor = SecretRedactor()
-            self.assertIsNone(installer.resolve_mcp_auth_token(args, paths, redactor))
-            configured = "configured-mcp-bearer-token-value"
-            installer.configure_mcp_auth_token(paths, configured)
-            self.assertEqual(
-                installer.resolve_mcp_auth_token(args, paths, redactor),
-                configured,
-            )
+            paths.mcp_config_dir.mkdir(parents=True)
+            paths.mcp_auth_token_file.write_text("c2hvcnQ\n", encoding="utf-8")
+            with (
+                mock.patch.object(
+                    installer.secrets,
+                    "token_urlsafe",
+                    side_effect=AssertionError("invalid token must not be rotated"),
+                ),
+                self.assertRaisesRegex(ToolError, "at least 32"),
+            ):
+                installer.resolve_mcp_auth_token(paths, SecretRedactor())
 
-    def test_gpt_actions_token_is_required_and_preserves_existing_file(self) -> None:
+            paths.mcp_auth_token_file.write_text(MCP_TOKEN + "\n", encoding="utf-8")
+            paths.gpt_actions_token_file.write_text("g" * 36 + "\n", encoding="utf-8")
+            with (
+                mock.patch.object(
+                    installer.secrets,
+                    "token_urlsafe",
+                    side_effect=AssertionError("invalid token must not be rotated"),
+                ),
+                self.assertRaisesRegex(ToolError, "32 bytes"),
+            ):
+                installer.resolve_gpt_actions_token(paths, SecretRedactor())
+
+    def test_duplicate_existing_service_tokens_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             env = {"HOME": temporary}
-            args = installer.build_parser(env).parse_args(["--non-interactive"])
+            args = installer.build_parser(env).parse_args([])
             paths = installer.build_paths(args, env)
-            redactor = SecretRedactor()
-            with self.assertRaisesRegex(ToolError, "bearer token is required"):
-                installer.resolve_gpt_actions_token(
-                    paths,
-                    redactor,
-                    env,
-                    non_interactive=True,
-                )
-            token = "g" * 32
-            installer.configure_gpt_actions_token(paths, token)
-            self.assertEqual(
-                installer.resolve_gpt_actions_token(
-                    paths,
-                    redactor,
-                    env,
-                    non_interactive=True,
-                ),
-                token,
+            paths.mcp_config_dir.mkdir(parents=True)
+            paths.mcp_auth_token_file.write_text(GPT_ACTIONS_TOKEN + "\n", encoding="utf-8")
+            paths.gpt_actions_token_file.write_text(
+                GPT_ACTIONS_TOKEN + "\n",
+                encoding="utf-8",
             )
+            with self.assertRaisesRegex(ToolError, "must be different"):
+                installer.resolve_service_tokens(paths, SecretRedactor())
 
-    def test_gpt_actions_token_environment_and_prompt_are_separate(self) -> None:
+    def test_service_token_report_contains_only_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            paths = installer.build_paths(
-                installer.build_parser({"HOME": temporary}).parse_args([]),
-                {"HOME": temporary},
-            )
-            prompt = mock.Mock(return_value="p" * 32)
-            self.assertEqual(
-                installer.resolve_gpt_actions_token(
-                    paths,
-                    SecretRedactor(),
-                    {"HOME": temporary, "JOPLIN_GPT_ACTIONS_TOKEN": "e" * 32},
-                    non_interactive=False,
-                    getpass_fn=prompt,
-                ),
-                "e" * 32,
-            )
-            prompt.assert_not_called()
-            self.assertEqual(
-                installer.resolve_gpt_actions_token(
-                    paths,
-                    SecretRedactor(),
-                    {"HOME": temporary},
-                    non_interactive=False,
-                    getpass_fn=prompt,
-                ),
-                "p" * 32,
-            )
-            prompt.assert_called_once()
+            env = {"HOME": temporary}
+            args = installer.build_parser(env).parse_args([])
+            paths = installer.build_paths(args, env)
+            with self.assertLogs("joplin-terminal-installer", level="INFO") as captured:
+                installer.report_service_token_paths(paths)
+            logs = "\n".join(captured.output)
+            self.assertIn(str(paths.gpt_actions_token_file), logs)
+            self.assertIn(str(paths.mcp_auth_token_file), logs)
+            self.assertNotIn(GPT_ACTIONS_TOKEN, logs)
+            self.assertNotIn(MCP_TOKEN, logs)
+
+    def test_gpt_actions_token_matches_runtime_encoding_requirement(self) -> None:
+        installer.validate_gpt_actions_token(GPT_ACTIONS_TOKEN)
+        with self.assertRaisesRegex(ToolError, "32 bytes"):
+            installer.validate_gpt_actions_token("g" * 36)
+        with self.assertRaisesRegex(ToolError, "URL-safe Base64"):
+            installer.validate_gpt_actions_token("not valid base64!")
 
 
 class PurgeTests(unittest.TestCase):
@@ -412,7 +386,6 @@ class PurgeTests(unittest.TestCase):
             "XDG_DATA_HOME": str(self.home / ".local" / "share"),
             "XDG_STATE_HOME": str(self.home / ".local" / "state"),
             "PATH": os.environ["PATH"],
-            "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
         }
         self.args = installer.build_parser(self.env).parse_args(
             [
@@ -621,19 +594,10 @@ class UnitAndPathTests(unittest.TestCase):
         self.assertIn('"--gpt-actions"', mcp_content)
         self.assertIn('"--gpt-actions-token-file"', mcp_content)
         self.assertIn(str(self.paths.gpt_actions_token_file), mcp_content)
+        self.assertIn('"--auth-token-file"', mcp_content)
+        self.assertIn(str(self.paths.mcp_auth_token_file), mcp_content)
         self.assertIn("Requires=joplin-terminal.service", mcp_content)
         self.assertNotIn("a" * 32, mcp_content)
-
-        unauthenticated = installer.render_adapter_unit(
-            (TOOLS_DIR / "systemd" / "joplin-md-sync.service").read_text(),
-            paths=self.paths,
-            api_port=41185,
-            mcp_port=8765,
-            auth_enabled=False,
-        )
-        self.assertIn('"--host" "127.0.0.1"', unauthenticated)
-        self.assertNotIn("--auth-token-file", unauthenticated)
-        self.assertNotIn("--allow-remote-mcp", unauthenticated)
 
         remote = installer.render_adapter_unit(
             (TOOLS_DIR / "systemd" / "joplin-md-sync.service").read_text(),
@@ -641,20 +605,10 @@ class UnitAndPathTests(unittest.TestCase):
             api_port=41185,
             mcp_port=8765,
             allow_remote=True,
-            auth_enabled=True,
         )
         self.assertIn('"--host" "0.0.0.0"', remote)
         self.assertIn('"--allow-remote-mcp"', remote)
         self.assertIn('"--auth-token-file"', remote)
-        with self.assertRaisesRegex(ToolError, "without bearer authentication"):
-            installer.render_adapter_unit(
-                (TOOLS_DIR / "systemd" / "joplin-md-sync.service").read_text(),
-                paths=self.paths,
-                api_port=41185,
-                mcp_port=8765,
-                allow_remote=True,
-                auth_enabled=False,
-            )
 
     def test_snap_node_unit_avoids_mount_namespace_hardening(self) -> None:
         snap_dispatcher = self.root / "snap"
@@ -780,9 +734,9 @@ class UnitAndPathTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(self.paths.token_file.stat().st_mode), 0o600)
         self.assertNotIn(token, redactor.redact(token))
 
-    def test_mcp_auth_token_is_stored_protected_and_can_be_disabled(self) -> None:
+    def test_generated_mcp_auth_token_is_stored_protected(self) -> None:
         redactor = SecretRedactor()
-        token = "mcp-user-selected-token-value-1234"
+        token = MCP_TOKEN
         installer.configure_mcp_auth_token(self.paths, token)
         self.assertEqual(
             installer.load_mcp_auth_token(self.paths, redactor),
@@ -799,11 +753,9 @@ class UnitAndPathTests(unittest.TestCase):
             mcp_port=8765,
         )
         self.assertNotIn(token, unit)
-        installer.configure_mcp_auth_token(self.paths, None)
-        self.assertFalse(self.paths.mcp_auth_token_file.exists())
 
     def test_gpt_actions_token_is_stored_protected_and_must_be_distinct(self) -> None:
-        token = "g" * 32
+        token = GPT_ACTIONS_TOKEN
         installer.configure_gpt_actions_token(self.paths, token)
         self.assertEqual(
             installer.load_gpt_actions_token(self.paths, SecretRedactor()),
@@ -815,12 +767,29 @@ class UnitAndPathTests(unittest.TestCase):
         )
         self.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
         self.paths.token_file.write_text("j" * 32)
-        installer.validate_distinct_service_tokens(self.paths, token, "m" * 32)
+        installer.validate_distinct_service_tokens(self.paths, token, MCP_TOKEN)
         with self.assertRaisesRegex(ToolError, "MCP bearer tokens must be different"):
             installer.validate_distinct_service_tokens(self.paths, token, token)
         self.paths.token_file.write_text(token)
         with self.assertRaisesRegex(ToolError, "Joplin API tokens must be different"):
-            installer.validate_distinct_service_tokens(self.paths, token, None)
+            installer.validate_distinct_service_tokens(self.paths, token, MCP_TOKEN)
+        self.paths.token_file.write_text(MCP_TOKEN)
+        with self.assertRaisesRegex(ToolError, "MCP and Joplin API tokens"):
+            installer.validate_distinct_service_tokens(
+                self.paths,
+                GPT_ACTIONS_TOKEN,
+                MCP_TOKEN,
+            )
+
+    def test_non_ascii_joplin_token_does_not_crash_token_comparison(self) -> None:
+        self.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.token_file.write_text("t\u00f6ken\n", encoding="utf-8")
+
+        installer.validate_distinct_service_tokens(
+            self.paths,
+            GPT_ACTIONS_TOKEN,
+            MCP_TOKEN,
+        )
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -958,7 +927,6 @@ class DryRunTests(unittest.TestCase):
             env = {
                 "HOME": str(root / "home"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -997,7 +965,6 @@ class DryRunTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "XDG_STATE_HOME": str(root / "state"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -1058,7 +1025,6 @@ class ServiceLifecycleTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "XDG_STATE_HOME": str(root / "state"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -1111,7 +1077,6 @@ class ServiceLifecycleTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "XDG_STATE_HOME": str(root / "state"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -1146,7 +1111,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                     installer,
                     "resolve_gpt_actions_token",
                     side_effect=lambda *_args, **_kwargs: order.append("gpt-token")
-                    or "g" * 32,
+                    or GPT_ACTIONS_TOKEN,
                 ),
                 mock.patch.object(
                     installer,
@@ -1166,7 +1131,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 tool.run()
             self.assertEqual(
                 order,
-                ["lingering", "gpt-token", "mcp-token", "nextcloud-password"],
+                ["mcp-token", "gpt-token", "lingering", "nextcloud-password"],
             )
 
     def test_upgrade_restarts_both_services_and_smokes_both_api_routes(self) -> None:
@@ -1176,7 +1141,6 @@ class ServiceLifecycleTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "XDG_STATE_HOME": str(root / "state"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -1203,9 +1167,13 @@ class ServiceLifecycleTests(unittest.TestCase):
             with (
                 mock.patch.object(installer, "check_dependencies", return_value=dependencies),
                 mock.patch.object(installer, "service_active", return_value=True),
+                mock.patch.object(
+                    installer,
+                    "resolve_service_tokens",
+                    return_value=(MCP_TOKEN, GPT_ACTIONS_TOKEN),
+                ),
                 mock.patch.object(installer, "install_or_update_joplin", return_value="3.6.2"),
                 mock.patch.object(installer, "install_or_update_mcp", return_value="1.2.0"),
-                mock.patch.object(installer, "load_mcp_auth_token", return_value="t" * 32),
                 mock.patch.object(installer, "systemctl_command") as systemctl,
                 mock.patch.object(installer, "wait_for_api") as api_health,
                 mock.patch.object(installer, "wait_for_mcp") as mcp_health,
@@ -1227,9 +1195,9 @@ class ServiceLifecycleTests(unittest.TestCase):
                 ],
             )
             api_health.assert_called_once_with(41185)
-            mcp_health.assert_called_once_with(8765, "t" * 32)
-            mcp_smoke.assert_called_once_with(8765, "t" * 32)
-            actions_smoke.assert_called_once_with(8765, "g" * 32)
+            mcp_health.assert_called_once_with(8765, MCP_TOKEN)
+            mcp_smoke.assert_called_once_with(8765, MCP_TOKEN)
+            actions_smoke.assert_called_once_with(8765, GPT_ACTIONS_TOKEN)
 
     def test_upgrade_resolves_both_latest_versions_before_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1238,7 +1206,6 @@ class ServiceLifecycleTests(unittest.TestCase):
                 "HOME": str(root / "home"),
                 "XDG_STATE_HOME": str(root / "state"),
                 "PATH": os.environ["PATH"],
-                "JOPLIN_GPT_ACTIONS_TOKEN": "g" * 32,
             }
             args = installer.build_parser(env).parse_args(
                 [
@@ -1710,7 +1677,7 @@ class GptActionsHealthcheckTests(unittest.TestCase):
             ),
             self.assertRaisesRegex(ToolError, "route-isolation"),
         ):
-            installer.smoke_test_gpt_actions_service(8765, "g" * 32)
+            installer.smoke_test_gpt_actions_service(8765, GPT_ACTIONS_TOKEN)
 
 
 class SingleFileDownloadTests(unittest.TestCase):
@@ -1747,7 +1714,7 @@ class SingleFileDownloadTests(unittest.TestCase):
             self.assertNotIn("--update-joplin", help_result.stdout)
             self.assertNotIn("--update-mcp", help_result.stdout)
             self.assertIn("--allow-remote-mcp", help_result.stdout)
-            self.assertIn("--mcp-auth-token", help_result.stdout)
+            self.assertNotIn("--mcp-auth-token", help_result.stdout)
             self.assertIn("--enable-linger", help_result.stdout)
             asset_result = subprocess.run(
                 [

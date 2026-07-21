@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import errno
 import getpass
 import hashlib
@@ -15,6 +17,7 @@ import platform
 import pty
 import pwd
 import re
+import secrets
 import selectors
 import shutil
 import signal
@@ -99,6 +102,7 @@ LONG_OPERATION_HEARTBEAT = 60.0
 MAX_LONG_OUTPUT_BYTES = 256 * 1024
 DOWNLOAD_TIMEOUT = 120.0
 MAX_RELEASE_FILE_BYTES = 128 * 1024 * 1024
+MAX_SERVICE_BEARER_TOKEN_CHARS = 1024
 MCP_REPOSITORY = "kogeler/joplin-md-sync"
 MCP_RELEASES_URL = os.environ.get(
     "JOPLIN_MD_SYNC_RELEASES_URL",
@@ -186,8 +190,9 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     parser = argparse.ArgumentParser(
         description=(
             "Install an isolated Joplin Terminal, configure existing Nextcloud E2EE, "
-            "install the released joplin-md-sync service, create systemd user services, or "
-            "purge the complete managed local installation."
+            "install the released joplin-md-sync service with generated Actions and MCP "
+            "credentials, create systemd user services, or purge the complete managed "
+            "local installation."
         )
     )
     parser.add_argument("--nextcloud-url", default=values.get("JOPLIN_NEXTCLOUD_URL"))
@@ -228,12 +233,7 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--allow-remote-mcp",
         action="store_true",
-        help="bind MCP to 0.0.0.0; requires a non-empty bearer token",
-    )
-    parser.add_argument(
-        "--mcp-auth-token",
-        default=values.get("JOPLIN_MCP_AUTH_TOKEN"),
-        help="MCP bearer token; an explicit empty value disables loopback authentication",
+        help="bind authenticated MCP to 0.0.0.0 instead of loopback",
     )
     parser.add_argument(
         "--upgrade",
@@ -891,88 +891,99 @@ def install_or_update_mcp(
     return desired
 
 
-def validate_mcp_auth_token(token: str | None, *, allow_remote: bool) -> None:
-    if token is not None and (len(token) < 32 or any(character.isspace() for character in token)):
-        raise ToolError("MCP bearer token must contain at least 32 non-whitespace characters")
-    if allow_remote and token is None:
-        raise ToolError("--allow-remote-mcp requires a non-empty MCP bearer token")
+def validate_service_bearer_token(token: str, *, label: str) -> None:
+    if not token or len(token) > MAX_SERVICE_BEARER_TOKEN_CHARS:
+        raise ToolError(
+            f"{label} bearer token must contain at most "
+            f"{MAX_SERVICE_BEARER_TOKEN_CHARS} characters"
+        )
+    if re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", token) is None:
+        raise ToolError(f"{label} bearer token must use URL-safe Base64 encoding")
+    try:
+        encoded = token.encode("ascii")
+        decoded = base64.b64decode(
+            encoded + b"=" * (-len(encoded) % 4),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (UnicodeEncodeError, ValueError, binascii.Error):
+        raise ToolError(f"{label} bearer token must use URL-safe Base64 encoding") from None
+    if len(decoded) < 32:
+        raise ToolError(f"{label} bearer token must encode at least 32 bytes")
+
+
+def constant_time_token_equal(left: str, right: str) -> bool:
+    """Compare ASCII token values without raising on corrupted local input."""
+    try:
+        return hmac.compare_digest(left.encode("ascii"), right.encode("ascii"))
+    except UnicodeEncodeError:
+        return False
+
+
+def validate_mcp_auth_token(token: str) -> None:
+    validate_service_bearer_token(token, label="MCP")
 
 
 def load_mcp_auth_token(paths: InstallPaths, redactor: SecretRedactor) -> str | None:
     if not paths.mcp_auth_token_file.exists():
         return None
-    if not paths.mcp_auth_token_file.is_file():
+    if paths.mcp_auth_token_file.is_symlink() or not paths.mcp_auth_token_file.is_file():
         raise ToolError(f"MCP auth token path is not a file: {paths.mcp_auth_token_file}")
+    if paths.mcp_auth_token_file.stat().st_size > MAX_SERVICE_BEARER_TOKEN_CHARS + 2:
+        raise ToolError("existing MCP auth token file is too large")
     try:
         token = paths.mcp_auth_token_file.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeError):
         raise ToolError("existing MCP auth token file cannot be read") from None
-    validate_mcp_auth_token(token, allow_remote=False)
+    validate_mcp_auth_token(token)
     paths.mcp_auth_token_file.chmod(0o600)
     redactor.add(token)
     return token
 
 
 def resolve_mcp_auth_token(
-    args: argparse.Namespace,
     paths: InstallPaths,
     redactor: SecretRedactor,
-    *,
-    getpass_fn: Callable[[str], str] = getpass.getpass,
-) -> str | None:
-    requested = args.mcp_auth_token
-    if requested is None and not args.non_interactive:
-        try:
-            requested = getpass_fn("MCP bearer token (empty disables authentication): ")
-        except (EOFError, OSError):
-            raise ToolError(
-                "interactive MCP token input is unavailable; use --mcp-auth-token, "
-                "JOPLIN_MCP_AUTH_TOKEN, or --non-interactive"
-            ) from None
-    if requested is None:
-        existing = load_mcp_auth_token(paths, redactor)
-        if existing is not None:
-            token = existing
-            LOG.info("preserving existing MCP bearer token")
-        else:
-            token = None
-    else:
-        token = requested or None
-    validate_mcp_auth_token(token, allow_remote=args.allow_remote_mcp)
+) -> str:
+    if paths.mcp_auth_token_file.exists() and not paths.mcp_auth_token_file.is_file():
+        raise ToolError(f"MCP auth token path is not a file: {paths.mcp_auth_token_file}")
+    if paths.mcp_auth_token_file.is_file():
+        token = load_mcp_auth_token(paths, redactor)
+        if token is None:  # guarded by is_file(); keeps the type explicit
+            raise ToolError("existing MCP auth token file cannot be read")
+        LOG.info("preserving existing MCP bearer token")
+        return token
+    token = secrets.token_urlsafe(32)
+    validate_mcp_auth_token(token)
     redactor.add(token)
+    LOG.info("generated a new MCP bearer token")
     return token
 
 
-def configure_mcp_auth_token(paths: InstallPaths, token: str | None) -> None:
-    if token is None:
-        if paths.mcp_auth_token_file.exists() and not paths.mcp_auth_token_file.is_file():
-            raise ToolError(f"MCP auth token path is not a file: {paths.mcp_auth_token_file}")
-        paths.mcp_auth_token_file.unlink(missing_ok=True)
-        LOG.warning("MCP bearer authentication is disabled on the loopback listener")
-        return
+def configure_mcp_auth_token(paths: InstallPaths, token: str) -> None:
+    validate_mcp_auth_token(token)
     content = f"{token}\n".encode()
     if paths.mcp_auth_token_file.is_file() and paths.mcp_auth_token_file.read_bytes() == content:
         paths.mcp_auth_token_file.chmod(0o600)
-        LOG.info("protected MCP bearer token is unchanged: %s", paths.mcp_auth_token_file)
+        LOG.info("protected MCP bearer token is unchanged")
         return
     atomic_write(paths.mcp_auth_token_file, content, 0o600)
-    LOG.info("stored protected MCP bearer token: %s", paths.mcp_auth_token_file)
+    LOG.info("stored protected MCP bearer token")
 
 
 def validate_gpt_actions_token(token: str) -> None:
-    if len(token) < 32 or any(character.isspace() for character in token):
-        raise ToolError(
-            "GPT Actions bearer token must contain at least 32 non-whitespace characters"
-        )
+    validate_service_bearer_token(token, label="GPT Actions")
 
 
 def load_gpt_actions_token(paths: InstallPaths, redactor: SecretRedactor) -> str | None:
     if not paths.gpt_actions_token_file.exists():
         return None
-    if not paths.gpt_actions_token_file.is_file():
+    if paths.gpt_actions_token_file.is_symlink() or not paths.gpt_actions_token_file.is_file():
         raise ToolError(
             f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}"
         )
+    if paths.gpt_actions_token_file.stat().st_size > MAX_SERVICE_BEARER_TOKEN_CHARS + 2:
+        raise ToolError("existing GPT Actions token file is too large")
     try:
         token = paths.gpt_actions_token_file.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeError):
@@ -986,35 +997,21 @@ def load_gpt_actions_token(paths: InstallPaths, redactor: SecretRedactor) -> str
 def resolve_gpt_actions_token(
     paths: InstallPaths,
     redactor: SecretRedactor,
-    env: Mapping[str, str],
-    *,
-    non_interactive: bool,
-    getpass_fn: Callable[[str], str] = getpass.getpass,
 ) -> str:
-    requested = env.get("JOPLIN_GPT_ACTIONS_TOKEN")
-    if requested is None and not non_interactive:
-        try:
-            requested = getpass_fn(
-                "GPT Actions bearer token (required; empty preserves existing): "
-            )
-        except (EOFError, OSError):
-            raise ToolError(
-                "interactive GPT Actions token input is unavailable; set "
-                "JOPLIN_GPT_ACTIONS_TOKEN or use --non-interactive with an existing token file"
-            ) from None
-    if requested:
-        token = requested
-    else:
-        existing = load_gpt_actions_token(paths, redactor)
-        if existing is None:
-            raise ToolError(
-                "GPT Actions bearer token is required; set JOPLIN_GPT_ACTIONS_TOKEN "
-                "or enter it interactively"
-            )
-        token = existing
+    if paths.gpt_actions_token_file.exists() and not paths.gpt_actions_token_file.is_file():
+        raise ToolError(
+            f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}"
+        )
+    if paths.gpt_actions_token_file.is_file():
+        token = load_gpt_actions_token(paths, redactor)
+        if token is None:  # guarded by is_file(); keeps the type explicit
+            raise ToolError("existing GPT Actions token file cannot be read")
         LOG.info("preserving existing GPT Actions bearer token")
+        return token
+    token = secrets.token_urlsafe(32)
     validate_gpt_actions_token(token)
     redactor.add(token)
+    LOG.info("generated a new GPT Actions bearer token")
     return token
 
 
@@ -1026,36 +1023,47 @@ def configure_gpt_actions_token(paths: InstallPaths, token: str) -> None:
         and paths.gpt_actions_token_file.read_bytes() == content
     ):
         paths.gpt_actions_token_file.chmod(0o600)
-        LOG.info(
-            "protected GPT Actions bearer token is unchanged: %s",
-            paths.gpt_actions_token_file,
-        )
+        LOG.info("protected GPT Actions bearer token is unchanged")
         return
     atomic_write(paths.gpt_actions_token_file, content, 0o600)
-    LOG.info(
-        "stored protected GPT Actions bearer token: %s",
-        paths.gpt_actions_token_file,
-    )
+    LOG.info("stored protected GPT Actions bearer token")
+
+
+def resolve_service_tokens(
+    paths: InstallPaths,
+    redactor: SecretRedactor,
+) -> tuple[str, str]:
+    mcp_auth_token = resolve_mcp_auth_token(paths, redactor)
+    gpt_actions_token = resolve_gpt_actions_token(paths, redactor)
+    if constant_time_token_equal(mcp_auth_token, gpt_actions_token):
+        raise ToolError("GPT Actions and MCP bearer tokens must be different")
+    return mcp_auth_token, gpt_actions_token
 
 
 def validate_distinct_service_tokens(
     paths: InstallPaths,
     gpt_actions_token: str,
-    mcp_auth_token: str | None,
+    mcp_auth_token: str,
 ) -> None:
-    if mcp_auth_token is not None and hmac.compare_digest(
-        gpt_actions_token, mcp_auth_token
-    ):
+    if constant_time_token_equal(gpt_actions_token, mcp_auth_token):
         raise ToolError("GPT Actions and MCP bearer tokens must be different")
     try:
         joplin_token = paths.token_file.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeError):
         raise ToolError("Joplin API token file cannot be read") from None
     try:
-        if hmac.compare_digest(gpt_actions_token, joplin_token):
+        if constant_time_token_equal(gpt_actions_token, joplin_token):
             raise ToolError("GPT Actions and Joplin API tokens must be different")
+        if constant_time_token_equal(mcp_auth_token, joplin_token):
+            raise ToolError("MCP and Joplin API tokens must be different")
     finally:
         del joplin_token
+
+
+def report_service_token_paths(paths: InstallPaths) -> None:
+    LOG.info("service bearer token files (token values are not printed):")
+    LOG.info("GPT Actions: %s", paths.gpt_actions_token_file)
+    LOG.info("MCP: %s", paths.mcp_auth_token_file)
 
 
 def service_active(
@@ -1706,10 +1714,7 @@ def render_adapter_unit(
     api_port: int,
     mcp_port: int,
     allow_remote: bool = False,
-    auth_enabled: bool = True,
 ) -> str:
-    if allow_remote and not auth_enabled:
-        raise ToolError("refusing to render a remote MCP unit without bearer authentication")
     host = "0.0.0.0" if allow_remote else "127.0.0.1"
     arguments: list[str | os.PathLike[str]] = [
         paths.mcp_binary,
@@ -1726,11 +1731,11 @@ def render_adapter_unit(
         "--gpt-actions",
         "--gpt-actions-token-file",
         paths.gpt_actions_token_file,
+        "--auth-token-file",
+        paths.mcp_auth_token_file,
     ]
     if allow_remote:
         arguments.append("--allow-remote-mcp")
-    if auth_enabled:
-        arguments.extend(("--auth-token-file", paths.mcp_auth_token_file))
     exec_start = " ".join(systemd_quote(argument) for argument in arguments)
     return template.format(exec_start=exec_start)
 
@@ -1775,8 +1780,6 @@ def install_unit(
 def install_adapter_unit(
     paths: InstallPaths,
     args: argparse.Namespace,
-    *,
-    auth_enabled: bool,
 ) -> bool:
     content = render_adapter_unit(
         read_project_asset(f"systemd/{ADAPTER_SERVICE_NAME}").decode("utf-8"),
@@ -1784,7 +1787,6 @@ def install_adapter_unit(
         api_port=args.api_port,
         mcp_port=args.mcp_port,
         allow_remote=args.allow_remote_mcp,
-        auth_enabled=auth_enabled,
     ).encode("utf-8")
     return write_unit(paths.adapter_unit_path, content)
 
@@ -2009,21 +2011,8 @@ def dry_run_plan(
 ) -> None:
     nextcloud_password = available_secret(args.nextcloud_password, "JOPLIN_NEXTCLOUD_PASSWORD", env)
     e2ee_password = available_secret(args.e2ee_password, "JOPLIN_E2EE_PASSWORD", env)
-    mcp_auth_token = args.mcp_auth_token
-    gpt_actions_token = env.get("JOPLIN_GPT_ACTIONS_TOKEN")
     redactor.add(nextcloud_password)
     redactor.add(e2ee_password)
-    redactor.add(mcp_auth_token)
-    redactor.add(gpt_actions_token)
-    if (
-        args.non_interactive
-        and not gpt_actions_token
-        and not paths.gpt_actions_token_file.is_file()
-    ):
-        raise ToolError(
-            "JOPLIN_GPT_ACTIONS_TOKEN is required in non-interactive mode "
-            "when no protected token file exists"
-        )
     if args.upgrade:
         LOG.info("dry-run: would update isolated Joplin to %s", args.joplin_version)
         LOG.info(
@@ -2035,13 +2024,13 @@ def dry_run_plan(
             LOG.info(
                 "dry-run: would restart both services and run Joplin, MCP, and GPT Actions smoke tests"
             )
+        LOG.info("dry-run: managed GPT Actions token file: %s", paths.gpt_actions_token_file)
+        LOG.info("dry-run: managed MCP token file: %s", paths.mcp_auth_token_file)
         return
     if args.non_interactive and not nextcloud_password:
         raise ToolError("JOPLIN_NEXTCLOUD_PASSWORD is required in non-interactive mode")
     if args.non_interactive and not args.skip_e2ee_bootstrap and not e2ee_password:
         raise ToolError("JOPLIN_E2EE_PASSWORD is required in non-interactive mode")
-    if args.allow_remote_mcp and mcp_auth_token == "":
-        raise ToolError("--allow-remote-mcp requires a non-empty MCP bearer token")
     LOG.info("dry-run: would check systemd user lingering before requesting passwords")
     LOG.info("dry-run: would install isolated Joplin %s", args.joplin_version)
     LOG.info("dry-run: would inspect and configure profile %s", paths.profile_dir)
@@ -2054,20 +2043,8 @@ def dry_run_plan(
         "dry-run: would install joplin-md-sync standalone %s",
         args.joplin_md_sync_version,
     )
-    if gpt_actions_token:
-        LOG.info("dry-run: would store the supplied required GPT Actions bearer token")
-    elif paths.gpt_actions_token_file.is_file():
-        LOG.info("dry-run: would preserve the required GPT Actions bearer token")
-    else:
-        LOG.info("dry-run: would prompt for the required GPT Actions bearer token")
-    if mcp_auth_token == "":
-        LOG.info("dry-run: would disable MCP bearer authentication on loopback")
-    elif mcp_auth_token is not None:
-        LOG.info("dry-run: would store the supplied MCP bearer token")
-    elif args.non_interactive:
-        LOG.info("dry-run: would preserve an existing MCP bearer token or leave auth disabled")
-    else:
-        LOG.info("dry-run: would prompt for an MCP bearer token; empty disables it")
+    LOG.info("dry-run: would generate missing service tokens and preserve valid existing ones")
+    LOG.info("dry-run: would require MCP bearer authentication")
     bind_host = "0.0.0.0" if args.allow_remote_mcp else "127.0.0.1"
     LOG.info(
         "dry-run: would bind the combined MCP and GPT Actions service to %s:%d",
@@ -2081,6 +2058,8 @@ def dry_run_plan(
         LOG.info(
             "dry-run: would restart both services and run Joplin, MCP, and GPT Actions smoke tests"
         )
+    LOG.info("dry-run: managed GPT Actions token file: %s", paths.gpt_actions_token_file)
+    LOG.info("dry-run: managed MCP token file: %s", paths.mcp_auth_token_file)
 
 
 def dry_run_purge(paths: InstallPaths, env: Mapping[str, str]) -> None:
@@ -2112,7 +2091,7 @@ class Installer:
     def _restart_and_smoke(
         self,
         dependencies: Dependencies,
-        mcp_auth_token: str | None,
+        mcp_auth_token: str,
         gpt_actions_token: str,
     ) -> None:
         systemctl_command(self.runner, dependencies.systemctl, "restart", SERVICE_NAME)
@@ -2151,7 +2130,12 @@ class Installer:
             )
             raise
 
-    def _upgrade(self, dependencies: Dependencies, gpt_actions_token: str) -> None:
+    def _upgrade(
+        self,
+        dependencies: Dependencies,
+        mcp_auth_token: str,
+        gpt_actions_token: str,
+    ) -> None:
         if not self.paths.unit_path.is_file() or not self.paths.adapter_unit_path.is_file():
             raise ToolError(
                 "--upgrade requires an existing Joplin and joplin-md-sync service installation"
@@ -2171,7 +2155,6 @@ class Installer:
             joplin_version,
             mcp_version,
         )
-        token = load_mcp_auth_token(self.paths, self.redactor)
         if service_active(self.runner, dependencies.systemctl, ADAPTER_SERVICE_NAME):
             systemctl_command(self.runner, dependencies.systemctl, "stop", ADAPTER_SERVICE_NAME)
         if service_active(self.runner, dependencies.systemctl, SERVICE_NAME):
@@ -2193,19 +2176,16 @@ class Installer:
             validate_distinct_service_tokens(
                 self.paths,
                 gpt_actions_token,
-                token,
+                mcp_auth_token,
             )
+            configure_mcp_auth_token(self.paths, mcp_auth_token)
             configure_gpt_actions_token(self.paths, gpt_actions_token)
-            install_adapter_unit(
-                self.paths,
-                self.args,
-                auth_enabled=token is not None,
-            )
+            install_adapter_unit(self.paths, self.args)
         systemctl_command(self.runner, dependencies.systemctl, "daemon-reload")
         if self.args.no_start_service:
             LOG.info("services remain stopped due to --no-start-service")
             return
-        self._restart_and_smoke(dependencies, token, gpt_actions_token)
+        self._restart_and_smoke(dependencies, mcp_auth_token, gpt_actions_token)
         LOG.info("Joplin Terminal and joplin-md-sync service upgrade completed")
 
     def run(self) -> None:
@@ -2237,15 +2217,17 @@ class Installer:
         if self.args.dry_run:
             dry_run_plan(self.args, self.paths, self.env, self.redactor)
             return
+        for name in ("JOPLIN_GPT_ACTIONS_TOKEN", "JOPLIN_MCP_AUTH_TOKEN"):
+            if self.env.get(name):
+                LOG.warning("%s is ignored; the installer manages service tokens", name)
+        mcp_auth_token, gpt_actions_token = resolve_service_tokens(
+            self.paths,
+            self.redactor,
+        )
         if self.args.upgrade:
-            gpt_actions_token = resolve_gpt_actions_token(
-                self.paths,
-                self.redactor,
-                self.env,
-                non_interactive=self.args.non_interactive,
-                getpass_fn=self.getpass_fn,
-            )
-            self._upgrade(dependencies, gpt_actions_token)
+            self._upgrade(dependencies, mcp_auth_token, gpt_actions_token)
+            report_service_token_paths(self.paths)
+            del mcp_auth_token
             del gpt_actions_token
             return
 
@@ -2255,25 +2237,6 @@ class Installer:
             self.args,
             input_fn=self.input_fn,
         )
-        gpt_actions_token = resolve_gpt_actions_token(
-            self.paths,
-            self.redactor,
-            self.env,
-            non_interactive=self.args.non_interactive,
-            getpass_fn=self.getpass_fn,
-        )
-        requested_mcp_auth_token = resolve_mcp_auth_token(
-            self.args,
-            self.paths,
-            self.redactor,
-            getpass_fn=self.getpass_fn,
-        )
-        if requested_mcp_auth_token is not None and hmac.compare_digest(
-            gpt_actions_token,
-            requested_mcp_auth_token,
-        ):
-            raise ToolError("GPT Actions and MCP bearer tokens must be different")
-
         terminal_was_active = service_active(
             self.runner,
             dependencies.systemctl,
@@ -2297,7 +2260,6 @@ class Installer:
             systemctl_command(self.runner, dependencies.systemctl, "stop", SERVICE_NAME)
 
         units_changed = False
-        mcp_auth_token = requested_mcp_auth_token
         with ProfileLock(self.paths.lock_file):
             version = install_or_update_joplin(
                 self.runner,
@@ -2358,11 +2320,7 @@ class Installer:
                 supervisor,
                 dependencies.node,
             )
-            adapter_unit_changed = install_adapter_unit(
-                self.paths,
-                self.args,
-                auth_enabled=mcp_auth_token is not None,
-            )
+            adapter_unit_changed = install_adapter_unit(self.paths, self.args)
             units_changed = joplin_unit_changed or adapter_unit_changed
 
         # Reload even when content is unchanged: the user manager may have restarted.
@@ -2379,16 +2337,16 @@ class Installer:
             )
         if self.args.no_start_service:
             LOG.info("services were not started due to --no-start-service")
-            return
-        self._restart_and_smoke(
-            dependencies,
-            mcp_auth_token,
-            gpt_actions_token,
-        )
-        if mcp_auth_token is not None:
-            del mcp_auth_token
-        del gpt_actions_token
+        else:
+            self._restart_and_smoke(
+                dependencies,
+                mcp_auth_token,
+                gpt_actions_token,
+            )
         LOG.info("Joplin Terminal and joplin-md-sync service installation completed")
+        report_service_token_paths(self.paths)
+        del mcp_auth_token
+        del gpt_actions_token
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2399,7 +2357,6 @@ def main(argv: list[str] | None = None) -> int:
         args = build_parser(env).parse_args(argv)
         redactor.add(args.nextcloud_password)
         redactor.add(args.e2ee_password)
-        redactor.add(args.mcp_auth_token)
         redactor.add(env.get("JOPLIN_NEXTCLOUD_PASSWORD"))
         redactor.add(env.get("JOPLIN_E2EE_PASSWORD"))
         redactor.add(env.get("JOPLIN_MCP_AUTH_TOKEN"))

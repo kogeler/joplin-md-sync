@@ -973,6 +973,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
         raise errors.InternalError(f"unknown MCP subcommand: {args.mcp_command}")
 
     from joplin_md_sync.mcp_server import (
+        BearerTokenSource,
         McpDispatcher,
         is_loopback_host,
         serve_mcp_http,
@@ -1016,10 +1017,30 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
     allowed_origins: set[str] = set()
     for origin in args.allowed_origin:
         normalized = origin.rstrip("/")
-        split = urllib.parse.urlsplit(normalized)
+        try:
+            split = urllib.parse.urlsplit(normalized)
+        except (UnicodeError, ValueError):
+            raise UnsafeOperationError(
+                f"invalid --allowed-origin value: {origin!r}"
+            ) from None
         if split.scheme not in ("http", "https") or not split.hostname:
             raise UnsafeOperationError(f"invalid --allowed-origin value: {origin!r}")
         allowed_origins.add(normalized)
+
+    mcp_token: str | None = None
+    validation_joplin_token: str | None = None
+    if args.auth_token_file:
+        from joplin_md_sync.auth import token_values_equal
+
+        try:
+            mcp_token = BearerTokenSource(Path(args.auth_token_file)).read()
+        except errors.AuthError as exc:
+            raise UnsafeOperationError(str(exc)) from None
+        validation_joplin_token = resolve_token(args.token_file)
+        if token_values_equal(mcp_token, validation_joplin_token):
+            raise UnsafeOperationError("MCP token must differ from the Joplin token")
+        if mcp_token not in _REDACT_TOKENS:
+            _REDACT_TOKENS.append(mcp_token)
 
     def client_factory() -> JoplinClient:
         token = resolve_token(args.token_file)
@@ -1052,17 +1073,10 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             GptActionsTransport,
             validate_distinct_actions_token,
         )
-        from joplin_md_sync.mcp_server import BearerTokenSource
-
         try:
             actions_source = ActionsTokenSource(Path(args.gpt_actions_token_file))
             actions_token = actions_source.read()
-            joplin_token = resolve_token(args.token_file)
-            mcp_token = (
-                BearerTokenSource(Path(args.auth_token_file)).read()
-                if args.auth_token_file
-                else None
-            )
+            joplin_token = validation_joplin_token or resolve_token(args.token_file)
             validate_distinct_actions_token(
                 actions_token, joplin_token=joplin_token, mcp_token=mcp_token
             )

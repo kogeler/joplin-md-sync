@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import hmac
 import ipaddress
 import json
 import logging
+import socket
+import threading
 import urllib.parse
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,7 +14,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from joplin_md_sync import __version__
+from joplin_md_sync.auth import (
+    BearerTokenError,
+    accepts_bearer_token,
+    bearer_token_syntax_valid,
+    read_protected_bearer_token,
+)
 from joplin_md_sync.errors import AuthError
+from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.mcp_service import JoplinMcpService
 from joplin_md_sync.tool_executor import ToolExecutor
 from joplin_md_sync.tool_registry import ToolRegistry, build_tool_registry
@@ -29,8 +37,11 @@ DEFAULT_MCP_HOST = "127.0.0.1"
 DEFAULT_MCP_PORT = 8765
 DEFAULT_MCP_PATH = "/mcp"
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
+MAX_HTTP_CONNECTIONS = 16
+HTTP_CONNECTION_TIMEOUT_SECONDS = 15.0
 
 JsonObject = dict[str, Any]
+SocketRequest = socket.socket | tuple[bytes, socket.socket]
 
 
 class RpcError(Exception):
@@ -161,7 +172,7 @@ class McpDispatcher:
 
 
 class BearerTokenSource:
-    """Optional MCP shared-secret source, reloaded to support token rotation."""
+    """Optional protected MCP token source, reloaded for every authentication."""
 
     def __init__(self, path: Path | None) -> None:
         self.path = path
@@ -176,20 +187,16 @@ class BearerTokenSource:
         if self.path is None:
             return ""
         try:
-            token = self.path.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise AuthError(f"MCP auth token file cannot be read: {self.path}: {exc}") from None
-        if not token:
-            raise AuthError(f"MCP auth token file is empty: {self.path}")
-        return token
+            return read_protected_bearer_token(self.path, label="MCP auth")
+        except BearerTokenError as exc:
+            raise AuthError(str(exc)) from None
 
     def accepts(self, authorization: str | None) -> bool:
         if not self.enabled:
             return True
-        if authorization is None or not authorization.startswith("Bearer "):
+        if not bearer_token_syntax_valid(authorization):
             return False
-        supplied = authorization.removeprefix("Bearer ").strip()
-        return bool(supplied) and hmac.compare_digest(supplied, self.read())
+        return accepts_bearer_token(authorization, self.read())
 
 
 def is_loopback_host(host: str) -> bool:
@@ -204,6 +211,7 @@ def is_loopback_host(host: str) -> bool:
 class McpHttpServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+    request_queue_size = MAX_HTTP_CONNECTIONS
 
     def __init__(
         self,
@@ -214,13 +222,42 @@ class McpHttpServer(ThreadingHTTPServer):
         token_source: BearerTokenSource | None = None,
         allowed_origins: frozenset[str] = frozenset(),
         actions_transport: GptActionsTransport | None = None,
+        max_http_connections: int = MAX_HTTP_CONNECTIONS,
+        connection_timeout: float = HTTP_CONNECTION_TIMEOUT_SECONDS,
     ) -> None:
+        if max_http_connections <= 0:
+            raise ValueError("max_http_connections must be positive")
+        if connection_timeout <= 0:
+            raise ValueError("connection_timeout must be positive")
         self.dispatcher = dispatcher
         self.endpoint = endpoint
         self.token_source = token_source or BearerTokenSource(None)
         self.allowed_origins = allowed_origins
         self.actions_transport = actions_transport
+        self._request_slots = threading.BoundedSemaphore(max_http_connections)
+        self._connection_timeout = connection_timeout
         super().__init__(address, McpRequestHandler)
+
+    def get_request(self) -> tuple[socket.socket, Any]:
+        request, client_address = super().get_request()
+        request.settimeout(self._connection_timeout)
+        return request, client_address
+
+    def process_request(self, request: SocketRequest, client_address: Any) -> None:
+        if not self._request_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request: SocketRequest, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._request_slots.release()
 
 
 class McpRequestHandler(BaseHTTPRequestHandler):
@@ -236,6 +273,8 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         if allow:
             self.send_header("Allow", allow)
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -245,6 +284,8 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -258,14 +299,20 @@ class McpRequestHandler(BaseHTTPRequestHandler):
 
     def _authorized(self) -> bool:
         try:
-            accepted = self.server.token_source.accepts(self.headers.get("Authorization"))
+            authorization_values = self.headers.get_all("Authorization", [])
+            authorization = (
+                authorization_values[0] if len(authorization_values) == 1 else None
+            )
+            accepted = self.server.token_source.accepts(authorization)
         except AuthError as exc:
             log.error("%s", exc)
             accepted = False
         if accepted:
             return True
+        self.close_connection = True
         self.send_response(HTTPStatus.UNAUTHORIZED)
         self.send_header("WWW-Authenticate", 'Bearer realm="joplin-md-sync-mcp"')
+        self.send_header("Connection", "close")
         self.send_header("Content-Length", "0")
         self.end_headers()
         return False
@@ -277,7 +324,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         normalized = origin.rstrip("/")
         if normalized in self.server.allowed_origins:
             return True
-        hostname = urllib.parse.urlsplit(origin).hostname or ""
+        try:
+            hostname = urllib.parse.urlsplit(origin).hostname or ""
+        except (UnicodeError, ValueError):
+            return False
         raw_bound_host = self.server.server_address[0]
         bound_host = (
             raw_bound_host.decode("ascii", "replace")
@@ -287,10 +337,18 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         return is_loopback_host(hostname) and is_loopback_host(bound_host)
 
     def _common_checks(self) -> bool:
-        if urllib.parse.urlsplit(self.path).path != self.server.endpoint:
+        try:
+            request_path = urllib.parse.urlsplit(self.path).path
+        except (UnicodeError, ValueError):
+            self.close_connection = True
+            self._empty(HTTPStatus.BAD_REQUEST)
+            return False
+        if request_path != self.server.endpoint:
+            self.close_connection = True
             self._empty(HTTPStatus.NOT_FOUND)
             return False
         if not self._origin_allowed():
+            self.close_connection = True
             self._empty(HTTPStatus.FORBIDDEN)
             return False
         return self._authorized()
@@ -300,7 +358,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         return transport is not None and transport.handle(self, method)
 
     def _handle_health(self) -> bool:
-        path = urllib.parse.urlsplit(self.path).path
+        try:
+            path = urllib.parse.urlsplit(self.path).path
+        except (UnicodeError, ValueError):
+            return False
         if path not in {"/healthz", "/readyz"}:
             return False
         if not is_loopback_host(str(self.client_address[0])):
@@ -321,25 +382,26 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         if self._common_checks():
             self._empty(HTTPStatus.METHOD_NOT_ALLOWED, allow="POST")
 
+    def _unsupported_method(self, method: str) -> None:
+        if self._handle_action(method):
+            return
+        if self._common_checks():
+            self._empty(HTTPStatus.METHOD_NOT_ALLOWED, allow="POST")
+
     def do_HEAD(self) -> None:
-        if not self._handle_action("HEAD"):
-            self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method ('HEAD')")
+        self._unsupported_method("HEAD")
 
     def do_PUT(self) -> None:
-        if not self._handle_action("PUT"):
-            self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method ('PUT')")
+        self._unsupported_method("PUT")
 
     def do_PATCH(self) -> None:
-        if not self._handle_action("PATCH"):
-            self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method ('PATCH')")
+        self._unsupported_method("PATCH")
 
     def do_OPTIONS(self) -> None:
-        if not self._handle_action("OPTIONS"):
-            self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method ('OPTIONS')")
+        self._unsupported_method("OPTIONS")
 
     def do_TRACE(self) -> None:
-        if not self._handle_action("TRACE"):
-            self.send_error(HTTPStatus.NOT_IMPLEMENTED, "Unsupported method ('TRACE')")
+        self._unsupported_method("TRACE")
 
     def do_POST(self) -> None:
         if self._handle_action("POST"):
@@ -370,8 +432,11 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._rpc_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, -32600, "Request body is too large")
             return
         try:
-            message = json.loads(self.rfile.read(length).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            raw = self.rfile.read(length)
+            if json_nesting_exceeds(raw):
+                raise ValueError("JSON nesting is too deep")
+            message = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
             self._rpc_error(HTTPStatus.BAD_REQUEST, -32700, "Parse error")
             return
 
