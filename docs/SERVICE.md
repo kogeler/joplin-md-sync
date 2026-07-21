@@ -678,7 +678,7 @@ Pin only the adapter while updating Joplin to latest:
 ```bash
 python3 install_joplin_terminal.py \
   --upgrade \
-  --joplin-md-sync-version 1.3.0
+  --joplin-md-sync-version 1.4.0
 ```
 
 Pin both versions, including for rollback:

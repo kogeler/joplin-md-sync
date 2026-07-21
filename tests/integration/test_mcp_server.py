@@ -639,7 +639,7 @@ class McpHttpTest(WorkspaceTestCase):
             rejected.sendall(b"GET /mcp HTTP/1.1\r\nHost: localhost\r\n\r\n")
             try:
                 self.assertEqual(rejected.recv(1024), b"")
-            except ConnectionResetError:
+            except (ConnectionAbortedError, ConnectionResetError):
                 pass
         finally:
             rejected.close()

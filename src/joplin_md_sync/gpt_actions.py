@@ -21,6 +21,7 @@ from joplin_md_sync.auth import (
     token_values_equal,
 )
 from joplin_md_sync.gpt_openapi import ACTION_PATH_PREFIX
+from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.tool_executor import ToolExecution, ToolExecutor
 from joplin_md_sync.tool_registry import ToolDefinition, ToolRegistry, tool_effect
 
@@ -317,6 +318,8 @@ class GptActionsTransport:
 
             try:
                 raw = handler.rfile.read(request_size)
+                if json_nesting_exceeds(raw):
+                    raise ValueError("JSON nesting is too deep")
                 arguments = json.loads(
                     raw.decode("utf-8"),
                     parse_constant=lambda value: (_ for _ in ()).throw(

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-21
+
 ### Added
 
 - Add a copyable agent-notes repository template with a guarded Markdown sync
@@ -19,8 +21,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- Validate generated and preserved Actions tokens using the same decoded
-  32-byte entropy requirement as the running service.
+- Validate generated and preserved Actions tokens using the same minimum
+  decoded 32-byte length as the running service.
 - Harden MCP and Actions authentication against weak or unsafe token files,
   non-ASCII and duplicated Authorization headers, malformed URL targets,
   deeply nested JSON, and unbounded pre-authentication connection threads.

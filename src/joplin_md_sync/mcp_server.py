@@ -21,6 +21,7 @@ from joplin_md_sync.auth import (
     read_protected_bearer_token,
 )
 from joplin_md_sync.errors import AuthError
+from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.mcp_service import JoplinMcpService
 from joplin_md_sync.tool_executor import ToolExecutor
 from joplin_md_sync.tool_registry import ToolRegistry, build_tool_registry
@@ -431,7 +432,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._rpc_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, -32600, "Request body is too large")
             return
         try:
-            message = json.loads(self.rfile.read(length).decode("utf-8"))
+            raw = self.rfile.read(length)
+            if json_nesting_exceeds(raw):
+                raise ValueError("JSON nesting is too deep")
+            message = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
             self._rpc_error(HTTPStatus.BAD_REQUEST, -32700, "Parse error")
             return

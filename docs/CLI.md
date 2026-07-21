@@ -24,7 +24,7 @@ Every `--json` response contains:
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.3.0",
+  "tool_version": "1.4.0",
   "workspace": "/abs/path/notes"
 }
 ```
