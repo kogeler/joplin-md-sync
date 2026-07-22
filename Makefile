@@ -32,7 +32,7 @@ DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
 VERSION        := $(shell cat .version)
 TEST_WORKERS   ?= 4
 
-.PHONY: help venv venv-dev freeze test test-live lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
+.PHONY: help venv venv-dev freeze test test-live test-service-installer lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
 
 help:                    ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -72,13 +72,16 @@ test: venv-dev           ## full test suite in parallel (override TEST_WORKERS=N
 test-live: venv-dev      ## opt-in live MCP + GPT Actions tests (reads ./token)
 	$(PYTHON_DEV) -m pytest -q tests_live
 
+test-service-installer: venv-dev  ## Linux headless service installer tests
+	$(PYTHON_DEV) -m unittest discover -s scripts/joplin_terminal_service/tests -v
+
 lint: venv-dev           ## static checks (ruff)
 	$(VENV_DEV)/$(BIN)/ruff check src tests tests_live scripts
 
 typecheck: venv-dev      ## strict typing (mypy)
 	$(VENV_DEV)/$(BIN)/mypy
 
-check: lint typecheck test  ## everything CI runs before building
+check: lint typecheck test  ## cross-platform lint, typing, and package tests
 
 build: venv-dev          ## wheel + sdist into dist/
 	rm -rf dist build

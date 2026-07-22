@@ -21,6 +21,7 @@ import secrets
 import selectors
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -32,6 +33,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 ASSET_BASE_URL = os.environ.get(
     "JOPLIN_TERMINAL_ASSET_BASE_URL",
@@ -114,6 +116,107 @@ MCP_RELEASE_API_URL = os.environ.get(
 )
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 _PASSWORD_PROMPT_RE = re.compile(rb"(?i)(?:master[ -]?)?password[^\r\n]{0,80}:")
+_SAML_CODE_RE = re.compile(r"^[0-9]{9}$")
+
+
+@dataclass(frozen=True)
+class SyncTargetSpec:
+    name: str
+    target_id: int
+    label: str
+    location_label: str | None = None
+    username_label: str | None = None
+    secret_label: str | None = None
+    browser_auth: bool = False
+    saml_auth: bool = False
+    credentials_optional: bool = False
+    auth_setting: str | None = None
+
+
+SYNC_TARGETS = {
+    spec.name: spec
+    for spec in (
+        SyncTargetSpec("filesystem", 2, "File system", "absolute directory"),
+        SyncTargetSpec(
+            "onedrive",
+            3,
+            "OneDrive",
+            browser_auth=True,
+            auth_setting="sync.3.auth",
+        ),
+        SyncTargetSpec(
+            "nextcloud",
+            5,
+            "Nextcloud",
+            "Nextcloud WebDAV URL",
+            "Nextcloud username",
+            "Nextcloud password",
+        ),
+        SyncTargetSpec(
+            "webdav",
+            6,
+            "WebDAV",
+            "WebDAV URL",
+            "WebDAV username",
+            "WebDAV password",
+            credentials_optional=True,
+        ),
+        SyncTargetSpec(
+            "dropbox",
+            7,
+            "Dropbox",
+            browser_auth=True,
+            auth_setting="sync.7.auth",
+        ),
+        SyncTargetSpec(
+            "s3",
+            8,
+            "S3",
+            "S3 bucket",
+            "S3 access key",
+            "S3 secret key",
+        ),
+        SyncTargetSpec(
+            "joplin-server",
+            9,
+            "Joplin Server",
+            "Joplin Server URL",
+            "Joplin Server email",
+            "Joplin Server password",
+        ),
+        SyncTargetSpec(
+            "joplin-cloud",
+            10,
+            "Joplin Cloud",
+            browser_auth=True,
+            auth_setting="sync.10.password",
+        ),
+        SyncTargetSpec(
+            "joplin-server-saml",
+            11,
+            "Joplin Server (SAML)",
+            "Joplin Server URL",
+            saml_auth=True,
+        ),
+    )
+}
+
+
+@dataclass(frozen=True)
+class SyncSetting:
+    name: str
+    value: str
+    secret: bool = False
+
+
+@dataclass(frozen=True)
+class SyncConfiguration:
+    target: SyncTargetSpec
+    settings: tuple[SyncSetting, ...]
+
+    @property
+    def public_settings(self) -> tuple[SyncSetting, ...]:
+        return tuple(setting for setting in self.settings if not setting.secret)
 
 
 @dataclass(frozen=True)
@@ -189,51 +292,96 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     values = os.environ if env is None else env
     parser = argparse.ArgumentParser(
         description=(
-            "Install an isolated Joplin Terminal, configure existing Nextcloud E2EE, "
-            "install the released joplin-md-sync service with generated Actions and MCP "
+            "Install an isolated Joplin Terminal with any supported sync target, install "
+            "the released joplin-md-sync service with generated Actions and MCP "
             "credentials, create systemd user services, or purge the complete managed "
             "local installation."
         )
     )
-    parser.add_argument("--nextcloud-url", default=values.get("JOPLIN_NEXTCLOUD_URL"))
-    parser.add_argument("--nextcloud-user", default=values.get("JOPLIN_NEXTCLOUD_USER"))
-    parser.add_argument("--nextcloud-password")
-    parser.add_argument("--e2ee-password")
+    parser.add_argument(
+        "--sync-target",
+        choices=tuple(SYNC_TARGETS),
+        default=values.get("JOPLIN_SYNC_TARGET"),
+        help="Joplin sync backend; required for a full install",
+    )
+    parser.add_argument(
+        "--sync-location",
+        default=values.get("JOPLIN_SYNC_LOCATION"),
+        help="filesystem directory, server URL, or S3 bucket required by the target",
+    )
+    parser.add_argument(
+        "--sync-username",
+        default=values.get("JOPLIN_SYNC_USERNAME"),
+        help="Nextcloud/WebDAV username, Joplin Server email, or S3 access key",
+    )
+    parser.add_argument(
+        "--sync-secret-file",
+        default=values.get("JOPLIN_SYNC_SECRET_FILE"),
+        help="protected one-line file containing the target password or S3 secret key",
+    )
+    parser.add_argument(
+        "--s3-endpoint",
+        default=values.get("JOPLIN_S3_ENDPOINT"),
+        help="S3-compatible HTTP(S) endpoint (default: https://s3.amazonaws.com/)",
+    )
+    parser.add_argument(
+        "--s3-region",
+        default=values.get("JOPLIN_S3_REGION"),
+        help="S3 region; required for the S3 target",
+    )
+    parser.add_argument(
+        "--s3-force-path-style",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="enable or disable path-style S3 requests (default: disabled)",
+    )
+    parser.add_argument(
+        "--e2ee-password-file",
+        default=values.get("JOPLIN_E2EE_PASSWORD_FILE"),
+        help="protected one-line file containing the existing Joplin E2EE password",
+    )
     parser.add_argument(
         "--profile-dir",
         default=values.get("JOPLIN_PROFILE_DIR", str(default_profile_dir(values))),
+        help="dedicated Joplin Terminal profile (default: XDG data home/joplin-agent/profile)",
     )
     parser.add_argument(
         "--api-port",
         type=int,
         default=_env_int(values, "JOPLIN_API_PORT", DEFAULT_API_PORT),
+        help=f"loopback Joplin Data API port (default: {DEFAULT_API_PORT})",
     )
     parser.add_argument(
         "--sync-interval",
         type=int,
         default=_env_int(values, "JOPLIN_SYNC_INTERVAL", DEFAULT_SYNC_INTERVAL),
+        help=f"recurrent sync interval in seconds (default: {DEFAULT_SYNC_INTERVAL})",
     )
     parser.add_argument(
         "--joplin-version",
         default=values.get("JOPLIN_VERSION", DEFAULT_JOPLIN_VERSION),
+        help=f"Joplin npm version or latest (default: {DEFAULT_JOPLIN_VERSION})",
     )
     parser.add_argument(
         "--joplin-prefix",
         default=values.get("JOPLIN_INSTALL_PREFIX", "~/.local"),
+        help="installation prefix for managed executables and npm data (default: ~/.local)",
     )
     parser.add_argument(
         "--joplin-md-sync-version",
         default=values.get("JOPLIN_MD_SYNC_VERSION", DEFAULT_MCP_VERSION),
+        help=f"joplin-md-sync release version or latest (default: {DEFAULT_MCP_VERSION})",
     )
     parser.add_argument(
         "--mcp-port",
         type=int,
         default=_env_int(values, "JOPLIN_MCP_PORT", DEFAULT_MCP_PORT),
+        help=f"combined MCP and Actions listener port (default: {DEFAULT_MCP_PORT})",
     )
     parser.add_argument(
         "--allow-remote-mcp",
         action="store_true",
-        help="bind authenticated MCP to 0.0.0.0 instead of loopback",
+        help="bind the authenticated combined adapter to 0.0.0.0 instead of loopback",
     )
     parser.add_argument(
         "--upgrade",
@@ -243,11 +391,21 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
             "--joplin-md-sync-version independently override latest"
         ),
     )
-    parser.add_argument("--skip-e2ee-bootstrap", action="store_true")
-    parser.add_argument("--skip-initial-sync", action="store_true")
-    parser.add_argument("--no-enable-service", action="store_true")
-    parser.add_argument("--no-start-service", action="store_true")
-    parser.add_argument("--force-reconfigure", action="store_true")
+    parser.add_argument(
+        "--no-enable-service",
+        action="store_true",
+        help="install units without enabling automatic startup",
+    )
+    parser.add_argument(
+        "--no-start-service",
+        action="store_true",
+        help="leave both services stopped and skip live smoke tests",
+    )
+    parser.add_argument(
+        "--force-reconfigure",
+        action="store_true",
+        help="allow a non-interactive change to an existing sync target or location",
+    )
     parser.add_argument(
         "--enable-linger",
         action="store_true",
@@ -263,9 +421,21 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
         action="store_true",
         help="confirm --purge without an interactive PURGE prompt",
     )
-    parser.add_argument("--non-interactive", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="never prompt; require every needed static value and secret file",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate arguments and print a plan without reading secrets or changing state",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="enable redacted debug logging",
+    )
     return parser
 
 
@@ -312,16 +482,97 @@ def validate_version(value: str, option: str) -> None:
         raise ToolError(f"{option} must be 'latest' or a concrete version such as 3.6.2")
 
 
-def validate_nextcloud_url(value: str) -> None:
-    split = urllib.parse.urlsplit(value)
-    if split.scheme not in ("http", "https") or not split.hostname:
-        raise ToolError("--nextcloud-url must be an absolute HTTP(S) URL")
+def validate_http_url(value: str, option: str) -> None:
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+        raise ToolError(f"{option} must not contain control characters")
+    try:
+        split = urllib.parse.urlsplit(value)
+        hostname = split.hostname
+        _port = split.port
+    except ValueError:
+        raise ToolError(f"{option} must be a valid absolute HTTP(S) URL") from None
+    if split.scheme not in ("http", "https") or not hostname:
+        raise ToolError(f"{option} must be an absolute HTTP(S) URL")
     if split.username or split.password:
-        raise ToolError("--nextcloud-url must not contain embedded credentials")
+        raise ToolError(f"{option} must not contain embedded credentials")
     if split.query or split.fragment:
-        raise ToolError("--nextcloud-url must not contain a query string or fragment")
+        raise ToolError(f"{option} must not contain a query string or fragment")
     if split.scheme != "https":
-        LOG.warning("Nextcloud URL does not use HTTPS")
+        LOG.warning("%s does not use HTTPS", option)
+
+
+def selected_sync_target(args: argparse.Namespace) -> SyncTargetSpec:
+    if not args.sync_target:
+        raise ToolError(
+            "--sync-target or JOPLIN_SYNC_TARGET is required; choose one of: "
+            + ", ".join(SYNC_TARGETS)
+        )
+    return SYNC_TARGETS[args.sync_target]
+
+
+def validate_sync_args(args: argparse.Namespace) -> None:
+    target = selected_sync_target(args)
+    if target.location_label and not args.sync_location:
+        raise ToolError(
+            f"--sync-location or JOPLIN_SYNC_LOCATION is required for {target.label} "
+            f"({target.location_label})"
+        )
+    if target.username_label and not target.credentials_optional and not args.sync_username:
+        raise ToolError(
+            f"--sync-username or JOPLIN_SYNC_USERNAME is required for {target.label} "
+            f"({target.username_label})"
+        )
+    if target.secret_label and not target.credentials_optional:
+        if args.non_interactive and not args.sync_secret_file:
+            raise ToolError(
+                f"--sync-secret-file or JOPLIN_SYNC_SECRET_FILE is required for "
+                f"non-interactive {target.label} installation"
+            )
+    if target.credentials_optional:
+        if args.sync_secret_file and not args.sync_username:
+            raise ToolError(
+                "WebDAV --sync-secret-file requires --sync-username"
+            )
+        if args.non_interactive and args.sync_username and not args.sync_secret_file:
+            raise ToolError(
+                "non-interactive WebDAV credentials require --sync-secret-file"
+            )
+    if target.browser_auth or target.saml_auth:
+        if args.non_interactive:
+            raise ToolError(f"{target.label} authentication requires an interactive terminal")
+    if target.target_id == 2:
+        location = Path(args.sync_location).expanduser()
+        if not location.is_absolute():
+            raise ToolError("filesystem --sync-location must be an absolute path")
+        if not location.is_dir():
+            raise ToolError("filesystem --sync-location must be an existing directory")
+        if not os.access(location, os.W_OK | os.X_OK):
+            raise ToolError("filesystem --sync-location must be writable and searchable")
+        if args.sync_username or args.sync_secret_file:
+            raise ToolError("filesystem sync does not accept static credentials")
+    elif target.target_id in (5, 6, 9, 11):
+        validate_http_url(args.sync_location, "--sync-location")
+        if target.target_id == 11 and (args.sync_username or args.sync_secret_file):
+            raise ToolError("Joplin Server SAML does not accept static credentials")
+    elif target.target_id == 8:
+        if not args.s3_region:
+            raise ToolError("--s3-region or JOPLIN_S3_REGION is required for S3")
+        endpoint = args.s3_endpoint or "https://s3.amazonaws.com/"
+        validate_http_url(endpoint, "--s3-endpoint")
+    elif (
+        any(value for value in (args.sync_location, args.sync_username, args.sync_secret_file))
+        or args.s3_endpoint is not None
+        or args.s3_region is not None
+        or args.s3_force_path_style is not None
+    ):
+        raise ToolError(f"{target.label} does not accept static sync credentials")
+
+    if target.target_id != 8 and (
+        args.s3_endpoint is not None
+        or args.s3_region is not None
+        or args.s3_force_path_style is not None
+    ):
+        raise ToolError("S3 options are only valid with --sync-target s3")
 
 
 def validate_args(args: argparse.Namespace) -> None:
@@ -344,11 +595,7 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ToolError(f"--sync-interval must be one of: {allowed}")
     if args.upgrade:
         return
-    if not args.nextcloud_url:
-        raise ToolError("--nextcloud-url or JOPLIN_NEXTCLOUD_URL is required")
-    if not args.nextcloud_user:
-        raise ToolError("--nextcloud-user or JOPLIN_NEXTCLOUD_USER is required")
-    validate_nextcloud_url(args.nextcloud_url)
+    validate_sync_args(args)
 
 
 def _append_bounded(buffer: bytearray, chunk: bytes, limit: int) -> int:
@@ -494,7 +741,6 @@ class CommandRunner:
                         continue
                     if not chunk:
                         selector.unregister(key.fileobj)
-                        key.fileobj.close()
                         continue
                     _append_bounded(key.data, chunk, max_output_bytes)
                 now = time.monotonic()
@@ -537,6 +783,40 @@ class CommandRunner:
                 f"{heartbeat_label} failed with exit {returncode}{suffix}"
             )
         return result
+
+    def run_interactive(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        timeout: float,
+    ) -> None:
+        command = [os.fspath(value) for value in args]
+        LOG.debug("running interactively: %s", safe_command(command))
+        try:
+            with open("/dev/tty", "r+b", buffering=0) as terminal:
+                result = subprocess.run(
+                    command,
+                    stdin=terminal,
+                    stdout=terminal,
+                    stderr=terminal,
+                    env=self.env,
+                    timeout=timeout,
+                    check=False,
+                )
+        except subprocess.TimeoutExpired:
+            raise ToolError(
+                f"interactive command timed out after {timeout:g}s: {safe_command(command)}"
+            ) from None
+        except OSError as exc:
+            raise ToolError(
+                "interactive authentication requires a controlling terminal: "
+                f"{type(exc).__name__}"
+            ) from None
+        if result.returncode != 0:
+            raise ToolError(
+                f"interactive command failed with exit {result.returncode}: "
+                f"{safe_command(command)}"
+            )
 
 
 def check_dependencies(runner: CommandRunner) -> Dependencies:
@@ -736,7 +1016,7 @@ def fetch_release_bytes(url: str, *, limit: int) -> bytes:
         raise ToolError("could not download the requested GitHub release metadata") from None
     if len(data) > limit:
         raise ToolError("downloaded GitHub release metadata is unexpectedly large")
-    return data
+    return cast(bytes, data)
 
 
 def resolve_latest_mcp_version() -> str:
@@ -1257,7 +1537,7 @@ def configure_lingering(
             username,
         )
         return False
-    command = [loginctl, "enable-linger", username]
+    command: list[str | os.PathLike[str]] = [loginctl, "enable-linger", username]
     LOG.info("enabling systemd user lingering: %s", safe_command(command))
     runner.run(command)
     if not lingering_enabled(runner, loginctl, username):
@@ -1309,94 +1589,195 @@ def write_setting(
 
 def confirm_reconfigure(
     args: argparse.Namespace,
+    configuration: SyncConfiguration,
     current_target: str,
-    current_url: str,
+    current_settings: Mapping[str, str],
     input_fn: Callable[[str], str] = terminal_input,
-) -> None:
-    target_mismatch = current_target not in ("0", "5", "null", "")
-    url_mismatch = bool(current_url and current_url != "null") and (
-        current_url.rstrip("/") != args.nextcloud_url.rstrip("/")
+) -> bool:
+    target_id = str(configuration.target.target_id)
+    if current_target in ("0", "null", ""):
+        return False
+    target_mismatch = current_target != target_id
+    setting_mismatch = any(
+        current_settings.get(setting.name, "") not in ("", "null", setting.value)
+        for setting in configuration.public_settings
     )
-    if not (target_mismatch or url_mismatch):
-        return
-    LOG.warning(
-        "profile uses sync target %s and Nextcloud URL %s",
-        current_target,
-        current_url or "(unset)",
-    )
+    if not (target_mismatch or setting_mismatch):
+        return False
+    LOG.warning("existing profile sync configuration differs from requested %s", configuration.target.label)
     if args.force_reconfigure:
-        return
+        return True
     if args.non_interactive:
-        raise ToolError("existing sync target/URL differs; pass --force-reconfigure to change it")
-    answer = input_fn("Reconfigure this profile for the requested Nextcloud target? [y/N] ")
+        raise ToolError("existing sync configuration differs; pass --force-reconfigure to change it")
+    answer = input_fn(
+        f"Reconfigure this profile for {configuration.target.label}? [y/N] "
+    )
     if answer.strip().lower() not in ("y", "yes"):
         raise ToolError("configuration change cancelled")
+    return True
 
 
-def available_secret(
-    cli_value: str | None,
-    environment_name: str,
-    env: Mapping[str, str],
-) -> str | None:
-    if cli_value is not None:
-        return cli_value
-    return env.get(environment_name)
+def load_secret_file(value: str | os.PathLike[str], label: str) -> str:
+    path = absolute_path(value)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise ToolError(f"could not read {label} file {path}: {type(exc).__name__}") from None
+    try:
+        metadata = os.fstat(fd)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ToolError(f"{label} file must be a regular file, not a symlink: {path}")
+        if metadata.st_uid != os.geteuid():
+            raise ToolError(f"{label} file must be owned by the current user: {path}")
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise ToolError(f"{label} file must not be accessible by group or others: {path}")
+        if metadata.st_size > 4096:
+            raise ToolError(f"{label} file is unexpectedly large: {path}")
+        chunks: list[bytes] = []
+        remaining = 4097
+        while remaining:
+            chunk = os.read(fd, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+    except OSError as exc:
+        raise ToolError(f"could not read {label} file {path}: {type(exc).__name__}") from None
+    finally:
+        os.close(fd)
+    if len(raw) > 4096:
+        raise ToolError(f"{label} file is unexpectedly large: {path}")
+    try:
+        secret = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ToolError(f"{label} file must contain UTF-8 text: {path}") from None
+    secret = secret.removesuffix("\n").removesuffix("\r")
+    if not secret or "\x00" in secret or "\n" in secret or "\r" in secret:
+        raise ToolError(f"{label} file must contain exactly one non-empty line: {path}")
+    return secret
 
 
 def resolve_secret(
-    cli_value: str | None,
-    environment_name: str,
+    secret_file: str | None,
+    file_option: str,
     prompt: str,
     *,
-    env: Mapping[str, str],
     non_interactive: bool,
     getpass_fn: Callable[[str], str] = getpass.getpass,
 ) -> str:
-    value = available_secret(cli_value, environment_name, env)
-    if value:
-        return value
+    if secret_file:
+        return load_secret_file(secret_file, prompt.strip(": "))
     if non_interactive:
-        raise ToolError(
-            f"required secret is missing; pass its CLI option or set {environment_name}"
-        )
+        raise ToolError(f"required secret is missing; pass {file_option}")
     try:
         value = getpass_fn(prompt)
     except (EOFError, OSError):
         raise ToolError(
-            f"interactive input for {environment_name} is unavailable; "
-            "pass its CLI option or set the environment variable"
+            f"interactive input is unavailable; pass {file_option}"
         ) from None
     if not value:
         raise ToolError(f"{prompt.strip(': ')} may not be empty")
     return value
 
 
+def resolve_sync_configuration(
+    args: argparse.Namespace,
+    redactor: SecretRedactor,
+    *,
+    getpass_fn: Callable[[str], str] = getpass.getpass,
+) -> SyncConfiguration:
+    target = selected_sync_target(args)
+    settings: list[SyncSetting] = []
+    prefix = f"sync.{target.target_id}"
+    if target.target_id == 2:
+        settings.append(SyncSetting(f"{prefix}.path", str(resolved_path(args.sync_location))))
+    elif target.target_id in (5, 6, 9):
+        settings.append(SyncSetting(f"{prefix}.path", args.sync_location.rstrip("/")))
+        username = args.sync_username or ""
+        settings.append(SyncSetting(f"{prefix}.username", username))
+        if target.credentials_optional and not username:
+            secret = ""
+        else:
+            assert target.secret_label is not None
+            secret = resolve_secret(
+                args.sync_secret_file,
+                "--sync-secret-file",
+                f"{target.secret_label}: ",
+                non_interactive=args.non_interactive,
+                getpass_fn=getpass_fn,
+            )
+            redactor.add(secret)
+        settings.append(SyncSetting(f"{prefix}.password", secret, secret=True))
+    elif target.target_id == 8:
+        secret = resolve_secret(
+            args.sync_secret_file,
+            "--sync-secret-file",
+            "S3 secret key: ",
+            non_interactive=args.non_interactive,
+            getpass_fn=getpass_fn,
+        )
+        redactor.add(secret)
+        settings.extend(
+            (
+                SyncSetting(f"{prefix}.path", args.sync_location),
+                SyncSetting(
+                    f"{prefix}.url",
+                    (args.s3_endpoint or "https://s3.amazonaws.com/").rstrip("/") + "/",
+                ),
+                SyncSetting(f"{prefix}.region", args.s3_region),
+                SyncSetting(f"{prefix}.username", args.sync_username),
+                SyncSetting(f"{prefix}.password", secret, secret=True),
+                SyncSetting(
+                    f"{prefix}.forcePathStyle",
+                    "true" if args.s3_force_path_style else "false",
+                ),
+            )
+        )
+    elif target.target_id == 11:
+        settings.append(SyncSetting(f"{prefix}.path", args.sync_location.rstrip("/")))
+    return SyncConfiguration(target, tuple(settings))
+
+
 def configure_profile(
     runner: CommandRunner,
     paths: InstallPaths,
     args: argparse.Namespace,
-    nextcloud_password: str,
+    configuration: SyncConfiguration,
     *,
     input_fn: Callable[[str], str] = terminal_input,
-) -> None:
+) -> bool:
     paths.profile_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     paths.profile_dir.chmod(0o700)
     current_target = read_setting(runner, paths, "sync.target").split(maxsplit=1)[0]
-    current_url = read_setting(runner, paths, "sync.5.path")
-    confirm_reconfigure(args, current_target, current_url, input_fn)
-    LOG.info("configuring Nextcloud target and recurrent sync")
-    write_setting(runner, paths, "sync.target", "5")
-    write_setting(runner, paths, "sync.5.path", args.nextcloud_url)
-    write_setting(runner, paths, "sync.5.username", args.nextcloud_user)
-    write_setting(
-        runner,
-        paths,
-        "sync.5.password",
-        nextcloud_password,
-        secret=True,
+    current_settings = {
+        setting.name: read_setting(runner, paths, setting.name)
+        for setting in configuration.public_settings
+    }
+    reconfigured = confirm_reconfigure(
+        args,
+        configuration,
+        current_target,
+        current_settings,
+        input_fn,
     )
+    LOG.info(
+        "configuring %s target %d and recurrent sync",
+        configuration.target.label,
+        configuration.target.target_id,
+    )
+    for setting in configuration.settings:
+        write_setting(
+            runner,
+            paths,
+            setting.name,
+            setting.value,
+            secret=setting.secret,
+        )
+    write_setting(runner, paths, "sync.target", str(configuration.target.target_id))
     write_setting(runner, paths, "sync.interval", str(args.sync_interval))
     write_setting(runner, paths, "api.port", str(args.api_port))
+    return reconfigured
 
 
 def run_sync(runner: CommandRunner, paths: InstallPaths, label: str) -> None:
@@ -1407,6 +1788,106 @@ def run_sync(runner: CommandRunner, paths: InstallPaths, label: str) -> None:
         timeout=SYNC_TIMEOUT,
         sensitive_output=True,
     )
+
+
+def run_browser_authenticated_sync(
+    runner: CommandRunner,
+    paths: InstallPaths,
+    target: SyncTargetSpec,
+) -> None:
+    LOG.info("starting interactive %s authentication and initial sync", target.label)
+    if target.target_id == 3:
+        LOG.info(
+            "OneDrive redirects to 127.0.0.1:9967; forward that port when the host is remote"
+        )
+    runner.run_interactive(joplin_command(paths, "sync"), timeout=SYNC_TIMEOUT)
+    assert target.auth_setting is not None
+    persisted_auth = read_setting(runner, paths, target.auth_setting, sensitive=True)
+    if persisted_auth in ("", "null"):
+        raise ToolError(f"{target.label} authentication was not completed")
+    del persisted_auth
+    run_sync(
+        runner,
+        paths,
+        f"verifying persisted {target.label} authentication",
+    )
+
+
+def exchange_saml_code(
+    server_url: str,
+    code: str,
+    *,
+    timeout: float = 30.0,
+    urlopen: Callable[..., object] = urllib.request.urlopen,
+) -> tuple[str, str]:
+    cleaned = re.sub(r"[\s-]", "", code)
+    if not _SAML_CODE_RE.fullmatch(cleaned):
+        raise ToolError("Joplin Server SAML login code must contain exactly 9 digits")
+    request = urllib.request.Request(
+        f"{server_url.rstrip('/')}/api/login_with_code/{cleaned}",
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:  # type: ignore[attr-defined]
+            raw = response.read(64 * 1024 + 1)
+    except urllib.error.HTTPError as exc:
+        exc.read(64 * 1024 + 1)
+        status = exc.code
+        exc.close()
+        raise ToolError(f"Joplin Server rejected the SAML login code (HTTP {status})") from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ToolError(f"Joplin Server SAML login failed: {type(exc).__name__}") from None
+    if len(raw) > 64 * 1024:
+        raise ToolError("Joplin Server SAML login response is unexpectedly large")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ToolError("Joplin Server returned an invalid SAML login response") from None
+    if not isinstance(payload, dict):
+        raise ToolError("Joplin Server returned an invalid SAML login response")
+    session_id = payload.get("id")
+    user_id = payload.get("user_id")
+    for name, value in (("id", session_id), ("user_id", user_id)):
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > 4096
+            or any(character.isspace() or ord(character) < 0x20 for character in value)
+        ):
+            raise ToolError(f"Joplin Server SAML response has an invalid {name}")
+    assert isinstance(session_id, str)
+    assert isinstance(user_id, str)
+    return session_id, user_id
+
+
+def authenticate_saml(
+    runner: CommandRunner,
+    paths: InstallPaths,
+    configuration: SyncConfiguration,
+    redactor: SecretRedactor,
+    *,
+    reuse_existing: bool,
+    input_fn: Callable[[str], str] = terminal_input,
+) -> None:
+    if reuse_existing:
+        session_id = read_setting(runner, paths, "sync.11.id", sensitive=True)
+        user_id = read_setting(runner, paths, "sync.11.userId", sensitive=True)
+        if session_id not in ("", "null") and user_id not in ("", "null"):
+            del session_id
+            del user_id
+            LOG.info("reusing existing Joplin Server SAML session")
+            return
+    server_url = next(
+        setting.value for setting in configuration.settings if setting.name == "sync.11.path"
+    )
+    LOG.info("open this URL in a browser and complete SAML login: %s/login/sso-saml-app", server_url)
+    code = input_fn("Joplin Server SAML login code: ")
+    session_id, user_id = exchange_saml_code(server_url, code)
+    redactor.add(session_id)
+    redactor.add(user_id)
+    write_setting(runner, paths, "sync.11.id", session_id, secret=True)
+    write_setting(runner, paths, "sync.11.userId", user_id, secret=True)
+    LOG.info("Joplin Server SAML authentication completed")
 
 
 def _terminate_pty_child(pid: int, timeout: float = 5.0) -> int:
@@ -1513,7 +1994,13 @@ def run_e2ee_decrypt_pty(
 
 def e2ee_status_enabled(runner: CommandRunner, paths: InstallPaths) -> bool:
     result = runner.run(joplin_command(paths, "e2ee", "status"), check=False)
-    return result.returncode == 0 and b"Encryption is: Enabled" in result.stdout.encode()
+    if result.returncode != 0:
+        raise ToolError(f"Joplin E2EE status failed with exit {result.returncode}")
+    if "Encryption is: Enabled" in result.stdout:
+        return True
+    if "Encryption is: Disabled" in result.stdout:
+        return False
+    raise ToolError("Joplin returned an unrecognised E2EE status")
 
 
 def persisted_e2ee_works(runner: CommandRunner, paths: InstallPaths) -> bool:
@@ -1537,8 +2024,7 @@ def persisted_e2ee_works(runner: CommandRunner, paths: InstallPaths) -> bool:
 def manual_e2ee_error(paths: InstallPaths, detail: str) -> ToolError:
     command = safe_command(joplin_command(paths, "e2ee", "decrypt", "--retry-failed-items"))
     return ToolError(
-        f"{detail}. Run this command manually: {command}; then rerun the installer "
-        "with --skip-e2ee-bootstrap"
+        f"{detail}. Run this command manually: {command}; then rerun the installer"
     )
 
 
@@ -1547,25 +2033,20 @@ def bootstrap_e2ee(
     paths: InstallPaths,
     args: argparse.Namespace,
     redactor: SecretRedactor,
-    env: Mapping[str, str],
     *,
     getpass_fn: Callable[[str], str] = getpass.getpass,
-) -> None:
+) -> bool:
     if not e2ee_status_enabled(runner, paths):
-        raise manual_e2ee_error(
-            paths,
-            "sync target did not report E2EE enabled; no new master key was created",
-        )
+        runner.run(joplin_command(paths, "status"), sensitive_output=True)
+        LOG.info("remote data does not use Joplin E2EE; no key bootstrap is needed")
+        return False
     if persisted_e2ee_works(runner, paths):
         LOG.info("existing E2EE key cache is valid; bootstrap is not repeated")
-    elif args.skip_e2ee_bootstrap:
-        raise manual_e2ee_error(paths, "stored E2EE key password is not usable")
     else:
         password = resolve_secret(
-            args.e2ee_password,
-            "JOPLIN_E2EE_PASSWORD",
+            args.e2ee_password_file,
+            "--e2ee-password-file",
             "Joplin E2EE password: ",
-            env=env,
             non_interactive=args.non_interactive,
             getpass_fn=getpass_fn,
         )
@@ -1593,6 +2074,7 @@ def bootstrap_e2ee(
     # The command output contains notebook names, so it is captured and never logged.
     runner.run(joplin_command(paths, "status"), sensitive_output=True)
     LOG.info("Joplin can read synced metadata without decryption errors")
+    return True
 
 
 def extract_api_token(
@@ -1623,7 +2105,7 @@ def read_project_asset(relative_path: str, *, limit: int = 2 * 1024 * 1024) -> b
         raise ToolError(f"could not download installer asset {relative_path}") from None
     if len(data) > limit:
         raise ToolError(f"downloaded installer asset is unexpectedly large: {relative_path}")
-    return data
+    return cast(bytes, data)
 
 
 def deploy_supervisor(paths: InstallPaths) -> tuple[Path, Path]:
@@ -1645,6 +2127,7 @@ def render_unit(
     paths: InstallPaths,
     api_port: int,
     sync_interval: int,
+    extra_write_paths: Sequence[Path] = (),
 ) -> str:
     arguments: list[str | os.PathLike[str]] = [
         python,
@@ -1664,7 +2147,8 @@ def render_unit(
     ]
     exec_start = " ".join(systemd_quote(argument) for argument in arguments)
     read_write_paths = " ".join(
-        systemd_quote(path) for path in (paths.profile_dir, paths.lock_file.parent)
+        systemd_quote(path)
+        for path in (paths.profile_dir, paths.lock_file.parent, *extra_write_paths)
     )
     if node_uses_snap_dispatcher(node):
         # snap-confine cannot resolve its canonical mount from a systemd mount
@@ -1765,6 +2249,11 @@ def install_unit(
     supervisor: Path,
     node_path: Path,
 ) -> bool:
+    extra_write_paths = (
+        (resolved_path(args.sync_location),)
+        if args.sync_target == "filesystem" and args.sync_location
+        else ()
+    )
     content = render_unit(
         read_project_asset(f"systemd/{SERVICE_NAME}").decode("utf-8"),
         python=resolved_path(sys.executable),
@@ -1773,6 +2262,7 @@ def install_unit(
         paths=paths,
         api_port=args.api_port,
         sync_interval=args.sync_interval,
+        extra_write_paths=extra_write_paths,
     ).encode("utf-8")
     return write_unit(paths.unit_path, content)
 
@@ -1960,7 +2450,7 @@ def gpt_actions_probe_status(
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             response.read(64 * 1024 + 1)
-            return response.status
+            return cast(int, response.status)
     except urllib.error.HTTPError as exc:
         status = exc.code
         exc.read(64 * 1024 + 1)
@@ -2006,13 +2496,7 @@ def stop_after_startup_failure(
 def dry_run_plan(
     args: argparse.Namespace,
     paths: InstallPaths,
-    env: Mapping[str, str],
-    redactor: SecretRedactor,
 ) -> None:
-    nextcloud_password = available_secret(args.nextcloud_password, "JOPLIN_NEXTCLOUD_PASSWORD", env)
-    e2ee_password = available_secret(args.e2ee_password, "JOPLIN_E2EE_PASSWORD", env)
-    redactor.add(nextcloud_password)
-    redactor.add(e2ee_password)
     if args.upgrade:
         LOG.info("dry-run: would update isolated Joplin to %s", args.joplin_version)
         LOG.info(
@@ -2027,17 +2511,24 @@ def dry_run_plan(
         LOG.info("dry-run: managed GPT Actions token file: %s", paths.gpt_actions_token_file)
         LOG.info("dry-run: managed MCP token file: %s", paths.mcp_auth_token_file)
         return
-    if args.non_interactive and not nextcloud_password:
-        raise ToolError("JOPLIN_NEXTCLOUD_PASSWORD is required in non-interactive mode")
-    if args.non_interactive and not args.skip_e2ee_bootstrap and not e2ee_password:
-        raise ToolError("JOPLIN_E2EE_PASSWORD is required in non-interactive mode")
+    target = selected_sync_target(args)
     LOG.info("dry-run: would check systemd user lingering before requesting passwords")
     LOG.info("dry-run: would install isolated Joplin %s", args.joplin_version)
     LOG.info("dry-run: would inspect and configure profile %s", paths.profile_dir)
-    LOG.info("dry-run: would configure Nextcloud target 5 and API port %d", args.api_port)
-    if not args.skip_initial_sync:
-        LOG.info("dry-run: would perform initial sync")
-    LOG.info("dry-run: would verify existing E2EE keys without creating a key")
+    LOG.info(
+        "dry-run: would configure %s target %d and API port %d",
+        target.label,
+        target.target_id,
+        args.api_port,
+    )
+    if args.sync_secret_file:
+        LOG.info("dry-run: would read the sync credential from %s", args.sync_secret_file)
+    if target.browser_auth or target.saml_auth:
+        LOG.info("dry-run: would complete interactive %s authentication", target.label)
+    LOG.info("dry-run: would perform and verify the initial sync")
+    LOG.info("dry-run: would unlock existing E2EE keys only when the remote uses E2EE")
+    if args.e2ee_password_file:
+        LOG.info("dry-run: would read the E2EE password from %s", args.e2ee_password_file)
     LOG.info("dry-run: would write API token to %s", paths.token_file)
     LOG.info(
         "dry-run: would install joplin-md-sync standalone %s",
@@ -2067,7 +2558,7 @@ def dry_run_purge(paths: InstallPaths, env: Mapping[str, str]) -> None:
     LOG.info("dry-run: would stop and disable %s and %s", ADAPTER_SERVICE_NAME, SERVICE_NAME)
     for path in (*managed_purge_paths(paths), paths.state_dir):
         LOG.info("dry-run: would remove managed path %s", path)
-    LOG.info("dry-run: Nextcloud/WebDAV data and the user lingering setting would be unchanged")
+    LOG.info("dry-run: remote sync data and the user lingering setting would be unchanged")
 
 
 class Installer:
@@ -2215,7 +2706,7 @@ class Installer:
             self.args.mcp_port,
         )
         if self.args.dry_run:
-            dry_run_plan(self.args, self.paths, self.env, self.redactor)
+            dry_run_plan(self.args, self.paths)
             return
         for name in ("JOPLIN_GPT_ACTIONS_TOKEN", "JOPLIN_MCP_AUTH_TOKEN"):
             if self.env.get(name):
@@ -2268,34 +2759,45 @@ class Installer:
                 self.args.joplin_version,
             )
             LOG.info("verified Joplin %s", version)
-            nextcloud_password = resolve_secret(
-                self.args.nextcloud_password,
-                "JOPLIN_NEXTCLOUD_PASSWORD",
-                "Nextcloud password: ",
-                env=self.env,
-                non_interactive=self.args.non_interactive,
+            sync_configuration = resolve_sync_configuration(
+                self.args,
+                self.redactor,
                 getpass_fn=self.getpass_fn,
             )
-            self.redactor.add(nextcloud_password)
-            configure_profile(
+            sync_reconfigured = configure_profile(
                 self.runner,
                 self.paths,
                 self.args,
-                nextcloud_password,
+                sync_configuration,
                 input_fn=self.input_fn,
             )
-            del nextcloud_password
-            if not self.args.skip_initial_sync:
-                run_sync(self.runner, self.paths, "performing initial Nextcloud sync")
-            bootstrap_e2ee(
+            target = sync_configuration.target
+            if target.browser_auth:
+                run_browser_authenticated_sync(self.runner, self.paths, target)
+            else:
+                if target.saml_auth:
+                    authenticate_saml(
+                        self.runner,
+                        self.paths,
+                        sync_configuration,
+                        self.redactor,
+                        reuse_existing=not sync_reconfigured,
+                        input_fn=self.input_fn,
+                    )
+                run_sync(
+                    self.runner,
+                    self.paths,
+                    f"performing initial {target.label} sync",
+                )
+            e2ee_enabled = bootstrap_e2ee(
                 self.runner,
                 self.paths,
                 self.args,
                 self.redactor,
-                self.env,
                 getpass_fn=self.getpass_fn,
             )
-            run_sync(self.runner, self.paths, "performing post-decryption sync")
+            if e2ee_enabled:
+                run_sync(self.runner, self.paths, "performing post-decryption sync")
             extract_api_token(self.runner, self.paths, self.redactor)
             mcp_installed_version = install_or_update_mcp(
                 self.runner,
@@ -2355,10 +2857,6 @@ def main(argv: list[str] | None = None) -> int:
     redactor = SecretRedactor()
     try:
         args = build_parser(env).parse_args(argv)
-        redactor.add(args.nextcloud_password)
-        redactor.add(args.e2ee_password)
-        redactor.add(env.get("JOPLIN_NEXTCLOUD_PASSWORD"))
-        redactor.add(env.get("JOPLIN_E2EE_PASSWORD"))
         redactor.add(env.get("JOPLIN_MCP_AUTH_TOKEN"))
         redactor.add(env.get("JOPLIN_GPT_ACTIONS_TOKEN"))
         configure_logging(args.verbose, redactor)

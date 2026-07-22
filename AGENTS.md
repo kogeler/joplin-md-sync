@@ -15,9 +15,9 @@ output, stable exit codes, no silent overwrites.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.0"
 # or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.0"
 # or run the standalone zipapp from a GitHub release asset:
 python joplin-md-sync.pyz --help
 # or run a native release executable without installing Python:
@@ -39,6 +39,7 @@ Everything is driven by the Makefile (CI runs the same targets):
 make venv        # runtime venv/ with the CLI installed:  venv/bin/joplin-md-sync
 make venv-dev    # tooling venv-dev/ from the requirements-dev.txt lock
 make check       # lint (ruff) + typecheck (mypy) + full test suite
+make test-service-installer # Linux headless installer tests
 make test-live   # opt-in live MCP + GPT Actions tests; reads ./token; not CI
 make package     # wheel, sdist, pyz, current-platform executable, checksums
 make smoke       # install the built wheel into a clean venv and exercise it

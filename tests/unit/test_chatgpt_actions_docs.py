@@ -26,7 +26,7 @@ def test_chatgpt_actions_setup_is_complete_and_not_split() -> None:
         "API key",
         "Bearer",
         "Do not add the word `Bearer`",
-        "Version 1.4.1 generates 27 Actions",
+        "Version 1.5.0 generates 27 Actions",
         "Authorization: Bearer <token>",
         "Test in Preview",
         "success: true",

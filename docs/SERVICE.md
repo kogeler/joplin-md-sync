@@ -64,19 +64,22 @@ optional.
 ## Headless Linux installation
 
 A repository clone is not required. For a direct interactive installation in
-Bash, stream the installer into Python without creating a local script file:
+Bash, stream the installer into Python without creating a local script file.
+This example uses Nextcloud; select the target and arguments from the matrix
+below:
 
 ```bash
-set -o pipefail; curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location 'https://raw.githubusercontent.com/kogeler/joplin-md-sync/main/scripts/joplin_terminal_service/install_joplin_terminal.py' | python3 - --nextcloud-url 'https://cloud.example.com/remote.php/dav/files/user/Joplin' --nextcloud-user 'user'
+set -o pipefail; curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location 'https://raw.githubusercontent.com/kogeler/joplin-md-sync/main/scripts/joplin_terminal_service/install_joplin_terminal.py' | python3 - --sync-target nextcloud --sync-location 'https://cloud.example.com/remote.php/dav/files/user/Joplin' --sync-username 'user'
 ```
 
 `python3 -` reads the program from standard input; the remaining arguments are
 passed to the installer. It generates separate Actions and MCP bearer tokens,
-then interactively handles lingering and requests only the Nextcloud and E2EE
-passwords through the controlling terminal (`/dev/tty`), not through standard
-input. Run this form from an
-interactive terminal. In an automation environment without a terminal, use
-`--non-interactive` and provide all required choices and secrets explicitly.
+then handles lingering, sync authentication, and any existing E2EE keys through
+the controlling terminal (`/dev/tty`), not through standard input. Static
+passwords use hidden prompts. Browser-based targets display their authorization
+URL and wait for the upstream Joplin flow to finish. Run this form from an
+interactive terminal unless the selected target supports non-interactive
+credentials.
 `pipefail` prevents a failed download from looking like a successful empty
 Python program. `curl` is needed only for this convenience form; the
 download-and-review command below uses Python's standard library instead.
@@ -113,10 +116,11 @@ Unset that non-secret variable after installation if it is no longer needed.
   suite. Older versions are not tested; the installer has no explicit runtime
   version guard;
 - Node.js and npm (Node.js 22 is tested; upstream requires Node.js 12+);
-- an existing Nextcloud/WebDAV Joplin directory;
-- an existing Joplin E2EE setup and its master password;
-- network access to Nextcloud, the npm registry, and GitHub Releases during
-  installation.
+- one supported Joplin sync target and its credentials or interactive browser
+  authorization;
+- the existing Joplin E2EE password only when the remote data uses E2EE;
+- network access to the selected target, the npm registry, and GitHub Releases
+  during installation.
 
 The installer checks `node`, `npm`, `systemctl`, and `loginctl`. It never runs
 `sudo` or installs system packages. Distribution commands, when packages are
@@ -172,7 +176,8 @@ also works when Node came from a per-user version manager.
 
 For a normal Node executable, the Joplin unit keeps the filesystem read-only
 except for the dedicated profile and profile-lock directory, which are emitted
-as explicit `ReadWritePaths`. It also uses `NoNewPrivileges=true`.
+as explicit `ReadWritePaths`. A selected filesystem sync directory is added to
+that allowlist as well. It also uses `NoNewPrivileges=true`.
 
 When Node is the stable Snap command alias `/snap/bin/node`, the unit keeps that
 alias so Snap refreshes continue to select the current revision. It does not
@@ -200,143 +205,192 @@ adapter bind address to `0.0.0.0`; the Joplin Data API always remains on
 loopback. Public deployments must publish only the Actions namespace and keep
 MCP, health, and Joplin routes private.
 
-Environment overrides mirror their CLI options:
+## Installer CLI reference
 
-```text
-JOPLIN_VERSION
-JOPLIN_INSTALL_PREFIX
-JOPLIN_PROFILE_DIR
-JOPLIN_API_PORT
-JOPLIN_SYNC_INTERVAL
-JOPLIN_MD_SYNC_VERSION
-JOPLIN_MCP_PORT
-```
+This is the canonical reference for
+`scripts/joplin_terminal_service/install_joplin_terminal.py`. Run
+`python3 install_joplin_terminal.py --help` for the shorter built-in reference.
 
-The installer does not accept service bearer tokens through command-line
-arguments or environment variables. It creates both token files itself.
+For value options, precedence is command line, then the environment variable
+shown below, then the documented default. A value shown as **none** has no
+implicit value. Boolean switches are disabled unless passed and have no
+environment equivalent. The installer never accepts a raw sync password, E2EE
+password, Actions token, or MCP token in a command-line argument or environment
+variable.
 
-By default, every full installation resolves the npm `latest` tag for Joplin
-and the latest stable GitHub Release for the joplin-md-sync standalone. Use
-`--joplin-version X.Y.Z` or `--joplin-md-sync-version X.Y.Z` to pin either
-component.
+### Sync and credential options
 
-Do not point `--profile-dir` at a Desktop profile or another Terminal profile.
-The installer and service share an exclusive `flock`; one profile is never
-opened by two managed processes.
+| Option | Accepted values and effect | Default | Environment |
+| --- | --- | --- | --- |
+| `--sync-target TARGET` | One of `filesystem`, `onedrive`, `nextcloud`, `webdav`, `dropbox`, `s3`, `joplin-server`, `joplin-cloud`, `joplin-server-saml`. Selects the Joplin driver configured by a full installation. | **none**; required except with `--upgrade` or `--purge` | `JOPLIN_SYNC_TARGET` |
+| `--sync-location VALUE` | Existing absolute directory for `filesystem`; bucket name for `s3`; absolute HTTP(S) URL for Nextcloud, WebDAV, Joplin Server, or SAML. URLs may not contain credentials, query strings, or fragments. | **none**; required for those targets | `JOPLIN_SYNC_LOCATION` |
+| `--sync-username VALUE` | Nextcloud or WebDAV username, Joplin Server account email, or S3 access key. It is invalid for browser targets, SAML, and filesystem sync. | **none**; required for Nextcloud, Joplin Server, and S3; optional for WebDAV | `JOPLIN_SYNC_USERNAME` |
+| `--sync-secret-file PATH` | Reads the Nextcloud/WebDAV/Joplin Server password or S3 secret key from a protected one-line file. The value is never printed or retained in an installer-created password file. | **none**; an interactive full install uses a hidden prompt when the selected target needs a secret | `JOPLIN_SYNC_SECRET_FILE` |
+| `--e2ee-password-file PATH` | Reads the existing Joplin E2EE password from a protected one-line file. It is read only when the synchronized data reports E2EE enabled and the profile has no working key cache. It never enables E2EE or creates a key. | **none**; if needed, interactive mode uses a hidden prompt | `JOPLIN_E2EE_PASSWORD_FILE` |
+| `--s3-endpoint URL` | Absolute HTTP(S) endpoint for AWS S3 or an S3-compatible service. Valid only with `--sync-target s3`. | `https://s3.amazonaws.com/` | `JOPLIN_S3_ENDPOINT` |
+| `--s3-region REGION` | S3 region identifier such as `eu-north-1`. Valid only with `--sync-target s3`. | **none**; required for S3 | `JOPLIN_S3_REGION` |
+| `--s3-force-path-style` | Writes `sync.8.forcePathStyle=true`; use when the S3-compatible service requires bucket names in URL paths. | disabled | none |
+| `--no-s3-force-path-style` | Explicitly writes `sync.8.forcePathStyle=false`. Normally unnecessary because this is already the default. | disabled path-style access | none |
 
-## Password input
+Both secret-file options require an existing regular file owned by the current
+user, with no group or other permission bits, no final-component symlink, at
+most 4096 bytes, valid UTF-8, and exactly one non-empty line. `--dry-run` checks
+the option combinations but deliberately does not open these files.
 
-Nextcloud and E2EE passwords are used only during full installation. They are
-not written to a systemd unit, an EnvironmentFile, adapter configuration, logs,
-or installer-created password files. Joplin itself persists the sync password
-and E2EE key cache inside its protected profile so it can restart unattended.
+### Paths, ports, versions, and schedule
 
-The Joplin API token, Actions bearer token, and MCP bearer token are technical
-service credentials, not Nextcloud/E2EE passwords. The installer generates
-separate Actions and MCP values with `secrets.token_urlsafe(32)`. They are
-stored only in the files shown above with mode `0600`; units contain paths,
-never token values. Both token-file flags are always present in an installed
-adapter unit, so MCP authentication cannot be disabled for this deployment.
-After a successful installation, the installer prints only the two file paths,
-not their contents.
+| Option | Accepted values and effect | Default | Environment |
+| --- | --- | --- | --- |
+| `--profile-dir PATH` | Dedicated Joplin Terminal profile used by the installer and service. Never point it at a Joplin Desktop profile or a profile opened by another process. | `${XDG_DATA_HOME:-$HOME/.local/share}/joplin-agent/profile` | `JOPLIN_PROFILE_DIR` |
+| `--joplin-prefix PATH` | Installation prefix containing the isolated npm tree, launcher, standalone adapter, and supervisor. | `~/.local` | `JOPLIN_INSTALL_PREFIX` |
+| `--api-port PORT` | Loopback Joplin Data API port, integer `1..65535`. This port is passed to both the Joplin supervisor and adapter upstream. | `41185` | `JOPLIN_API_PORT` |
+| `--mcp-port PORT` | Combined MCP and GPT Actions listener port, integer `1..65535`. It must differ from `--api-port`. | `8765` | `JOPLIN_MCP_PORT` |
+| `--sync-interval SECONDS` | Recurrent Joplin sync interval. Accepted values: `300`, `600`, `1800`, `3600`, `43200`, `86400`. | `300` | `JOPLIN_SYNC_INTERVAL` |
+| `--joplin-version VERSION` | npm Joplin version in `X.Y.Z` form, optionally with a prerelease suffix, or `latest`. | `latest` | `JOPLIN_VERSION` |
+| `--joplin-md-sync-version VERSION` | joplin-md-sync GitHub release in `X.Y.Z` form, optionally with a prerelease suffix, or `latest`. | `latest` | `JOPLIN_MD_SYNC_VERSION` |
 
-An idempotent rerun preserves valid existing service token files. It does not
-rotate them. A missing file is generated, while an invalid or unreadable
-existing file stops the run instead of being silently replaced.
+`latest` is resolved during each full installation or upgrade. Pin both version
+options when reproducibility is more important than automatically selecting the
+newest stable releases.
 
-### Interactive input
+### Mode and lifecycle switches
 
-This is the preferred method:
+| Option | Effect | Default |
+| --- | --- | --- |
+| `--upgrade` | Requires an existing managed installation. Updates Joplin and joplin-md-sync, preserves the profile and service tokens, rewrites the adapter unit if needed, restarts both services, and runs smoke checks. It does not ask for or change sync/E2EE configuration. | disabled |
+| `--dry-run` | Validates the selected mode and arguments and prints a redacted plan. It does not prompt, read secret files, download, write, stop, enable, start, or purge anything. | disabled |
+| `--non-interactive` | Prohibits every prompt. Static targets must receive all required public values and secret-file paths. OneDrive, Dropbox, Joplin Cloud, and SAML cannot use this mode. | disabled |
+| `--force-reconfigure` | Allows a full install to replace a conflicting existing sync target or public target setting without asking for confirmation. It does not delete the profile. | disabled |
+| `--enable-linger` | When lingering is disabled, runs `loginctl enable-linger USER` and verifies it. Without this switch, interactive mode asks; non-interactive mode leaves lingering unchanged and warns. | disabled |
+| `--no-enable-service` | Installs the units but does not enable automatic startup. Unless `--no-start-service` is also set, the services are still started for the current session and smoke-tested. | services are enabled |
+| `--no-start-service` | Leaves both services stopped after installation or upgrade and skips live API/MCP/Actions smoke tests. Any service stopped for exclusive profile access remains stopped. | services are started/restarted and smoke-tested |
+| `--allow-remote-mcp` | Binds the authenticated combined MCP and Actions listener to `0.0.0.0` instead of `127.0.0.1`. It never exposes the Joplin Data API. Firewall and reverse-proxy policy remain the operator's responsibility. | loopback only |
+| `--purge` | Stops and disables both services, then permanently removes only installer-managed local units, binaries, npm tree, profile, tokens, state, and backups. Remote sync data and lingering are unchanged. | disabled |
+| `--yes` | Skips the exact `PURGE` confirmation. Valid only with `--purge`; non-interactive purge requires it. | disabled |
+| `--verbose` | Enables redacted debug logging. Sensitive Joplin command output remains suppressed. | normal informational logging |
+| `-h`, `--help` | Prints the built-in option summary and exits without changing state. | disabled |
+
+`--purge` cannot be combined with `--upgrade`. `--upgrade` does not require a
+sync target. For a normal install, `--sync-target` and its required values must
+be present even with `--dry-run`. S3-specific options are rejected for all
+other targets. Browser-authenticated targets are rejected with
+`--non-interactive` before the profile is modified.
+
+Environment-only path controls are `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
+and `XDG_STATE_HOME`. `JOPLIN_TERMINAL_ASSET_BASE_URL` changes the HTTPS base
+used to fetch companion installer files when they are not present locally; use
+it to pin those assets to the same reviewed commit as the installer.
+
+The installer creates the Actions and MCP bearer tokens itself. Environment
+variables named `JOPLIN_GPT_ACTIONS_TOKEN` or `JOPLIN_MCP_AUTH_TOKEN` are
+ignored. The installed profile and service share an exclusive `flock`, so one
+profile is never opened by two managed processes.
+
+## Sync targets
+
+`--sync-target` is required for a full installation. It accepts every target
+advertised by Joplin Terminal 3.6.2:
+
+| `--sync-target` | Joplin ID | Required arguments | Authentication |
+| --- | ---: | --- | --- |
+| `filesystem` | 2 | `--sync-location /absolute/existing/directory` | none |
+| `onedrive` | 3 | none | interactive browser callback |
+| `nextcloud` | 5 | `--sync-location URL --sync-username USER` | hidden prompt or secret file |
+| `webdav` | 6 | `--sync-location URL`; username is optional | hidden prompt or secret file when a username is set |
+| `dropbox` | 7 | none | interactive browser code |
+| `s3` | 8 | bucket, access key, region | hidden secret-key prompt or secret file |
+| `joplin-server` | 9 | server URL and account email | hidden prompt or secret file |
+| `joplin-cloud` | 10 | none | interactive browser confirmation |
+| `joplin-server-saml` | 11 | server URL | interactive browser code |
+
+`--sync-location` means a directory for `filesystem`, a bucket for `s3`, and an
+HTTP(S) URL for server-backed targets. URLs cannot contain credentials, a query,
+or a fragment. Plain HTTP is accepted with a warning for private development
+servers. The filesystem directory must already exist and be writable; this
+prevents a missing mount from silently becoming a new local sync directory.
+
+S3 also requires `--s3-region`. `--s3-endpoint` defaults to
+`https://s3.amazonaws.com/`; set it for an S3-compatible service. Add
+`--s3-force-path-style` when that service requires path-style requests.
+
+Minimal interactive commands:
 
 ```bash
-python3 install_joplin_terminal.py \
-  --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
-  --nextcloud-user "user"
+# Local directory or mounted network filesystem
+python3 install_joplin_terminal.py --sync-target filesystem --sync-location /srv/joplin-sync
+
+# Browser-authorized targets
+python3 install_joplin_terminal.py --sync-target onedrive
+python3 install_joplin_terminal.py --sync-target dropbox
+python3 install_joplin_terminal.py --sync-target joplin-cloud
+
+# Password-authorized HTTP targets
+python3 install_joplin_terminal.py --sync-target nextcloud --sync-location 'https://cloud.example.com/remote.php/dav/files/user/Joplin' --sync-username user
+python3 install_joplin_terminal.py --sync-target webdav --sync-location 'https://dav.example.com/Joplin' --sync-username user
+python3 install_joplin_terminal.py --sync-target joplin-server --sync-location 'https://joplin.example.com' --sync-username 'user@example.com'
+
+# AWS S3; add --s3-endpoint and --s3-force-path-style for compatible services
+python3 install_joplin_terminal.py --sync-target s3 --sync-location notes-bucket --sync-username ACCESS_KEY --s3-region eu-north-1
+
+# Joplin Server with SAML enabled
+python3 install_joplin_terminal.py --sync-target joplin-server-saml --sync-location 'https://joplin.example.com'
 ```
 
-Before requesting passwords, the installer creates the two service credentials
-in memory and checks whether systemd user lingering is enabled. When lingering
-is disabled, interactive mode asks whether to enable it. It then uses hidden
-`getpass` prompts:
+Omit `--sync-username` for an anonymous WebDAV endpoint. The remote directory
+or bucket must be the intended Joplin target; compare it with an already
+working Joplin client before the first sync.
 
-```text
-Nextcloud password:
-Joplin E2EE password:
-```
+### Password files
 
-On an idempotent rerun, Joplin's already-validated E2EE key cache is reused and
-the E2EE prompt is skipped. The Nextcloud password is still required because
-the installer never reads the stored secure setting.
-
-### Temporary environment variables
+Interactive installation is preferred and asks for target and E2EE passwords
+with hidden prompts. Automation uses `--sync-secret-file` and, when the remote
+uses E2EE, `--e2ee-password-file`. Each file must be a current-user-owned,
+non-symlink regular file with no group/other access and exactly one non-empty
+UTF-8 line:
 
 ```bash
-export JOPLIN_NEXTCLOUD_PASSWORD='...'
-export JOPLIN_E2EE_PASSWORD='...'
-
-python3 install_joplin_terminal.py \
-  --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
-  --nextcloud-user "user"
-
-unset JOPLIN_NEXTCLOUD_PASSWORD
-unset JOPLIN_E2EE_PASSWORD
+install -m 600 /dev/null "$HOME/sync-password"
+read -rsp "Sync password: " secret; echo
+printf '%s\n' "$secret" > "$HOME/sync-password"
+unset secret
 ```
 
-To avoid typing a password as a normal shell command:
+Pass the file path, run the installer, then remove the temporary file. Joplin
+persists the target credential and unlocked E2EE key cache inside its protected
+profile for unattended restarts. The installer never accepts raw sync or E2EE
+passwords in command-line arguments or environment variables. Joplin's own
+`config` command still receives a static target password as an argument because
+Joplin 3.6.2 provides no secret-stdin interface; installer logs redact it.
+
+The Joplin API token, Actions bearer token, and MCP bearer token are separate
+service credentials. The installer generates the Actions and MCP values with
+`secrets.token_urlsafe(32)`, stores them in `0600` files, and prints only their
+paths after successful installation. An idempotent rerun preserves valid token
+files and never silently rotates an invalid one.
+
+### Browser authentication
+
+OneDrive, Dropbox, Joplin Cloud, and Joplin Server SAML require an interactive
+terminal and cannot be combined with `--non-interactive`.
+The installer runs the native Joplin flow for OneDrive, Dropbox, and Joplin
+Cloud, then verifies that Joplin persisted an authorization credential before
+continuing.
+
+OneDrive redirects the browser to `http://127.0.0.1:9967/auth`. When installing
+over SSH, reconnect with local forwarding before starting the installer:
 
 ```bash
-read -rsp "Nextcloud password: " JOPLIN_NEXTCLOUD_PASSWORD
-echo
-export JOPLIN_NEXTCLOUD_PASSWORD
-
-read -rsp "E2EE password: " JOPLIN_E2EE_PASSWORD
-echo
-export JOPLIN_E2EE_PASSWORD
+ssh -L 9967:127.0.0.1:9967 user@host
 ```
 
-Environment variables may be inspectable by same-user processes or root on
-some systems. The installer removes these variables from Joplin and npm child
-process environments, but it cannot alter the parent shell; run the `unset`
-commands afterward.
+Dropbox prints a URL and asks for the returned code. Joplin Cloud prints an
+application authorization URL and asks for confirmation. SAML prints
+`SERVER/login/sso-saml-app`, accepts the 9-digit login code, exchanges it only
+with the configured server, and stores the returned Joplin session in the
+profile.
 
-### Command-line arguments
-
-```bash
-python3 install_joplin_terminal.py \
-  --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
-  --nextcloud-user "user" \
-  --nextcloud-password "..." \
-  --e2ee-password "..."
-```
-
-This supported form can remain in shell history and can be briefly visible in
-the process list. A leading space avoids history only when the shell is
-configured to honour it. During configuration, Joplin's `config` command also
-receives the Nextcloud password as an argument because Joplin 3.6.2 exposes no
-dedicated secret-stdin interface. Commands are redacted in installer logs.
-
-Python cannot guarantee physical erasure of immutable strings from process
-memory. The installer drops references as soon as practical and never includes
-secrets in raised errors or debug output. There is no raw CLI or environment
-input for either service bearer token. Non-interactive mode therefore needs
-only the normal installation choices plus the Nextcloud and, when required,
-E2EE password sources.
-
-## Nextcloud URL
-
-Joplin sync target `5` is the Nextcloud-specific driver. Target `6` is generic
-WebDAV. Supply the URL of the existing Joplin directory, for example:
-
-```text
-https://cloud.example.com/remote.php/dav/files/user/Joplin
-```
-
-Older Nextcloud deployments may expose a `/remote.php/webdav/Joplin` URL.
-Confirm the URL in a working Joplin client. Do not embed credentials, a query
-string, or a fragment in it. The installer warns for plain HTTP.
-
-If an existing profile has a different sync target or URL, interactive mode
-asks before changing it. Non-interactive mode refuses the change unless
+If an existing profile has a different target or different public settings,
+interactive mode asks before changing it. Non-interactive mode refuses unless
 `--force-reconfigure` is present. The profile and database are never deleted.
 
 ## Installation
@@ -345,43 +399,43 @@ Inspect the plan first:
 
 ```bash
 python3 install_joplin_terminal.py \
-  --nextcloud-url "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
-  --nextcloud-user "user" \
+  --sync-target nextcloud \
+  --sync-location "https://cloud.example.com/remote.php/dav/files/user/Joplin" \
+  --sync-username "user" \
   --dry-run
 ```
 
 `--dry-run` does not prompt, install npm or adapter content, open or modify the
-profile, sync, create files, stop a service, reload systemd, or start anything.
-With `--non-interactive`, required Nextcloud and E2EE password sources must
-still be present. Service tokens are not generated during a dry run.
+profile, sync, read secret files, create files, stop a service, reload systemd,
+or start anything. It still validates target arguments. Service tokens are not
+generated during a dry run.
 
 Run the same command without `--dry-run`. The installer:
 
-1. checks systemd user lingering and, in interactive mode, offers to enable it;
-2. generates separate Actions and MCP bearer tokens when their files are absent;
+1. generates separate Actions and MCP bearer tokens when their files are absent;
+2. checks systemd user lingering and, in interactive mode, offers to enable it;
 3. stops the active adapter and Joplin services in order and acquires the
    profile lock;
 4. resolves the npm `latest` tag and installs that Joplin version in the
    isolated npm prefix, unless `--joplin-version` pins a version;
 5. smoke-tests the `server` and `e2ee` commands;
-6. configures target 5, credentials, sync interval, and API port;
-7. performs the initial sync unless `--skip-initial-sync` is set;
-8. verifies that the downloaded target has E2EE enabled;
-9. unlocks existing master keys over a pseudo-terminal without calling
-   `e2ee enable`, decrypts pending items, and verifies the key cache in a fresh
-   process;
-10. performs a second sync and a metadata-only status check whose output is not
-   logged;
-11. extracts only `api.token` to the protected token file;
-12. resolves the latest stable `joplin-md-sync` GitHub Release, unless
+6. configures the selected target, its settings, sync interval, and API port;
+7. completes browser or SAML authentication when selected, performs the initial
+   sync, and verifies that browser credentials were persisted;
+8. checks whether the remote data uses E2EE without creating or enabling a key;
+9. when E2EE is enabled, unlocks existing master keys over a pseudo-terminal,
+   decrypts pending items, verifies the key cache in a fresh process, and runs
+   a second sync plus a metadata-only status check whose output is not logged;
+10. extracts only `api.token` to the protected token file;
+11. resolves the latest stable `joplin-md-sync` GitHub Release, unless
     `--joplin-md-sync-version` pins it, downloads the host-architecture asset, verifies
     its release SHA-256, standalone identity, version, and MCP capability, then
     installs it atomically;
-13. verifies that all three service tokens differ and stores both generated
+12. verifies that all three service tokens differ and stores both generated
     adapter tokens with mode `0600`;
-14. deploys the supervisor plus `joplin-terminal.service` and the one combined
+13. deploys the supervisor plus `joplin-terminal.service` and the one combined
     `joplin-md-sync.service`, backs up changed units, and reloads systemd;
-15. enables and restarts Joplin followed by the adapter, verifies `/ping`,
+14. enables and restarts Joplin followed by the adapter, verifies `/ping`,
     initializes `/mcp` and calls `joplin_list_notebooks`, then verifies that
     `/api/gpt/v1/*` rejects an unauthenticated probe and accepts the dedicated
     Actions token without exposing a real tool. Only after successful completion
@@ -405,35 +459,11 @@ Supported `--sync-interval` values are `300`, `600`, `1800`, `3600`, `43200`,
 and `86400` seconds. The installer rejects other values before changing the
 profile.
 
-Useful control flags:
-
-```text
---non-interactive
---force-reconfigure
---skip-initial-sync
---skip-e2ee-bootstrap
---no-enable-service
---no-start-service
---profile-dir PATH
---joplin-prefix PATH
---api-port PORT
---mcp-port PORT
---allow-remote-mcp
---sync-interval SECONDS
---joplin-version VERSION
---joplin-md-sync-version VERSION
---upgrade
---enable-linger
---purge
---yes
---verbose
-```
-
-`--skip-e2ee-bootstrap` does not bypass validation. It succeeds only if the
-stored E2EE password already works in a new process. If Joplin changes its
-prompt or cannot automate the operation, the installer stops with an exact
-manual `joplin --profile ... e2ee decrypt --retry-failed-items` command. Run it
-interactively and rerun the installer with `--skip-e2ee-bootstrap`.
+If Joplin changes its E2EE prompt or cannot automate decryption, the installer
+stops with the exact manual `joplin --profile ... e2ee decrypt
+--retry-failed-items` command. Run it interactively, confirm it completes, and
+rerun the installer; the fresh-process key-cache check then avoids another
+password prompt.
 
 Some Joplin releases, including 3.6.2, have a packaging bug in `joplin version`.
 The installer therefore checks the exact version through
@@ -593,8 +623,8 @@ python3 install_joplin_terminal.py --upgrade
 before stopping either service. It then stops the adapter and Joplin, acquires the
 profile lock, updates and verifies both components, restarts both services, and
 runs Joplin API, MCP `joplin_list_notebooks`, and Actions authentication smoke
-tests. Nextcloud and E2EE passwords are not requested. The required Actions
-and MCP tokens are preserved from their protected files. If either file is
+tests. Sync-target and E2EE credentials are not requested. The required
+Actions and MCP tokens are preserved from their protected files. If either file is
 missing, the installer generates it; it never rotates an existing valid token.
 
 Pin only Joplin while updating the adapter to latest:
@@ -610,7 +640,7 @@ Pin only the adapter while updating Joplin to latest:
 ```bash
 python3 install_joplin_terminal.py \
   --upgrade \
-  --joplin-md-sync-version 1.4.1
+  --joplin-md-sync-version 1.5.0
 ```
 
 Pin both versions, including for rollback:
@@ -669,7 +699,7 @@ Custom installations must repeat the original `--joplin-prefix`,
 `--profile-dir`, and relevant XDG environment overrides so purge selects the
 same paths. Unsafe installation-prefix or profile paths are refused.
 
-Purge does not access or delete the Nextcloud/WebDAV sync target. It also does
+Purge does not access or delete the configured remote sync target. It also does
 not disable systemd lingering because other user services may depend on it. On
 an isolated disposable test account, reset lingering separately only when
 needed:
@@ -761,8 +791,7 @@ returns exit code 0. Correct the secret and rerun; no new key is created.
 ### Master key has not downloaded
 
 Do not run `e2ee enable`. Rerun the initial sync, confirm the target is the
-existing E2EE store, then retry. `--skip-initial-sync` is unsuitable for a new
-empty profile.
+existing E2EE store, then retry the installation from the same profile.
 
 ### Encrypted items remain
 
@@ -879,7 +908,7 @@ transport.
 ## Manual integration checklist
 
 1. Install in a clean user account.
-2. Complete initial sync against the real Nextcloud target.
+2. Complete initial sync against the selected real sync target.
 3. Confirm existing notes decrypt and no new E2EE key appears on other clients.
 4. Confirm both generated services are active and that the installer reports
    successful MCP and Actions smoke checks.
@@ -895,8 +924,8 @@ transport.
 
 ## Developer tests
 
-The subproject is deliberately outside the repository's package and CI. Run
-its dependency-free suite locally in Podman:
+Linux CI runs the dependency-free installer suite through
+`make test-service-installer`. Run the same suite locally in Podman:
 
 ```bash
 podman run --rm \
@@ -906,10 +935,11 @@ podman run --rm \
   python3 -m unittest discover -s tests -v
 ```
 
-The suite checks PTY prompts, secret non-echo, dynamic latest-version
-resolution, release architecture selection, SHA-256 verification, combined
-upgrades, the single adapter unit, mandatory generated Actions and MCP tokens,
-both URI smoke checks, lingering decisions, API health loss, signals, forced
-shutdown, and orphan prevention. Real Nextcloud
-credentials, phone propagation, and reboot persistence remain explicit manual
-acceptance checks.
+The suite checks every target mapping and validation path, browser and SAML
+authentication state, PTY prompts, secret non-echo, protected credential files,
+dynamic latest-version resolution, release architecture selection, SHA-256
+verification, combined upgrades, filesystem sandbox access, mandatory generated
+Actions and MCP tokens, both URI smoke checks, lingering decisions, API health
+loss, signals, forced shutdown, and orphan prevention. Real external
+sync-target credentials, phone propagation, and reboot persistence remain
+explicit manual acceptance checks.

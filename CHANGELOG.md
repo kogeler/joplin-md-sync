@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-22
+
+### Added
+
+- Support every sync target exposed by Joplin Terminal 3.6.2 in the headless
+  service installer: filesystem, OneDrive, Nextcloud, WebDAV, Dropbox, S3,
+  Joplin Server, Joplin Cloud, and Joplin Server SAML.
+- Add native interactive browser authentication for OneDrive, Dropbox, and
+  Joplin Cloud plus a validated SAML browser/code exchange.
+
+### Changed
+
+- Replace the Nextcloud-specific installer interface with a target-neutral
+  sync configuration and protected credential-file inputs for automation.
+- Document every installer option, accepted value, default, environment
+  override, mode interaction, and lifecycle effect in one CLI reference.
+- Bootstrap existing E2EE keys only when the synchronized data uses E2EE, so
+  unencrypted and new sync targets install without a false failure.
+
+### Security
+
+- Refuse symlinked, non-regular, foreign-owned, group-readable, world-readable,
+  multiline, and oversized sync or E2EE secret files.
+
 ## [1.4.1] - 2026-07-21
 
 ### Changed

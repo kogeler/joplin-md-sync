@@ -86,6 +86,11 @@ jobs:
         shell: bash
         run: make test PY=python
 
+      - name: Headless service installer tests
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: make test-service-installer PY=python
+
       - name: Verify version/manifest consistency
         shell: bash
         run: make verify-release PY=python

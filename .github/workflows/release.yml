@@ -43,6 +43,10 @@ jobs:
       - name: Full check suite
         shell: bash
         run: make check PY=python
+      - name: Headless service installer tests
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: make test-service-installer PY=python
       - name: Build standalone executable
         shell: bash
         run: make standalone PY=python
