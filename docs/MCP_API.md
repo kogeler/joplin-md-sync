@@ -30,9 +30,10 @@ registry, validator, executor, service, and Joplin client factory. Actions do
 not issue JSON-RPC or make a loopback call to `/mcp`. Actions configuration
 does not change the MCP endpoint, headers, or authentication semantics.
 
-`GET /healthz` and `GET /readyz` return only `{"ok": true}` to loopback
-clients. They are not part of either public protocol and must not be exposed by
-the operator's HTTPS publishing layer.
+`GET /healthz` and `GET /readyz` return only `{"ok": true}` and no credentials
+or Joplin data. They are not part of either client protocol. A publishing layer
+for the whole shared listener may expose them; clients must not treat them as
+an authentication check.
 
 ## Tools
 

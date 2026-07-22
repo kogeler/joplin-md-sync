@@ -985,7 +985,7 @@ class LiveGptActionsTest(unittest.TestCase):
             timeout=10,
             check=True,
         )
-        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.4.0")
+        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.4.1")
 
     def test_99_every_exposed_action_was_exercised(self) -> None:
         expected = {tool.name for tool in registry_for_export().exposed}

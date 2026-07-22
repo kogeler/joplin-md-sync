@@ -7,14 +7,14 @@ by URI:
 
 | URI | Client | Authentication |
 | --- | --- | --- |
-| `/mcp` | MCP clients | Optional dedicated MCP bearer token |
+| `/mcp` | MCP clients | Dedicated MCP bearer token required for public access |
 | `/api/gpt/v1/*` | ChatGPT Actions | Required dedicated Actions bearer token |
-| `/healthz`, `/readyz` | Local operator checks | Loopback only; never public |
+| `/healthz`, `/readyz` | Operator checks | No credentials or user data returned |
 
 Both transports use the same registry, executor, Joplin service, and upstream
 Data API connection. Actions never call MCP over HTTP. The Actions token is the
 secret configured in the Custom GPT editor; it is not an OpenAI API key and
-must differ from both the optional MCP token and the Joplin Data API token.
+must differ from both the MCP token and the Joplin Data API token.
 
 For a desktop Joplin instance, start the binary directly as described below.
 For a headless Linux host, the installer in
@@ -540,87 +540,19 @@ non-browser MCP clients.
 
 The same listener serves Actions under `/api/gpt/v1/*`. The installer always
 adds both `--gpt-actions` and `--gpt-actions-token-file` to
-`joplin-md-sync.service`. It verifies the boundary without invoking a real
-tool: an unauthenticated probe must return `401`, while the same unknown route
-with the configured Actions token must return `404`.
+`joplin-md-sync.service` and verifies bearer authentication during installation.
 
 OpenAI calls Actions through a public HTTPS origin on port 443 with a publicly
 trusted certificate and TLS 1.2 or later. This repository does not provide or
 prescribe public HTTPS infrastructure. Configure the operator's existing
-publishing layer to expose only `/api/gpt/v1/*`; `/mcp`, `/healthz`, `/readyz`,
-and ports 41184-41194 and 8765 must remain private. Do not log request bodies or
-Authorization headers.
+publishing layer either for `/api/gpt/v1/*` alone or for the shared listener.
+When `/mcp` is public, its separate bearer token is mandatory; the headless
+installer configures it by default. The direct Joplin Data API ports 41184-41194
+must remain private. Do not log request bodies or Authorization headers.
 
-Export the OpenAPI contract with the real public origin:
-
-```bash
-joplin-md-sync gpt-actions export-openapi \
-  --server-url https://notes.example.com \
-  --output ./chatgpt-action.openapi.json \
-  --json
-python3 -m json.tool ./chatgpt-action.openapi.json >/dev/null
-```
-
-The repository does not keep a generated OpenAPI file. The command above is the
-only supported export path because it binds the schema to the operator's real
-public origin. Regenerate it after every tool-registry upgrade. Large binary
-resource read/create/update operations remain MCP-only because Actions payloads
-are text and must remain below 100,000 characters.
-
-From a machine outside the service host and its private network, with a
-protected copy of the Actions token file available there, verify the public
-boundary before importing the contract:
-
-```bash
-host=notes.example.com
-
-for path in /mcp /healthz /readyz; do
-  status=$(curl --proto '=https' --tlsv1.2 --silent --show-error \
-    --output /dev/null --write-out '%{http_code}' "https://$host$path")
-  case "$status" in 403|404) ;; *) echo "public route: $path ($status)"; exit 1;; esac
-done
-
-test "$(curl --proto '=https' --tlsv1.2 --silent --show-error \
-  --output /dev/null --write-out '%{http_code}' \
-  "https://$host/api/gpt/v1/tools/setup-probe-not-a-tool")" = 401
-
-curl --config - <<EOF
-url = "https://$host/api/gpt/v1/tools/setup-probe-not-a-tool"
-header = "Authorization: Bearer $(<~/.config/joplin-md-sync/gpt-actions-token)"
-output = "/dev/null"
-proto = "=https"
-silent
-show-error
-tlsv1.2
-write-out = "%{http_code}\n"
-EOF
-
-for port in $(seq 41184 41194) 8765; do
-  if timeout 1 bash -c "exec 3<>/dev/tcp/$host/$port" 2>/dev/null; then
-    echo "public TCP port: $port"
-    exit 1
-  fi
-done
-```
-
-The authenticated unknown route must print `404`; all tested TCP ports must be
-unreachable. The token is sent to `curl` through standard input rather than a
-process argument. Continue with [ChatGPT Actions setup](CHATGPT_ACTIONS.md) for
-the manual editor steps.
-
-Rotate the Actions credential by atomically replacing
-`~/.config/joplin-md-sync/gpt-actions-token`; the service reloads it per
-request. Update the credential in the Custom GPT editor immediately. To
-revoke Actions, remove the public Actions route, stop the adapter, remove the
-Action from the GPT, and remove the token file. Because the installed service
-requires Actions, rerun the installer with a new token before starting it
-again.
-
-Actions failures use stable JSON envelopes. Common statuses are `401` for an
-invalid Actions token, `413` for an oversized request, `422` for validation,
-`429` for rate limiting, `502` for a safe upstream or oversized-result error,
-and `503` for Joplin unavailability or concurrency exhaustion. Never retry an
-ambiguous write until its state has been inspected in Joplin.
+Use the single [ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md) for local
+and public endpoint checks, OpenAPI export, GPT Instructions, editor
+configuration, Preview acceptance, troubleshooting, updates, and removal.
 
 ## Windows autostart
 
@@ -678,7 +610,7 @@ Pin only the adapter while updating Joplin to latest:
 ```bash
 python3 install_joplin_terminal.py \
   --upgrade \
-  --joplin-md-sync-version 1.4.0
+  --joplin-md-sync-version 1.4.1
 ```
 
 Pin both versions, including for rollback:
@@ -909,15 +841,6 @@ Confirm the joplin-md-sync process runs as the same user, the path is
 `~/.config/joplin-agent/api-token`, its mode is 0600, and the deployed adapter
 `ExecStart` passes both `--port 41185` and that `--token-file` path.
 
-### Actions endpoint returns 401
-
-Use the contents of `~/.config/joplin-md-sync/gpt-actions-token` only as the
-Bearer credential in the Custom GPT editor. Confirm the unit includes
-`--gpt-actions` and the matching `--gpt-actions-token-file` path. Do not replace
-it with the Joplin API token, MCP token, or an OpenAI API key. On a clean
-installation this file is generated with the required entropy before the
-service unit is started.
-
 ### MCP client receives 401
 
 Use the contents of `~/.config/joplin-md-sync/mcp-token` as the MCP bearer
@@ -966,7 +889,8 @@ transport.
 8. Change a note through MCP.
 9. Wait for headless sync, sync the phone, and confirm the phone sees it.
 10. Restart `joplin-terminal.service` and confirm no E2EE prompt is required.
-11. Configure a private Custom GPT and verify an Actions read and narrow write.
+11. Complete the [ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md),
+    including its read/write/trash Preview acceptance.
 12. Confirm lingering is enabled, reboot, and verify both services start.
 
 ## Developer tests
