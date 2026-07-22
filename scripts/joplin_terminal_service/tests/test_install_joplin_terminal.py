@@ -41,22 +41,26 @@ class ParserTests(unittest.TestCase):
     def test_cli_overrides_environment(self) -> None:
         env = {
             "HOME": "/tmp/home",
-            "JOPLIN_NEXTCLOUD_URL": "https://env.invalid/Joplin",
-            "JOPLIN_NEXTCLOUD_USER": "env-user",
+            "JOPLIN_SYNC_TARGET": "webdav",
+            "JOPLIN_SYNC_LOCATION": "https://env.invalid/Joplin",
+            "JOPLIN_SYNC_USERNAME": "env-user",
             "JOPLIN_API_PORT": "41234",
         }
         args = installer.build_parser(env).parse_args(
             [
-                "--nextcloud-url",
+                "--sync-target",
+                "nextcloud",
+                "--sync-location",
                 "https://cli.invalid/Joplin",
-                "--nextcloud-user",
+                "--sync-username",
                 "cli-user",
                 "--api-port",
                 "42345",
             ]
         )
-        self.assertEqual(args.nextcloud_url, "https://cli.invalid/Joplin")
-        self.assertEqual(args.nextcloud_user, "cli-user")
+        self.assertEqual(args.sync_target, "nextcloud")
+        self.assertEqual(args.sync_location, "https://cli.invalid/Joplin")
+        self.assertEqual(args.sync_username, "cli-user")
         self.assertEqual(args.api_port, 42345)
 
     def test_defaults_resolve_latest_releases(self) -> None:
@@ -71,6 +75,25 @@ class ParserTests(unittest.TestCase):
         self.assertNotIn("mcp_auth_token", vars(args))
         self.assertFalse(args.purge)
         self.assertFalse(args.yes)
+
+    def test_help_describes_operational_defaults(self) -> None:
+        help_text = " ".join(
+            installer.build_parser({"HOME": "/tmp/home"}).format_help().split()
+        )
+        for expected in (
+            "required for a full install",
+            "default: https://s3.amazonaws.com/",
+            "default: disabled",
+            "default: 41185",
+            "default: 300",
+            "default: latest",
+            "default: ~/.local",
+            "default: 8765",
+            "leave both services stopped",
+            "without reading secrets or changing state",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, help_text)
 
     def test_upgrade_accepts_independent_version_overrides(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
@@ -93,9 +116,11 @@ class ParserTests(unittest.TestCase):
     def test_rejects_unsupported_sync_interval(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
             [
-                "--nextcloud-url",
+                "--sync-target",
+                "nextcloud",
+                "--sync-location",
                 "https://cloud.invalid/Joplin",
-                "--nextcloud-user",
+                "--sync-username",
                 "u",
                 "--sync-interval",
                 "123",
@@ -116,7 +141,7 @@ class ParserTests(unittest.TestCase):
             installer.validate_mcp_auth_token("c2hvcnQ")
         installer.validate_mcp_auth_token(MCP_TOKEN)
 
-    def test_purge_does_not_require_nextcloud_and_rejects_upgrade(self) -> None:
+    def test_purge_does_not_require_sync_target_and_rejects_upgrade(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(["--purge"])
         installer.validate_args(args)
         combined = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
@@ -124,6 +149,88 @@ class ParserTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ToolError, "cannot be combined"):
             installer.validate_args(combined)
+
+    def test_all_current_joplin_cli_targets_are_declared(self) -> None:
+        self.assertEqual(
+            {name: target.target_id for name, target in installer.SYNC_TARGETS.items()},
+            {
+                "filesystem": 2,
+                "onedrive": 3,
+                "nextcloud": 5,
+                "webdav": 6,
+                "dropbox": 7,
+                "s3": 8,
+                "joplin-server": 9,
+                "joplin-cloud": 10,
+                "joplin-server-saml": 11,
+            },
+        )
+
+    def test_browser_targets_require_interactive_installation(self) -> None:
+        for target in ("onedrive", "dropbox", "joplin-cloud", "joplin-server-saml"):
+            extra = ["--sync-location", "https://server.invalid"] if target.endswith("saml") else []
+            args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
+                ["--sync-target", target, "--non-interactive", *extra]
+            )
+            with self.subTest(target=target), self.assertRaisesRegex(
+                ToolError, "interactive terminal"
+            ):
+                installer.validate_args(args)
+
+    def test_interactive_webdav_can_prompt_for_password(self) -> None:
+        args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
+            [
+                "--sync-target",
+                "webdav",
+                "--sync-location",
+                "https://dav.invalid/Joplin",
+                "--sync-username",
+                "user",
+            ]
+        )
+        installer.validate_args(args)
+        configuration = installer.resolve_sync_configuration(
+            args,
+            SecretRedactor(),
+            getpass_fn=lambda _prompt: "sync-secret",
+        )
+        self.assertEqual(
+            {setting.name: setting.value for setting in configuration.settings},
+            {
+                "sync.6.path": "https://dav.invalid/Joplin",
+                "sync.6.username": "user",
+                "sync.6.password": "sync-secret",
+            },
+        )
+
+    def test_noninteractive_webdav_requires_complete_credentials(self) -> None:
+        parser = installer.build_parser({"HOME": "/tmp/home"})
+        username_only = parser.parse_args(
+            [
+                "--sync-target",
+                "webdav",
+                "--sync-location",
+                "https://dav.invalid/Joplin",
+                "--sync-username",
+                "user",
+                "--non-interactive",
+            ]
+        )
+        with self.assertRaisesRegex(ToolError, "require --sync-secret-file"):
+            installer.validate_args(username_only)
+
+        secret_only = parser.parse_args(
+            [
+                "--sync-target",
+                "webdav",
+                "--sync-location",
+                "https://dav.invalid/Joplin",
+                "--sync-secret-file",
+                "/tmp/secret",
+            ]
+        )
+        with self.assertRaisesRegex(ToolError, "requires --sync-username"):
+            installer.validate_args(secret_only)
 
     def test_yes_is_only_valid_for_purge(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(["--yes"])
@@ -139,8 +246,6 @@ class SecretTests(unittest.TestCase):
                 "JOPLIN_TOKEN": "joplin-secret",
                 "JOPLIN_GPT_ACTIONS_TOKEN": "actions-secret",
                 "JOPLIN_MCP_AUTH_TOKEN": "mcp-secret",
-                "JOPLIN_NEXTCLOUD_PASSWORD": "nextcloud-secret",
-                "JOPLIN_E2EE_PASSWORD": "e2ee-secret",
             }
         )
 
@@ -149,8 +254,6 @@ class SecretTests(unittest.TestCase):
             "JOPLIN_TOKEN",
             "JOPLIN_GPT_ACTIONS_TOKEN",
             "JOPLIN_MCP_AUTH_TOKEN",
-            "JOPLIN_NEXTCLOUD_PASSWORD",
-            "JOPLIN_E2EE_PASSWORD",
         ):
             self.assertNotIn(name, env)
 
@@ -162,38 +265,31 @@ class SecretTests(unittest.TestCase):
         ):
             installer.terminal_input("Continue? ")
 
-    def test_secret_precedence(self) -> None:
+    def test_secret_file_precedes_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            secret_file = Path(temporary) / "secret"
+            secret_file.write_text("file-secret\n")
+            secret_file.chmod(0o600)
+            prompt = mock.Mock(return_value="prompt-secret")
+            self.assertEqual(
+                installer.resolve_secret(
+                    str(secret_file),
+                    "--secret-file",
+                    "Password: ",
+                    non_interactive=False,
+                    getpass_fn=prompt,
+                ),
+                "file-secret",
+            )
+            prompt.assert_not_called()
+
+    def test_secret_prompt_is_used_without_file(self) -> None:
         prompt = mock.Mock(return_value="prompt-secret")
         self.assertEqual(
             installer.resolve_secret(
-                "cli-secret",
-                "SECRET",
-                "Password: ",
-                env={"SECRET": "env-secret"},
-                non_interactive=False,
-                getpass_fn=prompt,
-            ),
-            "cli-secret",
-        )
-        self.assertFalse(prompt.called)
-        self.assertEqual(
-            installer.resolve_secret(
                 None,
-                "SECRET",
+                "--secret-file",
                 "Password: ",
-                env={"SECRET": "env-secret"},
-                non_interactive=False,
-                getpass_fn=prompt,
-            ),
-            "env-secret",
-        )
-        self.assertFalse(prompt.called)
-        self.assertEqual(
-            installer.resolve_secret(
-                None,
-                "SECRET",
-                "Password: ",
-                env={},
                 non_interactive=False,
                 getpass_fn=prompt,
             ),
@@ -205,9 +301,8 @@ class SecretTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "required secret is missing"):
             installer.resolve_secret(
                 None,
-                "SECRET",
+                "--secret-file",
                 "Password: ",
-                env={},
                 non_interactive=True,
                 getpass_fn=prompt,
             )
@@ -217,12 +312,25 @@ class SecretTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "interactive input.*unavailable"):
             installer.resolve_secret(
                 None,
-                "SECRET",
+                "--secret-file",
                 "Password: ",
-                env={},
                 non_interactive=False,
                 getpass_fn=mock.Mock(side_effect=EOFError),
             )
+
+    def test_secret_file_rejects_unsafe_mode_and_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            secret_file = root / "secret"
+            secret_file.write_text("secret\n")
+            secret_file.chmod(0o644)
+            with self.assertRaisesRegex(ToolError, "group or others"):
+                installer.load_secret_file(secret_file, "sync secret")
+            secret_file.chmod(0o600)
+            link = root / "link"
+            link.symlink_to(secret_file)
+            with self.assertRaisesRegex(ToolError, "could not read"):
+                installer.load_secret_file(link, "sync secret")
 
     def test_safe_command_and_log_filter(self) -> None:
         secret = "highly-secret-value"
@@ -529,9 +637,11 @@ class UnitAndPathTests(unittest.TestCase):
         }
         self.args = installer.build_parser(env).parse_args(
             [
-                "--nextcloud-url",
+                "--sync-target",
+                "nextcloud",
+                "--sync-location",
                 "https://cloud.invalid/Joplin",
-                "--nextcloud-user",
+                "--sync-username",
                 "user",
                 "--joplin-prefix",
                 str(self.root / "prefix"),
@@ -654,6 +764,24 @@ class UnitAndPathTests(unittest.TestCase):
         self.assertIn("ProtectKernelTunables=true", content)
         self.assertIn("ProtectSystem=strict", content)
         self.assertIn("ReadWritePaths=", content)
+
+    def test_filesystem_target_is_writable_inside_service_sandbox(self) -> None:
+        sync_directory = self.root / "mounted notes"
+        sync_directory.mkdir()
+        content = installer.render_unit(
+            (TOOLS_DIR / "systemd" / "joplin-terminal.service").read_text(),
+            python=Path(sys.executable).resolve(),
+            node=Path(sys.executable).resolve(),
+            supervisor=(self.root / "deployed" / "runner.py").resolve(),
+            paths=self.paths,
+            api_port=41185,
+            sync_interval=300,
+            extra_write_paths=(sync_directory,),
+        )
+        read_write_line = next(
+            line for line in content.splitlines() if line.startswith("ReadWritePaths=")
+        )
+        self.assertIn(f'"{sync_directory}"', read_write_line)
 
     @unittest.skipUnless(shutil.which("systemd-analyze"), "systemd-analyze unavailable")
     def test_rendered_unit_passes_systemd_analyze(self) -> None:
@@ -795,12 +923,18 @@ class UnitAndPathTests(unittest.TestCase):
 class ConfigurationTests(unittest.TestCase):
     def test_default_target_with_choice_description_is_not_a_conflict(self) -> None:
         args = mock.Mock(
-            nextcloud_url="https://new.invalid/Joplin",
-            nextcloud_user="user",
             sync_interval=300,
             api_port=41185,
             force_reconfigure=False,
             non_interactive=True,
+        )
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["nextcloud"],
+            (
+                installer.SyncSetting("sync.5.path", "https://new.invalid/Joplin"),
+                installer.SyncSetting("sync.5.username", "user"),
+                installer.SyncSetting("sync.5.password", "password", secret=True),
+            ),
         )
         paths = mock.Mock(profile_dir=Path("/profile"))
         runner = mock.Mock()
@@ -811,45 +945,276 @@ class ConfigurationTests(unittest.TestCase):
                 side_effect=[
                     "0 (0: (None), 5: Nextcloud, 6: WebDAV)",
                     "null",
+                    "null",
                 ],
             ),
             mock.patch.object(installer, "write_setting") as write,
             mock.patch.object(Path, "mkdir"),
             mock.patch.object(Path, "chmod"),
         ):
-            installer.configure_profile(runner, paths, args, "nextcloud-password")
-        self.assertEqual(write.call_args_list[0].args[-2:], ("sync.target", "5"))
+            installer.configure_profile(runner, paths, args, configuration)
+        writes = [(call.args[2], call.args[3]) for call in write.call_args_list]
+        self.assertEqual(
+            writes,
+            [
+                ("sync.5.path", "https://new.invalid/Joplin"),
+                ("sync.5.username", "user"),
+                ("sync.5.password", "password"),
+                ("sync.target", "5"),
+                ("sync.interval", "300"),
+                ("api.port", "41185"),
+            ],
+        )
 
     def test_force_reconfigure(self) -> None:
-        args = mock.Mock(
-            nextcloud_url="https://new.invalid/Joplin",
-            force_reconfigure=True,
-            non_interactive=True,
+        args = mock.Mock(force_reconfigure=True, non_interactive=True)
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["nextcloud"],
+            (installer.SyncSetting("sync.5.path", "https://new.invalid/Joplin"),),
         )
-        installer.confirm_reconfigure(args, "6", "https://old.invalid/Joplin")
+        installer.confirm_reconfigure(
+            args,
+            configuration,
+            "6",
+            {"sync.5.path": "https://old.invalid/Joplin"},
+        )
+
+    def test_new_profile_ignores_driver_defaults_during_conflict_check(self) -> None:
+        args = mock.Mock(force_reconfigure=False, non_interactive=True)
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["s3"],
+            (installer.SyncSetting("sync.8.forcePathStyle", "false"),),
+        )
+        installer.confirm_reconfigure(
+            args,
+            configuration,
+            "0",
+            {"sync.8.forcePathStyle": "0"},
+            input_fn=mock.Mock(side_effect=AssertionError("must not prompt")),
+        )
 
     def test_noninteractive_conflict_requires_force(self) -> None:
-        args = mock.Mock(
-            nextcloud_url="https://new.invalid/Joplin",
-            force_reconfigure=False,
-            non_interactive=True,
+        args = mock.Mock(force_reconfigure=False, non_interactive=True)
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["nextcloud"],
+            (installer.SyncSetting("sync.5.path", "https://new.invalid/Joplin"),),
         )
         with self.assertRaisesRegex(ToolError, "--force-reconfigure"):
-            installer.confirm_reconfigure(args, "5", "https://old.invalid/Joplin")
+            installer.confirm_reconfigure(
+                args,
+                configuration,
+                "5",
+                {"sync.5.path": "https://old.invalid/Joplin"},
+            )
 
     def test_interactive_conflict_can_be_rejected(self) -> None:
-        args = mock.Mock(
-            nextcloud_url="https://new.invalid/Joplin",
-            force_reconfigure=False,
-            non_interactive=False,
+        args = mock.Mock(force_reconfigure=False, non_interactive=False)
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["nextcloud"],
+            (installer.SyncSetting("sync.5.path", "https://new.invalid/Joplin"),),
         )
         with self.assertRaisesRegex(ToolError, "cancelled"):
             installer.confirm_reconfigure(
                 args,
+                configuration,
                 "5",
-                "https://old.invalid/Joplin",
+                {"sync.5.path": "https://old.invalid/Joplin"},
                 input_fn=lambda _prompt: "n",
             )
+
+    def test_each_static_target_maps_to_joplin_settings(self) -> None:
+        cases = {
+            "filesystem": (
+                ["--sync-location", "/tmp"],
+                {"sync.2.path": "/tmp"},
+            ),
+            "nextcloud": (
+                [
+                    "--sync-location",
+                    "https://cloud.invalid/Joplin",
+                    "--sync-username",
+                    "user",
+                ],
+                {
+                    "sync.5.path": "https://cloud.invalid/Joplin",
+                    "sync.5.username": "user",
+                    "sync.5.password": "sync-secret",
+                },
+            ),
+            "webdav": (
+                ["--sync-location", "https://dav.invalid/Joplin"],
+                {
+                    "sync.6.path": "https://dav.invalid/Joplin",
+                    "sync.6.username": "",
+                    "sync.6.password": "",
+                },
+            ),
+            "joplin-server": (
+                [
+                    "--sync-location",
+                    "https://server.invalid",
+                    "--sync-username",
+                    "user@example.com",
+                ],
+                {
+                    "sync.9.path": "https://server.invalid",
+                    "sync.9.username": "user@example.com",
+                    "sync.9.password": "sync-secret",
+                },
+            ),
+            "joplin-server-saml": (
+                ["--sync-location", "https://server.invalid"],
+                {"sync.11.path": "https://server.invalid"},
+            ),
+        }
+        for target, (extra, expected) in cases.items():
+            args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
+                ["--sync-target", target, *extra]
+            )
+            installer.validate_args(args)
+            configuration = installer.resolve_sync_configuration(
+                args,
+                SecretRedactor(),
+                getpass_fn=lambda _prompt: "sync-secret",
+            )
+            with self.subTest(target=target):
+                self.assertEqual(
+                    {setting.name: setting.value for setting in configuration.settings},
+                    expected,
+                )
+
+    def test_s3_maps_every_driver_setting(self) -> None:
+        args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
+            [
+                "--sync-target",
+                "s3",
+                "--sync-location",
+                "notes-bucket",
+                "--sync-username",
+                "access-key",
+                "--s3-endpoint",
+                "https://s3.invalid/storage",
+                "--s3-region",
+                "eu-north-1",
+                "--s3-force-path-style",
+            ]
+        )
+        installer.validate_args(args)
+        configuration = installer.resolve_sync_configuration(
+            args,
+            SecretRedactor(),
+            getpass_fn=lambda _prompt: "secret-key",
+        )
+        self.assertEqual(
+            {setting.name: setting.value for setting in configuration.settings},
+            {
+                "sync.8.path": "notes-bucket",
+                "sync.8.url": "https://s3.invalid/storage/",
+                "sync.8.region": "eu-north-1",
+                "sync.8.username": "access-key",
+                "sync.8.password": "secret-key",
+                "sync.8.forcePathStyle": "true",
+            },
+        )
+
+    def test_browser_targets_have_no_static_settings(self) -> None:
+        for target in ("onedrive", "dropbox", "joplin-cloud"):
+            args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
+                ["--sync-target", target]
+            )
+            installer.validate_args(args)
+            configuration = installer.resolve_sync_configuration(args, SecretRedactor())
+            with self.subTest(target=target):
+                self.assertEqual(configuration.settings, ())
+
+    def test_browser_sync_requires_persisted_auth_before_verification(self) -> None:
+        paths = mock.Mock(launcher=Path("/joplin"), profile_dir=Path("/profile"))
+        runner = mock.Mock()
+        runner.run.return_value = subprocess.CompletedProcess(
+            [], 0, "sync.7.auth = null\n", ""
+        )
+        with self.assertRaisesRegex(ToolError, "authentication was not completed"):
+            installer.run_browser_authenticated_sync(
+                runner,
+                paths,
+                installer.SYNC_TARGETS["dropbox"],
+            )
+        runner.run_interactive.assert_called_once()
+        runner.run_long.assert_not_called()
+
+    def test_saml_code_exchange_validates_and_returns_session(self) -> None:
+        class Response(io.BytesIO):
+            def __enter__(self) -> Response:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                self.close()
+
+        opened: list[str] = []
+
+        def urlopen(request: urllib.request.Request, *, timeout: float) -> Response:
+            opened.append(request.full_url)
+            self.assertEqual(timeout, 30.0)
+            return Response(b'{"id":"session-token","user_id":"user-id"}')
+
+        self.assertEqual(
+            installer.exchange_saml_code(
+                "https://server.invalid",
+                "123-456-789",
+                urlopen=urlopen,
+            ),
+            ("session-token", "user-id"),
+        )
+        self.assertEqual(
+            opened,
+            ["https://server.invalid/api/login_with_code/123456789"],
+        )
+        with self.assertRaisesRegex(ToolError, "exactly 9 digits"):
+            installer.exchange_saml_code(
+                "https://server.invalid",
+                "not-a-code",
+                urlopen=urlopen,
+            )
+
+    def test_saml_rerun_reuses_existing_session(self) -> None:
+        configuration = installer.SyncConfiguration(
+            installer.SYNC_TARGETS["joplin-server-saml"],
+            (installer.SyncSetting("sync.11.path", "https://server.invalid"),),
+        )
+        with (
+            mock.patch.object(
+                installer,
+                "read_setting",
+                side_effect=["existing-session", "existing-user"],
+            ),
+            mock.patch.object(installer, "write_setting") as write,
+        ):
+            installer.authenticate_saml(
+                mock.Mock(),
+                mock.Mock(),
+                configuration,
+                SecretRedactor(),
+                reuse_existing=True,
+                input_fn=mock.Mock(side_effect=AssertionError("must not prompt")),
+            )
+        write.assert_not_called()
+
+    def test_unencrypted_remote_skips_e2ee_password(self) -> None:
+        with (
+            mock.patch.object(installer, "e2ee_status_enabled", return_value=False),
+            mock.patch.object(
+                installer,
+                "resolve_secret",
+                side_effect=AssertionError("must not request E2EE password"),
+            ),
+        ):
+            enabled = installer.bootstrap_e2ee(
+                mock.Mock(),
+                mock.Mock(),
+                mock.Mock(),
+                SecretRedactor(),
+            )
+        self.assertFalse(enabled)
 
 
 class LingeringTests(unittest.TestCase):
@@ -930,9 +1295,11 @@ class DryRunTests(unittest.TestCase):
             }
             args = installer.build_parser(env).parse_args(
                 [
-                    "--nextcloud-url",
+                    "--sync-target",
+                    "nextcloud",
+                    "--sync-location",
                     "https://cloud.invalid/Joplin",
-                    "--nextcloud-user",
+                    "--sync-username",
                     "user",
                     "--dry-run",
                     "--joplin-prefix",
@@ -1080,9 +1447,11 @@ class ServiceLifecycleTests(unittest.TestCase):
             }
             args = installer.build_parser(env).parse_args(
                 [
-                    "--nextcloud-url",
+                    "--sync-target",
+                    "nextcloud",
+                    "--sync-location",
                     "https://cloud.invalid/Joplin",
-                    "--nextcloud-user",
+                    "--sync-username",
                     "user",
                     "--joplin-prefix",
                     str(root / "prefix"),
@@ -1097,7 +1466,7 @@ class ServiceLifecycleTests(unittest.TestCase):
             order: list[str] = []
 
             def sync_secret(*_args: object, **_kwargs: object) -> str:
-                order.append("nextcloud-password")
+                order.append("sync-password")
                 raise ToolError("stop after prompt ordering check")
 
             with (
@@ -1131,7 +1500,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 tool.run()
             self.assertEqual(
                 order,
-                ["mcp-token", "gpt-token", "lingering", "nextcloud-password"],
+                ["mcp-token", "gpt-token", "lingering", "sync-password"],
             )
 
     def test_upgrade_restarts_both_services_and_smokes_both_api_routes(self) -> None:

@@ -31,8 +31,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.0"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.0"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 

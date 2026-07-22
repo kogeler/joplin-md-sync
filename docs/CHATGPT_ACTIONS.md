@@ -166,7 +166,7 @@ follows:
 6. Resolve every schema validation error. Do not change the generated server
    URL, operation IDs, authentication scheme, or consequential-operation flags.
 7. Confirm that the editor detects the same number of Actions printed by the
-   setup assistant. Version 1.4.1 generates 27 Actions.
+   setup assistant. Version 1.5.0 generates 27 Actions.
 8. Leave **Privacy policy** empty while the GPT is private. A publicly shared
    or GPT Store Action requires a valid privacy-policy URL that you control.
 
