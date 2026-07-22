@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-21
+
+### Changed
+
+- Consolidate endpoint validation, OpenAPI export, paste-ready GPT
+  Instructions, editor configuration, Preview acceptance, and troubleshooting
+  into one ChatGPT Actions runbook.
+- Replace manual endpoint commands with one interactive assistant that asks
+  only for the public host and Actions token, verifies the remote boundary, and
+  writes the generated Git-ignored OpenAPI contract.
+- Document copy-ready values for every field in the GPT Configure screen and
+  the separate API key/Bearer credential step in the Action editor.
+
 ## [1.4.0] - 2026-07-21
 
 ### Added

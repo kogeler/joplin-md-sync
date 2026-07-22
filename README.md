@@ -31,8 +31,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 
@@ -111,19 +111,7 @@ not the development instructions for this source checkout.
 
 One foreground `joplin-md-sync` process exposes MCP and authenticated REST
 Actions from the same tool registry on different URIs. It starts while Joplin
-is offline and recovers on later calls without a restart:
-
-```bash
-export JOPLIN_TOKEN=...
-joplin-md-sync mcp serve --gpt-actions \
-  --gpt-actions-token-file ~/.config/joplin-md-sync/gpt-actions-token
-# MCP:     http://127.0.0.1:8765/mcp
-# Actions: http://127.0.0.1:8765/api/gpt/v1/*
-
-joplin-md-sync gpt-actions export-openapi \
-  --server-url https://notes.example.com \
-  --output ./chatgpt-action.openapi.json
-```
+is offline and recovers on later calls without a restart.
 
 The Actions token is mandatory when Actions are enabled and is reloaded from a
 protected file. MCP bearer authentication remains optional through a separate
@@ -134,8 +122,9 @@ successful install. It never creates a separate Actions service.
 
 Use [service installation and operations](docs/SERVICE.md) for Linux, Windows,
 credentials, URI isolation, and live tests; [MCP API](docs/MCP_API.md) for the
-tool contract; and [ChatGPT Actions setup](docs/CHATGPT_ACTIONS.md) for the
-OpenAI editor.
+tool contract; and the single [ChatGPT Actions end-to-end
+setup](docs/CHATGPT_ACTIONS.md) for endpoint validation, schema export, GPT
+Instructions, editor configuration, and acceptance testing.
 
 ## Architecture overview
 

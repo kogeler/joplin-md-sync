@@ -24,7 +24,7 @@ Every `--json` response contains:
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.4.0",
+  "tool_version": "1.4.1",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -157,4 +157,4 @@ query, fragment, or credentials. The JSON result reports `operation_count`,
 
 The repository does not store a generated contract. Export it with the real
 public hostname immediately before importing or updating a Custom GPT. See
-[Joplin API Service](SERVICE.md).
+[ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md).

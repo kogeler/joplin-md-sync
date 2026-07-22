@@ -43,6 +43,10 @@ def test_source_distribution_includes_complete_service_installer() -> None:
     assert "recursive-include scripts/joplin_terminal_service/systemd *.service" in manifest
 
 
-def test_setup_has_no_redundant_assistant_or_checked_in_contract() -> None:
-    assert not (REPO / "scripts" / "prepare_chatgpt_action.py").exists()
+def test_setup_assistant_is_shipped_without_a_checked_in_contract() -> None:
+    assert (REPO / "scripts" / "prepare_chatgpt_action.py").is_file()
     assert not (REPO / "openapi" / "chatgpt-action.openapi.json").exists()
+    manifest = (REPO / "MANIFEST.in").read_text(encoding="utf-8")
+    assert "include scripts/prepare_chatgpt_action.py" in manifest
+    gitignore = (REPO / ".gitignore").read_text(encoding="utf-8")
+    assert "/chatgpt-action.openapi.json" in gitignore

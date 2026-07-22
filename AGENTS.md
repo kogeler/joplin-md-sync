@@ -15,9 +15,9 @@ output, stable exit codes, no silent overwrites.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
 # or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.0"
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.4.1"
 # or run the standalone zipapp from a GitHub release asset:
 python joplin-md-sync.pyz --help
 # or run a native release executable without installing Python:
@@ -145,10 +145,13 @@ and enabled with a separate `--auth-token-file`.
 
 The same binary and listener expose authenticated Custom GPT Actions with
 `--gpt-actions --gpt-actions-token-file PATH`. A production HTTPS publishing
-layer must expose only `/api/gpt/v1/*`; `/mcp`, health routes, and Joplin remain
+layer may expose the shared `/mcp` and `/api/gpt/v1/*` listener because both
+transports use separate bearer tokens. Joplin Data API ports must remain
 private. The headless installer always enables Actions in the single
 `joplin-md-sync.service`, generates separate Actions and MCP bearer tokens, and
-always enables MCP authentication. See [docs/SERVICE.md](docs/SERVICE.md).
+always enables MCP authentication. See
+[docs/CHATGPT_ACTIONS.md](docs/CHATGPT_ACTIONS.md) for the complete setup and
+[docs/SERVICE.md](docs/SERVICE.md) for service operations.
 
 Deletions are **never propagated by default** — they are reported. Pass
 `--propagate-deletes` to apply them (local files go to quarantine under
