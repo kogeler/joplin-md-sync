@@ -93,8 +93,10 @@ files dropped into the workspace, and the local network.
   throttling is not a substitute for that entropy; operators must not replace
   generated credentials with human-chosen strings.
 - Note and notebook deletion uses Joplin trash. Tag and resource deletion is
-  permanent because Joplin has no trash API for those types; both tools are
-  advertised as destructive and should remain confirmation-gated by clients.
+  permanent because Joplin has no trash API for those types. The generated
+  ChatGPT Actions contract allows persistent approval for all operations,
+  including destructive ones, so an erroneous request can execute without a
+  client confirmation.
 - The incoming socket timeout bounds stalled network reads, but a client-side
   timeout does not cancel an in-flight tool execution thread. The server does
   not automatically retry writes; ambiguous and partial writes must be

@@ -33,7 +33,8 @@ def test_generated_operations_match_exposed_registry() -> None:
         operation = operations[path]
         assert operation["operationId"] == operation_id(tool)
         assert operation["security"] == [{"GPTActionBearer": []}]
-        assert operation["x-openai-isConsequential"] is (tool_effect(tool) != "read")
+        assert operation["x-openai-isConsequential"] is False
+        assert operation["x-joplin-md-sync-effect"] == tool_effect(tool)
         assert operation["requestBody"]["required"] is True
         assert operation["requestBody"]["content"]["application/json"]["schema"] == (
             tool.to_mcp_json()["inputSchema"]
