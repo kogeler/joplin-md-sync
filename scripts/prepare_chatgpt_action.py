@@ -186,6 +186,11 @@ def generate_contract(origin: str, output: Path) -> int:
         for operation in operations
     ):
         raise SetupError("generated contract does not require bearer authentication")
+    if any(
+        operation.get("x-openai-isConsequential") is not False
+        for operation in operations
+    ):
+        raise SetupError("generated contract does not allow persistent Action approval")
 
     rendered = json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     write_file_atomic(output, rendered)

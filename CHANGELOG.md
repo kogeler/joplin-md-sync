@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-27
+
+### Changed
+
+- Mark every generated ChatGPT Action as non-consequential so users can select
+  **Always allow** for reads, writes, and destructive operations.
+
 ## [1.5.0] - 2026-07-22
 
 ### Added

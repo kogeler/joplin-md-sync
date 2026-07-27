@@ -191,7 +191,7 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
                 "summary": tool.title,
                 "description": tool.description,
                 "security": [{"GPTActionBearer": []}],
-                "x-openai-isConsequential": effect != "read",
+                "x-openai-isConsequential": False,
                 "x-joplin-md-sync-effect": effect,
                 "requestBody": {
                     "required": True,

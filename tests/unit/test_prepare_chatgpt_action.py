@@ -79,6 +79,10 @@ def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract
     document = json.loads(output.read_text(encoding="utf-8"))
     assert document["servers"] == [{"url": origin}]
     assert assistant.ACTION_PATH in document["paths"]
+    assert all(
+        item["post"]["x-openai-isConsequential"] is False
+        for item in document["paths"].values()
+    )
     assert TOKEN not in output.read_text(encoding="utf-8")
     assert messages[-1] == "[3/3] Generating the OpenAPI contract..."
 
