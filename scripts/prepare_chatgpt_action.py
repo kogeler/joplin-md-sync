@@ -28,9 +28,19 @@ from joplin_md_sync.gpt_openapi import (  # noqa: E402
 from joplin_md_sync.workspace import write_file_atomic  # noqa: E402
 
 OUTPUT = REPO / "chatgpt-action.openapi.json"
-ACTION_NAME = "joplin_list_notebooks"
+ACTION_NAME = "joplin_list_notes"
 ACTION_PATH = f"{ACTION_PATH_PREFIX}/{ACTION_NAME}"
 REQUEST_BODY = b'{"limit":1}'
+CHATGPT_ACTION_USER_AGENT = (
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); "
+    "compatible; ChatGPT-User/1.0; +https://openai.com/bot"
+)
+ACTION_PROBES = (
+    (ACTION_NAME, REQUEST_BODY),
+    ("joplin_list_notebooks", b'{"limit":1}'),
+    ("joplin_search_notes", b'{"limit":1,"query":"test"}'),
+    ("joplin_list_tags", b'{"limit":1}'),
+)
 REQUEST_TIMEOUT_SECONDS = 20.0
 MAX_RESPONSE_BYTES = 1_000_000
 
@@ -101,9 +111,10 @@ def https_request(
 ) -> HttpResponse:
     """Make one bounded HTTPS request without following redirects."""
 
+    # Match the Custom GPT Actions client profile observed at the public edge.
     headers = {
         "Accept": "application/json",
-        "User-Agent": "joplin-md-sync-chatgpt-setup/1",
+        "User-Agent": CHATGPT_ACTION_USER_AGENT,
     }
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -133,7 +144,53 @@ def https_request(
 def _expect_status(response: HttpResponse, expected: set[int], check: str) -> None:
     if response.status not in expected:
         wanted = "/".join(str(status) for status in sorted(expected))
-        raise SetupError(f"{check}: expected HTTP {wanted}, received {response.status}")
+        suffix = _edge_rejection(response.body)
+        raise SetupError(
+            f"{check}: expected HTTP {wanted}, received {response.status}{suffix}"
+        )
+
+
+def _edge_rejection(body: bytes) -> str:
+    """Return a bounded diagnostic for a recognized edge-generated error."""
+
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict) or payload.get("cloudflare_error") is not True:
+        return ""
+    code = payload.get("error_code")
+    name = payload.get("error_name")
+    detail = payload.get("detail")
+    identity = " ".join(str(value) for value in (code, name) if value is not None)
+    if isinstance(detail, str):
+        detail = detail[:300]
+    else:
+        detail = None
+    diagnostic = f"Cloudflare error {identity}".rstrip()
+    if detail:
+        diagnostic += f": {detail}"
+    return f" ({diagnostic})"
+
+
+def _expect_success(response: HttpResponse, action_name: str) -> None:
+    _expect_status(response, {200}, f"authenticated {action_name} Action request")
+    try:
+        payload = json.loads(response.body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise SetupError(
+            f"authenticated {action_name} Action response is not valid JSON"
+        ) from None
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        raise SetupError(
+            f"authenticated {action_name} Action response does not report success: true"
+        )
+    if not isinstance(payload.get("result"), dict) or not isinstance(
+        payload.get("request_id"), str
+    ):
+        raise SetupError(
+            f"authenticated {action_name} Action response has an invalid success envelope"
+        )
 
 
 def verify_public_endpoint(
@@ -143,25 +200,17 @@ def verify_public_endpoint(
     requester: Requester = https_request,
     report: Reporter = print,
 ) -> None:
-    """Verify Actions authentication and one real read operation."""
+    """Verify Actions authentication and representative read operations."""
 
-    report("[1/2] Checking TLS and rejection of missing Actions credentials...")
+    report("[1/6] Checking ChatGPT client profile and missing-credential rejection...")
     response = requester(origin, ACTION_PATH, "POST", None, REQUEST_BODY)
     _expect_status(response, {401}, "unauthenticated Actions request")
 
-    report("[2/2] Calling an authenticated read-only Joplin Action...")
-    response = requester(origin, ACTION_PATH, "POST", token, REQUEST_BODY)
-    _expect_status(response, {200}, "authenticated Actions request")
-    try:
-        payload = json.loads(response.body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise SetupError("authenticated Actions response is not valid JSON") from None
-    if not isinstance(payload, dict) or payload.get("success") is not True:
-        raise SetupError("authenticated Actions response does not report success: true")
-    if not isinstance(payload.get("result"), dict) or not isinstance(
-        payload.get("request_id"), str
-    ):
-        raise SetupError("authenticated Actions response has an invalid success envelope")
+    for step, (action_name, request_body) in enumerate(ACTION_PROBES, start=2):
+        report(f"[{step}/6] Calling authenticated {action_name}...")
+        action_path = f"{ACTION_PATH_PREFIX}/{action_name}"
+        response = requester(origin, action_path, "POST", token, request_body)
+        _expect_success(response, action_name)
 
 
 def generate_contract(origin: str, output: Path) -> int:
@@ -213,7 +262,7 @@ def run_setup(
     except ValueError as exc:
         raise SetupError(str(exc)) from None
     verify_public_endpoint(origin, token, requester=requester, report=report)
-    report("[3/3] Generating the OpenAPI contract...")
+    report("[6/6] Generating the OpenAPI contract...")
     operation_count = generate_contract(origin, output)
     return origin, operation_count
 

@@ -28,7 +28,7 @@ this in CI.
 6. Post-release smoke check from a clean machine:
 
    ```bash
-   python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.1"
+   python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
    joplin-md-sync version --json
    joplin-md-sync update-check --json   # expect exit 0
    ```

@@ -35,9 +35,12 @@ The assistant then performs all preflight work:
 - validates the hostname and token format;
 - validates TLS 1.2 or later, the public certificate chain, and the hostname
   without following redirects;
+- uses the observed Custom GPT Actions User-Agent and HTTP/1.1 request profile
+  so edge rules evaluate the setup probe like an Action client;
 - confirms that the Actions route returns `401` without a token;
-- calls the real read-only `joplin_list_notebooks` Action with the token;
-- requires HTTP `200` and a valid `success: true` response; and
+- calls the real read-only notebook listing, note listing, note search, and tag
+  listing Actions with the token;
+- requires HTTP `200` and a valid `success: true` response from every probe; and
 - generates and validates `chatgpt-action.openapi.json` atomically.
 
 The token is held only in memory and sent only to the entered HTTPS origin. It
@@ -168,7 +171,7 @@ follows:
    which makes **Always allow** available for reads, writes, and destructive
    Actions.
 7. Confirm that the editor detects the same number of Actions printed by the
-   setup assistant. Version 1.5.1 generates 27 Actions.
+   setup assistant. Version 1.5.2 generates 27 Actions.
 8. Leave **Privacy policy** empty while the GPT is private. A publicly shared
    or GPT Store Action requires a valid privacy-policy URL that you control.
 
@@ -208,12 +211,20 @@ visibility, reopen the saved GPT, and repeat the notebook-listing test.
 The assistant stops before writing JSON when TLS, routing, authentication, or
 the read Action fails. Its error identifies the failed boundary:
 
+- a recognized edge-generated response reports its error number and category;
 - an unauthenticated Action returning anything except `401` means the Actions
   authentication boundary is misconfigured;
 - an authenticated Action returning `401` means the token does not match the
   remote service; and
 - a successful public request with an invalid response envelope means the
   proxy is not returning the adapter's Actions response unchanged.
+
+The assistant matches the observed Action User-Agent, HTTP version, method,
+path, JSON body, content type, and Bearer authentication. It cannot reproduce
+ChatGPT's source IP, ASN, verified-bot classification, TLS fingerprint, or
+undocumented headers. If every probe passes but Preview produces no
+`gpt_actions_request` event, inspect the edge provider's security events for
+the exact blocked ChatGPT request.
 
 After upgrading the remote adapter, update this checkout to the same release
 and rerun the assistant. Replace the schema in the editor and repeat Preview.

@@ -1,5 +1,5 @@
 # Local-only files (never commit)
-/token
+/token*
 /chatgpt-action.openapi.json
 
 # Local note workspaces used for manual/acceptance testing
