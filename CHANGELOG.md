@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-07-28
+
+### Fixed
+
+- Make the ChatGPT Actions setup assistant use the observed ChatGPT Action
+  User-Agent and request profile, probe note search and related read paths, and
+  report recognized Cloudflare edge blocks.
+
 ## [1.5.1] - 2026-07-27
 
 ### Changed

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import ssl
 import sys
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -38,10 +39,60 @@ def test_normalize_origin_accepts_only_a_bare_host_or_https_origin() -> None:
             assistant.normalize_origin(invalid)
 
 
+def test_https_request_uses_observed_chatgpt_action_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, size: int = -1) -> bytes:
+            del size
+            return b"{}"
+
+    class Opener:
+        def open(
+            self, request: urllib.request.Request, *, timeout: float
+        ) -> Response:
+            captured["headers"] = dict(request.header_items())
+            captured["timeout"] = timeout
+            return Response()
+
+    monkeypatch.setattr(
+        assistant.urllib.request,
+        "build_opener",
+        lambda *handlers: Opener(),
+    )
+
+    response = assistant.https_request(
+        "https://notes.example.com",
+        assistant.ACTION_PATH,
+        "POST",
+        TOKEN,
+        assistant.REQUEST_BODY,
+    )
+
+    assert response.status == 200
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["User-agent"] == assistant.CHATGPT_ACTION_USER_AGENT
+    assert headers["Accept"] == "application/json"
+    assert headers["Content-type"] == "application/json"
+    assert headers["Authorization"] == f"Bearer {TOKEN}"
+    assert captured["timeout"] == assistant.REQUEST_TIMEOUT_SECONDS
+
+
 def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract(
     tmp_path: Path,
 ) -> None:
-    calls: list[tuple[str, str, str | None]] = []
+    calls: list[tuple[str, str, bool, bytes | None]] = []
 
     def request(
         origin: str,
@@ -50,8 +101,7 @@ def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract
         token: str | None,
         body: bytes | None,
     ) -> assistant.HttpResponse:
-        del body
-        calls.append((path, method, token))
+        calls.append((path, method, token is not None, body))
         if token is None:
             return assistant.HttpResponse(401, b'{"success":false}')
         assert origin == "https://notes.example.com"
@@ -73,8 +123,16 @@ def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract
     assert origin == "https://notes.example.com"
     assert operation_count > 0
     assert calls == [
-        (assistant.ACTION_PATH, "POST", None),
-        (assistant.ACTION_PATH, "POST", TOKEN),
+        (assistant.ACTION_PATH, "POST", False, assistant.REQUEST_BODY),
+        *[
+            (
+                f"{assistant.ACTION_PATH_PREFIX}/{action_name}",
+                "POST",
+                True,
+                body,
+            )
+            for action_name, body in assistant.ACTION_PROBES
+        ],
     ]
     document = json.loads(output.read_text(encoding="utf-8"))
     assert document["servers"] == [{"url": origin}]
@@ -84,7 +142,27 @@ def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract
         for item in document["paths"].values()
     )
     assert TOKEN not in output.read_text(encoding="utf-8")
-    assert messages[-1] == "[3/3] Generating the OpenAPI contract..."
+    assert messages[-1] == "[6/6] Generating the OpenAPI contract..."
+
+
+def test_cloudflare_edge_rejection_is_reported() -> None:
+    response = assistant.HttpResponse(
+        403,
+        json.dumps(
+            {
+                "cloudflare_error": True,
+                "error_code": 1010,
+                "error_name": "browser_signature_banned",
+                "detail": "The site owner blocked this browser signature.",
+            }
+        ).encode(),
+    )
+
+    with pytest.raises(
+        assistant.SetupError,
+        match=r"Cloudflare error 1010 browser_signature_banned",
+    ):
+        assistant._expect_status(response, {401}, "unauthenticated Actions request")
 
 
 def test_run_setup_does_not_write_contract_when_endpoint_check_fails(
