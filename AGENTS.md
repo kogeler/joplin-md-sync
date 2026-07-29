@@ -43,6 +43,8 @@ make test-service-installer # Linux headless installer tests
 make test-live   # opt-in live MCP + GPT Actions tests; reads ./token; not CI
 make package     # wheel, sdist, pyz, current-platform executable, checksums
 make smoke       # install the built wheel into a clean venv and exercise it
+make docs-build  # strict MkDocs build for the documentation site
+make docs-serve  # local documentation server with live reload
 make help        # list all targets
 ```
 
@@ -53,6 +55,9 @@ make help        # list all targets
   currently empty by design); dev tools are declared in
   `[dependency-groups]` and pinned via pip freeze in `requirements-dev.txt`
   (refresh with `make freeze`).
+- The public site at `https://joplin-mcp.romancello.net/` is built from
+  `docs/` with `mkdocs.yml`; `docs/index.md` is its product homepage. GitHub
+  Pages deployment lives in `.github/workflows/pages.yml`.
 
 ## Authentication
 

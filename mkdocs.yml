@@ -1,0 +1,120 @@
+site_name: joplin-md-sync
+site_description: >-
+  Safe two-way Joplin and Markdown synchronization, plus MCP and ChatGPT
+  Actions access for coding agents and AI assistants.
+site_url: https://joplin-mcp.romancello.net/
+site_author: kogeler
+copyright: MIT licensed. Joplin is a trademark of Laurent Cozic.
+
+repo_url: https://github.com/kogeler/joplin-md-sync
+repo_name: kogeler/joplin-md-sync
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  font:
+    text: Montserrat
+    code: Roboto Mono
+  icon:
+    logo: material/file-sync-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - announce.dismiss
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.action.edit
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - search.highlight
+    - search.share
+    - search.suggest
+
+plugins:
+  - search
+
+hooks:
+  - scripts/docs_hooks.py
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra_javascript:
+  - assets/javascripts/site.js
+
+extra:
+  analytics:
+    provider: google
+    property: !ENV [GOOGLE_ANALYTICS_KEY, ""]
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kogeler/joplin-md-sync
+      name: joplin-md-sync on GitHub
+  generator: false
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Overview: OVERVIEW.md
+      - Installation and quick start: GETTING_STARTED.md
+      - Agent workflows: AGENT_WORKFLOWS.md
+  - Markdown sync:
+      - Workspace format: WORKSPACE_FORMAT.md
+      - CLI reference: CLI.md
+      - State and synchronization: STATE_MODEL.md
+      - Conflict handling: CONFLICTS.md
+  - Agent interfaces:
+      - Choose an interface: AGENT_INTERFACES.md
+      - MCP API: MCP_API.md
+      - ChatGPT Actions: CHATGPT_ACTIONS.md
+      - Self-hosted service: SELF_HOSTED.md
+      - Service operations: SERVICE.md
+  - Internals:
+      - Architecture: ARCHITECTURE.md
+      - Security: SECURITY.md
+      - Release process: RELEASE_PROCESS.md
+  - Changelog: https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md

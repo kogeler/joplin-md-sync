@@ -1,0 +1,2 @@
+# Build-time dependencies for the GitHub Pages documentation site.
+mkdocs-material>=9.7.6

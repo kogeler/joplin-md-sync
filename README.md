@@ -5,6 +5,8 @@ desktop application and an ordinary directory of Markdown files — built
 primarily for **autonomous coding agents** (deterministic JSON output, stable
 exit codes, explicit conflict handling), and perfectly usable by humans.
 
+**Documentation:** [joplin-mcp.romancello.net](https://joplin-mcp.romancello.net/)
+
 > **Safety first.** The tool never overwrites divergent edits, never deletes
 > anything without an explicit flag, never uses permanent deletion in Joplin,
 > verifies every write after applying it, and journals every mutating run so

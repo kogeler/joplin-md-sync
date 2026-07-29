@@ -11,10 +11,13 @@ this in CI.
 ## Steps
 
 1. Update `.version`, the `version` field in `agent-manifest.json`, and
-   `CHANGELOG.md` (move Unreleased → new version with the date).
+   `CHANGELOG.md` (move Unreleased → new version with the date). Update
+   versioned installation examples in `README.md`, `AGENTS.md`,
+   `docs/GETTING_STARTED.md`, this page, and any version-specific CLI or
+   Actions examples.
 2. Open a pull request. The `version increment` CI job compares `.version`
    with the pull request base and requires a strictly newer `X.Y.Z` version.
-3. Locally: `make check && make package && make verify-release`.
+3. Locally: `make check && make docs-build && make package && make verify-release`.
 4. Merge the pull request into `main`. Every merge is expected to carry a
    version increment; no release tag is created manually.
 5. The `release.yml` workflow (trigger: pushes to `main`) reruns `make check`
