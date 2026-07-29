@@ -15,9 +15,9 @@ output, stable exit codes, no silent overwrites.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
 # or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
 # or run the standalone zipapp from a GitHub release asset:
 python joplin-md-sync.pyz --help
 # or run a native release executable without installing Python:

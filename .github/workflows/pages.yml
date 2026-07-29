@@ -1,6 +1,15 @@
 name: Deploy documentation
 
 on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "overrides/**"
+      - "mkdocs.yml"
+      - "scripts/docs_hooks.py"
+      - "requirements-docs.txt"
+      - ".github/site-root/**"
+      - ".github/workflows/pages.yml"
   push:
     branches:
       - main
@@ -31,6 +40,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Set up Python
@@ -51,14 +61,17 @@ jobs:
         run: mkdocs build --strict
 
       - name: Copy site-root files
+        if: github.event_name != 'pull_request'
         run: cp -rv .github/site-root/. site/
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

@@ -24,14 +24,14 @@ later, because it makes the state and safety model concrete.
 === "pipx"
 
     ```bash
-    pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
+    pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
+    python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
     joplin-md-sync version --json
     ```
 
@@ -169,4 +169,3 @@ Git-reviewed knowledge, conflicts, deletions, and when to use MCP instead.
 | Build a private Joplin Custom GPT | [ChatGPT Actions](CHATGPT_ACTIONS.md) |
 | Run Joplin and the bridge on Linux | [Self-hosted deployment](SELF_HOSTED.md) |
 | Understand conflicts and recovery | [State and synchronization](STATE_MODEL.md) and [Conflict handling](CONFLICTS.md) |
-
