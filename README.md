@@ -5,6 +5,8 @@ desktop application and an ordinary directory of Markdown files — built
 primarily for **autonomous coding agents** (deterministic JSON output, stable
 exit codes, explicit conflict handling), and perfectly usable by humans.
 
+**Documentation:** [joplin-mcp.romancello.net](https://joplin-mcp.romancello.net/)
+
 > **Safety first.** The tool never overwrites divergent edits, never deletes
 > anything without an explicit flag, never uses permanent deletion in Joplin,
 > verifies every write after applying it, and journals every mutating run so
@@ -31,8 +33,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.2"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 

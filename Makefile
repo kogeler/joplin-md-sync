@@ -24,15 +24,18 @@ ARCH             ?= $(shell $(PY) -c "from scripts.build_standalone import stand
 STANDALONE       := dist/joplin-md-sync-$(PLATFORM)-$(ARCH)$(EXE)
 VENV           := venv
 VENV_DEV       := venv-dev
+VENV_DOCS      := venv-docs
 VENV_SMOKE     := venv-smoke
 PYTHON         := $(VENV)/$(BIN)/python
 PYTHON_DEV     := $(VENV_DEV)/$(BIN)/python
+PYTHON_DOCS    := $(VENV_DOCS)/$(BIN)/python
 DEPS_STAMP     := $(VENV)/.deps-installed
 DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
+DEPS_DOCS_STAMP := $(VENV_DOCS)/.deps-installed
 VERSION        := $(shell cat .version)
 TEST_WORKERS   ?= 4
 
-.PHONY: help venv venv-dev freeze test test-live test-service-installer lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
+.PHONY: help venv venv-dev venv-docs docs-build docs-serve freeze test test-live test-service-installer lint typecheck check build zipapp standalone checksums package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone verify-release clean
 
 help:                    ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -57,6 +60,22 @@ $(DEPS_DEV_STAMP): $(PYTHON_DEV) requirements-dev.txt
 	touch $(DEPS_DEV_STAMP)
 
 venv-dev: $(DEPS_DEV_STAMP)  ## dev venv from the pinned requirements-dev.txt lock
+
+$(PYTHON_DOCS):
+	$(PY) -m venv $(VENV_DOCS)
+
+$(DEPS_DOCS_STAMP): $(PYTHON_DOCS) requirements-docs.txt
+	$(PYTHON_DOCS) -m pip install --upgrade pip
+	$(PYTHON_DOCS) -m pip install -r requirements-docs.txt
+	touch $(DEPS_DOCS_STAMP)
+
+venv-docs: $(DEPS_DOCS_STAMP)  ## docs venv with MkDocs Material
+
+docs-build: venv-docs     ## build the documentation site with strict checks
+	$(VENV_DOCS)/$(BIN)/mkdocs build --strict
+
+docs-serve: venv-docs     ## serve documentation locally with live reload
+	$(VENV_DOCS)/$(BIN)/mkdocs serve
 
 freeze:                  ## re-resolve [dependency-groups] dev and refresh the lock
 	rm -rf $(VENV_DEV)
@@ -133,6 +152,6 @@ verify-release:          ## consistency checks; pass TAG=vX.Y.Z to verify a tag
 	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG)) $(if $(REQUIRE_ALL_STANDALONES),--require-all-standalones)
 
 clean:                   ## remove venvs, build artifacts, and caches
-	rm -rf $(VENV) $(VENV_DEV) $(VENV_SMOKE) dist build src/*.egg-info \
+	rm -rf $(VENV) $(VENV_DEV) $(VENV_DOCS) $(VENV_SMOKE) dist build site src/*.egg-info \
 		.mypy_cache .ruff_cache .coverage
 	find . -name __pycache__ -type d -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true

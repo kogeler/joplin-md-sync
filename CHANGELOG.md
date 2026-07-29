@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-07-29
+
+### Added
+
+- Add a responsive MkDocs Material documentation site with a product-focused
+  homepage, agent workflow and self-hosting guides, an agent-readable
+  `llms.txt`, and GitHub Pages deployment for
+  `joplin-mcp.romancello.net`.
+
 ## [1.5.2] - 2026-07-28
 
 ### Fixed
