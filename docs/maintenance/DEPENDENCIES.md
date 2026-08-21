@@ -30,7 +30,8 @@ platform responsible for every transitive wheel.
    releases.
 2. Run `make refresh-dependencies` with the supported lock Python.
 3. Inspect direct and transitive changes in all four generated locks.
-4. Run `make freeze-check`, `make audit`, and `make dependency-snapshot`.
+4. Run `make freeze-check`, `make lock-platform-check`, `make audit`, and
+   `make dependency-snapshot`.
 5. Run `make ci` before submission.
 
 Use `make lock` only to regenerate from unchanged direct pins. Generated lock

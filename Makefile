@@ -66,7 +66,7 @@ CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/n
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs venv-lock lock refresh-dependencies freeze \
 	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	test test-full test-live test-service-installer audit dependency-snapshot \
+	lock-platform-check test test-full test-live test-service-installer audit dependency-snapshot \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone \
 	verify-release clean
@@ -173,6 +173,17 @@ freeze-check: venv-lock ## reject lock drift without upgrading dependencies
 		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(DOCS_LOCK)) \
 			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/docs.txt")
 
+lock-platform-check: venv-lock ## verify test and package locks resolve from Windows wheels
+	@for version in 3.13 3.14; do \
+		abi="cp$${version/./}"; \
+		for lock in $(TEST_LOCK) $(PACKAGE_LOCK); do \
+			$(PYTHON_LOCK) -m pip install --quiet --dry-run --ignore-installed \
+				--require-hashes --only-binary=:all: --platform win_amd64 \
+				--implementation cp --python-version "$$version" --abi "$$abi" \
+				--requirement "$$lock"; \
+		done; \
+	done
+
 docs-build: venv-docs ## build the documentation site with strict checks
 	$(VENV_DOCS)/$(BIN)/mkdocs build --strict
 	test -s site/sitemap.xml
@@ -247,7 +258,7 @@ release-notes: ## generate the exact current-version GitHub release body
 check: lint typecheck bandit syntax test verify-release dependency-snapshot ## local cross-platform gates
 
 ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
-	freeze-check docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
+	freeze-check lock-platform-check docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
 
 build: venv-package ## build wheel and sdist into dist/
 	rm -rf dist build

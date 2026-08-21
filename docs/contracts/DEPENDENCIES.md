@@ -9,13 +9,14 @@
 **Contract:** Root `pyproject.toml` MUST be the only direct Python dependency
 manifest. Runtime dependencies MUST remain empty unless an ADR introduces a
 reviewed runtime-lock policy. Quality, test, package, and documentation tools
-MUST be exact, disjoint direct pins to their latest stable releases compatible
-with their supported job audience. A temporary older pin MUST carry an inline
-reason and changelog entry.
+MUST be exact direct pins to their latest stable releases compatible with their
+supported job audience. Tool pins MUST remain disjoint. A platform compatibility
+package MAY be shared only by the audiences that require it. A temporary older
+pin MUST carry an inline reason and changelog entry.
 
 **Evidence:**
 
-- [`test_direct_dependencies_are_exact_and_partitioned`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_partitioned`
+- [`test_direct_dependencies_are_exact_and_scoped`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_scoped`
 - [`test_dependabot_updates_python_and_actions_as_groups`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_dependabot_updates_python_and_actions_as_groups`
 
 ### `DEP-002` - Exactly four non-empty generated hash locks exist
@@ -49,11 +50,13 @@ Bandit, and pip-audit. Compatibility jobs on Windows and Linux MUST install only
 the test lock; distribution jobs MUST install only the package lock; Pages MUST
 install only the docs lock. A tool's missing wheel on an unrelated platform
 MUST be handled by this audience split, not by a repository-wide downgrade.
+Because pip-compile evaluates environment markers on its resolver host, the test
+and package groups MUST directly pin their shared Windows console dependency.
 
 **Evidence:**
 
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
-- [`test_direct_dependencies_are_exact_and_partitioned`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_partitioned`
+- [`test_direct_dependencies_are_exact_and_scoped`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_scoped`
 
 ### `DEP-005` - Lock generation is reproducible and drift is blocking
 
@@ -61,6 +64,9 @@ MUST be handled by this audience split, not by a repository-wide downgrade.
 exact resolver bootstrap. `make refresh-dependencies` MUST re-resolve after a
 reviewed direct-pin update. `make freeze-check` MUST compile without upgrades
 and fail on semantic lock drift.
+`make lock-platform-check` MUST additionally prove that the test and package
+locks can resolve exclusively from Windows wheels for every supported CPython
+version, and the complete Linux CI contract MUST run that check.
 
 **Evidence:**
 

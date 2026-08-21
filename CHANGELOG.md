@@ -38,6 +38,14 @@ All notable changes to this project are documented here. The format follows
   direct and transitive Python dependencies to GitHub's dependency graph, and
   enforce Bandit, dependency audit, actionlint, and CodeQL gates.
 
+### Fixed
+
+- Make the test and package locks installable on Windows by explicitly pinning
+  their shared platform dependency and checking Windows 3.13 and 3.14 wheel
+  resolution from the complete Linux CI contract.
+- Omit Google Analytics configuration when the Pages variable exists but has
+  no value, keeping strict documentation builds valid before analytics setup.
+
 ## [1.5.3] - 2026-07-29
 
 ### Added

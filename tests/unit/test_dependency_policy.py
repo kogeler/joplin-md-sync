@@ -16,18 +16,22 @@ LOCKS = (
 EXACT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9._,-]+\])?==[^\s;]+$")
 
 
-def test_direct_dependencies_are_exact_and_partitioned() -> None:
+def test_direct_dependencies_are_exact_and_scoped() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["dependencies"] == []
     assert set(project["optional-dependencies"]) == {"dev", "test", "package", "docs"}
     for group in project["optional-dependencies"].values():
         assert group
         assert all(EXACT.fullmatch(requirement) for requirement in group)
-    assert all(
-        len(set(left) & set(right)) == 0
+    overlaps = {
+        requirement
         for index, left in enumerate(project["optional-dependencies"].values())
         for right in list(project["optional-dependencies"].values())[index + 1 :]
-    )
+        for requirement in set(left) & set(right)
+    }
+    assert overlaps == {"colorama==0.4.6"}
+    assert "colorama==0.4.6" in project["optional-dependencies"]["test"]
+    assert "colorama==0.4.6" in project["optional-dependencies"]["package"]
     assert any(item.startswith("mypy==") for item in project["optional-dependencies"]["dev"])
     assert not any(item.startswith("mypy==") for item in project["optional-dependencies"]["test"])
 
@@ -51,6 +55,11 @@ def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
     assert "--only-binary=:all:" in makefile
     assert "piptools compile $(COMPILE)" in makefile
     assert "freeze-check:" in makefile
+    assert "lock-platform-check:" in makefile
+    assert "--platform win_amd64" in makefile
+    assert "--python-version \"$$version\"" in makefile
+    ci = makefile.split("ci:", 1)[1].split("build:", 1)[0]
+    assert "lock-platform-check" in ci
     assert "dependency-snapshot:" in makefile
     for lock in LOCKS:
         assert lock in makefile

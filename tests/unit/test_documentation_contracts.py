@@ -234,8 +234,10 @@ def test_site_hook_rewrites_repository_links_and_publishes_root_files(
     page = SimpleNamespace(file=SimpleNamespace(abs_src_path=DOCS / "user" / "CLI.md"))
     config = {"docs_dir": str(DOCS), "site_dir": str(tmp_path)}
 
-    empty_analytics = {"extra": {"analytics": {"provider": "google", "property": ""}}}
+    missing_analytics = {"extra": {"analytics": {"provider": "google", "property": None}}}
+    empty_analytics = {"extra": {"analytics": {"provider": "google", "property": "  "}}}
     configured_analytics = {"extra": {"analytics": {"provider": "google", "property": "G-TEST123"}}}
+    assert "analytics" not in configure(missing_analytics)["extra"]
     assert "analytics" not in configure(empty_analytics)["extra"]
     assert configure(configured_analytics)["extra"]["analytics"]["property"] == "G-TEST123"
 

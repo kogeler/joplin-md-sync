@@ -14,7 +14,8 @@ def on_config(config: Any, **_kwargs: object) -> Any:
 
     extra = config.get("extra", {})
     analytics = extra.get("analytics", {})
-    if not str(analytics.get("property", "")).strip():
+    property_value = analytics.get("property")
+    if not isinstance(property_value, str) or not property_value.strip():
         extra.pop("analytics", None)
     return config
 
