@@ -106,6 +106,9 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "make build zipapp" in release
     assert "actions/download-artifact@" in release
     assert "draft: true" in release
+    assert "github.rest.repos.uploadReleaseAsset" in release
+    assert "uploaded.status !== 201" in release
+    assert '"POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}"' not in release
     assert "deleteReleaseAsset" in release
     assert "softprops/" not in release
     assert "git push" not in release

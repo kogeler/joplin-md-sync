@@ -76,9 +76,10 @@ base version and provide a matching non-empty dated changelog section.
 **Contract:** A not-yet-published version on main MUST pass reusable CI before
 one publish job creates or resumes an exact draft Release, downloads the
 smoke-tested platform artifacts, verifies the full inventory and checksums,
-uploads exact assets, and publishes. Matching publication MUST be a read-only
-no-op; conflicting tags, targets, metadata, or assets MUST fail without moving
-or replacing history.
+uploads each exact asset through GitHub's release upload endpoint with response
+verification, and publishes. Matching publication MUST be a read-only no-op;
+conflicting tags, targets, metadata, or assets MUST fail without moving or
+replacing history.
 
 **Evidence:**
 

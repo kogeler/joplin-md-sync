@@ -47,6 +47,8 @@ All notable changes to this project are documented here. The format follows
   no value, keeping strict documentation builds valid before analytics setup.
 - Keep the Linux-only service installer parser audit out of Windows package
   tests and assign all repository paths to the project code owner.
+- Upload release assets through GitHub's dedicated uploads endpoint and verify
+  every response before publishing the draft release.
 
 ## [1.5.3] - 2026-07-29
 

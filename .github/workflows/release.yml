@@ -255,19 +255,25 @@ jobs:
 
             for (const assetPath of assetPaths) {
               const data = await fs.readFile(assetPath);
-              await github.request(
-                "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}",
-                {
-                  ...context.repo,
-                  release_id: release.data.id,
-                  name: path.basename(assetPath),
-                  data,
-                  headers: {
-                    "content-type": "application/octet-stream",
-                    "content-length": data.byteLength,
-                  },
+              const name = path.basename(assetPath);
+              const uploaded = await github.rest.repos.uploadReleaseAsset({
+                ...context.repo,
+                release_id: release.data.id,
+                name,
+                data,
+                headers: {
+                  "content-type": "application/octet-stream",
+                  "content-length": data.byteLength,
                 },
-              );
+              });
+              if (
+                uploaded.status !== 201 ||
+                uploaded.data.name !== name ||
+                uploaded.data.state !== "uploaded" ||
+                uploaded.data.size !== data.byteLength
+              ) {
+                throw new Error(`Release asset upload was not verified: ${name}`);
+              }
             }
             const published = await github.rest.repos.updateRelease({
               ...context.repo,
