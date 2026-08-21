@@ -34,6 +34,7 @@ def test_generated_operations_match_exposed_registry() -> None:
         assert operation["x-openai-isConsequential"] is False
         assert operation["x-joplin-md-sync-effect"] == tool_effect(tool)
         assert operation["requestBody"]["required"] is True
+        assert "409" in operation["responses"]
         assert (
             operation["requestBody"]["content"]["application/json"]["schema"]
             == (tool.to_mcp_json()["inputSchema"])
@@ -54,6 +55,10 @@ def test_contract_is_deterministic_and_secret_free() -> None:
     parsed = json.loads(first)
     assert parsed["openapi"] == "3.1.0"
     assert parsed["servers"] == [{"url": CANONICAL_SERVER_URL}]
+    assert (
+        "details"
+        in parsed["components"]["schemas"]["ActionError"]["properties"]["error"]["properties"]
+    )
     assert "token" not in json.dumps(parsed).casefold()
 
 

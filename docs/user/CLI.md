@@ -126,7 +126,10 @@ content, attachments, relationship traversal, and full-text search. No
 workspace is required.
 
 For note creation, pass an existing `parent_id` or a `notebook_title` to
-find/create a notebook. With neither, `MCP Notes` is found or created.
+find/create a root notebook. With neither, `MCP Notes` is found or created.
+Explicit create tools reject an occupied natural identity; see
+[Create conflicts](MCP_API.md#create-conflicts) for the comparison keys and
+recovery workflow.
 
 Joplin connection options are the normal `--base-url`, `--port`,
 `--token-file`, `--timeout`, and `--allow-remote-api`. Server options:

@@ -168,6 +168,7 @@ def test_executor_validates_and_preserves_domain_errors() -> None:
         (ApiError("timeout", timed_out=True), "upstream_timeout"),
         (JoplinSyncError("expected"), "expected_error"),
         (ToolServiceError("partial", code="PARTIAL_WRITE"), "partial_write"),
+        (ToolServiceError("exists", code="NOTE_ALREADY_EXISTS"), "conflict_error"),
         (RuntimeError("unexpected"), "internal_error"),
     ),
 )

@@ -17,6 +17,7 @@ log = logging.getLogger("joplin_md_sync.tools")
 FailureClass = Literal[
     "schema_error",
     "domain_error",
+    "conflict_error",
     "backend_auth_error",
     "ambiguous_write",
     "partial_write",
@@ -64,9 +65,12 @@ class ToolExecutor:
         try:
             return ToolExecution(tool, payload=tool.handler(arguments))
         except ToolServiceError as exc:
-            category: FailureClass = (
-                "partial_write" if exc.code.startswith("PARTIAL_") else "domain_error"
-            )
+            if exc.code.startswith("PARTIAL_"):
+                category: FailureClass = "partial_write"
+            elif exc.code.endswith("_ALREADY_EXISTS"):
+                category = "conflict_error"
+            else:
+                category = "domain_error"
             return ToolExecution(
                 tool,
                 failure=ToolFailure(exc.code, str(exc), exc.retryable, category, exc.details),

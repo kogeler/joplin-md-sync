@@ -706,6 +706,88 @@ class LiveGptActionsTest(unittest.TestCase):
             ]
         )
 
+    def test_02_explicit_creates_reject_existing_natural_identities(self) -> None:
+        notebook_title = f"jms-gpt-duplicate-guard-{self.run_id}"
+        notebook = self._action("joplin_create_notebook", {"title": notebook_title})["notebook"]
+        notebook_id = self._remember_notebook(notebook)
+        note_title = f"jms-gpt-duplicate-note-{self.run_id}"
+        note = self._action(
+            "joplin_create_note",
+            {
+                "title": note_title,
+                "body": f"original duplicate-guard body {self.run_id}",
+                "parent_id": notebook_id,
+                "tags": [],
+            },
+        )["note"]
+        note_id = self._remember_note(note)
+        tag_title = f"jms-gpt-duplicate-tag-{self.run_id}"
+        tag_result = self._action("joplin_create_tag", {"title": tag_title})
+        tag_id = str(tag_result["tag"]["id"])
+        self.assertTrue(tag_result["created"])
+        self.assertNotIn(tag_id, self.initial_tags)
+        self.owned_tag_ids.add(tag_id)
+
+        conflicts = (
+            (
+                "joplin_create_notebook",
+                {"title": f" {notebook_title.upper()} "},
+                "NOTEBOOK_ALREADY_EXISTS",
+                notebook_id,
+                "joplin_update_notebook",
+            ),
+            (
+                "joplin_create_note",
+                {
+                    "title": f" {note_title.upper()} ",
+                    "body": f"replacement body {self.run_id}",
+                    "parent_id": notebook_id,
+                },
+                "NOTE_ALREADY_EXISTS",
+                note_id,
+                "joplin_update_note",
+            ),
+            (
+                "joplin_create_tag",
+                {"title": f" {tag_title.upper()} "},
+                "TAG_ALREADY_EXISTS",
+                tag_id,
+                "joplin_update_tag",
+            ),
+        )
+        for tool, arguments, code, existing_id, update_tool in conflicts:
+            error = self._error(tool, arguments, status=409, code=code)
+            self.assertFalse(error["retryable"])
+            self.assertEqual(error["details"]["existing_id"], existing_id)
+            self.assertEqual(error["details"]["existing_ids"], [existing_id])
+            self.assertEqual(error["details"]["recommended_tool"], update_tool)
+
+        def key(value: object) -> str:
+            return str(value or "").strip().casefold()
+
+        folders = [
+            folder
+            for folder in self.api.list_folders(include_deleted=True)
+            if key(folder.get("title")) == key(notebook_title)
+            and str(folder.get("parent_id") or "") == ""
+        ]
+        notes = [
+            item
+            for item in self.api.list_folder_notes(
+                notebook_id,
+                include_deleted=True,
+                include_conflicts=True,
+            )
+            if key(item.get("title")) == key(note_title)
+        ]
+        tags = [item for item in self.api.list_tags() if key(item.get("title")) == key(tag_title)]
+        self.assertEqual([str(item["id"]) for item in folders], [notebook_id])
+        self.assertEqual([str(item["id"]) for item in notes], [note_id])
+        self.assertEqual([str(item["id"]) for item in tags], [tag_id])
+        unchanged = self.api.get_note(note_id, include_deleted=True)
+        assert unchanged is not None
+        self.assertEqual(unchanged["body"], f"original duplicate-guard body {self.run_id}")
+
     def test_03_all_tag_and_resource_actions(self) -> None:
         tag_result = self._action("joplin_create_tag", {"title": f"jms-gpt-tag-{self.run_id}"})
         tag = tag_result["tag"]

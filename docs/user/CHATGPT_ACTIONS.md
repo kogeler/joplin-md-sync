@@ -101,6 +101,8 @@ For each request:
 Writes and destructive operations:
 - Execute an explicitly requested write or destructive operation immediately. Do not ask for a separate confirmation.
 - Before a write, identify the exact target and apply only the requested change.
+- Never use a create Action when an object already occupies the requested notebook/title identity. Use the matching update Action with the existing ID.
+- On an *_ALREADY_EXISTS response, read details.existing_ids and details.recommended_tool. Do not retry create. If the user explicitly requires replacement and update cannot express it, rename the old object, create and verify the replacement, then trash or delete only the renamed old object.
 - Never automatically retry a write after a timeout, conflict, partial result, ambiguous outcome, or retryable: false response. A timeout does not prove that a write failed. Report the error and ask the user to inspect current state before another write.
 
 Results and security:

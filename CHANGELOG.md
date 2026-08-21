@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Reject duplicate note, notebook, tag, and resource identities in the shared
+  MCP and GPT Actions service, returning the existing IDs and appropriate
+  update tool instead of silently creating or reusing another object.
 - Replace the complete CI/CD pipeline with reusable, least-privilege quality,
   compatibility, distribution, dependency-review, CodeQL, version, Pages,
   dependency-submission, PR-body, and idempotent release workflows.

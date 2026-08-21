@@ -399,10 +399,19 @@ class GptActionsTransport:
             self._capacity.release()
 
     @staticmethod
-    def _error(code: str, message: str, retryable: bool, request_id: str) -> JsonObject:
+    def _error(
+        code: str,
+        message: str,
+        retryable: bool,
+        request_id: str,
+        details: object = None,
+    ) -> JsonObject:
+        error: JsonObject = {"code": code, "message": message, "retryable": retryable}
+        if details is not None:
+            error["details"] = details
         return {
             "success": False,
-            "error": {"code": code, "message": message, "retryable": retryable},
+            "error": error,
             "request_id": request_id,
         }
 
@@ -418,10 +427,28 @@ class GptActionsTransport:
             )
         failure = execution.failure
         assert failure is not None
+        if failure.category == "conflict_error":
+            return (
+                HTTPStatus.CONFLICT,
+                self._error(
+                    failure.code,
+                    failure.message,
+                    failure.retryable,
+                    request_id,
+                    failure.details,
+                ),
+                failure.category,
+            )
         if failure.category in {"schema_error", "domain_error"}:
             return (
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                self._error(failure.code, failure.message, failure.retryable, request_id),
+                self._error(
+                    failure.code,
+                    failure.message,
+                    failure.retryable,
+                    request_id,
+                    failure.details,
+                ),
                 failure.category,
             )
         if failure.category == "backend_auth_error":

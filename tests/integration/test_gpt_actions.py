@@ -180,6 +180,44 @@ class GptActionsHttpTest(WorkspaceTestCase):
         self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
         self.assertEqual(len(self.server.store.tags), before)
 
+    def test_existing_note_create_returns_conflict_with_update_target(self) -> None:
+        before = len(self.server.store.notes)
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_note"),
+            {"title": " kubernetes ", "parent_id": self.folder_work},
+        )
+
+        self.assertEqual(status, 409)
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "NOTE_ALREADY_EXISTS")
+        self.assertFalse(body["error"]["retryable"])
+        self.assertEqual(body["error"]["details"]["existing_id"], self.note_k8s)
+        self.assertEqual(body["error"]["details"]["recommended_tool"], "joplin_update_note")
+        self.assertEqual(len(self.server.store.notes), before)
+
+        notebook_before = len(self.server.store.folders)
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_notebook"),
+            {"title": "WORK"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(body["error"]["code"], "NOTEBOOK_ALREADY_EXISTS")
+        self.assertEqual(body["error"]["details"]["existing_id"], self.folder_work)
+        self.assertEqual(body["error"]["details"]["recommended_tool"], "joplin_update_notebook")
+        self.assertEqual(len(self.server.store.folders), notebook_before)
+
+    def test_ambiguous_notebook_title_returns_candidate_ids(self) -> None:
+        first = self.server.store.add_folder("Ambiguous")
+        second = self.server.store.add_folder(" ambiguous ")
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_note"),
+            {"title": "Blocked", "notebook_title": "AMBIGUOUS"},
+        )
+
+        self.assertEqual(status, 422)
+        self.assertEqual(body["error"]["code"], "NOTEBOOK_PATH_AMBIGUOUS")
+        self.assertEqual(body["error"]["details"]["existing_ids"], sorted((first, second)))
+
     def test_known_route_methods_and_local_health(self) -> None:
         path = self.tool_path("joplin_list_notes")
         status, body, headers = self.request(path, method="GET")

@@ -45,24 +45,24 @@ an authentication check.
 | --- | --- |
 | `joplin_list_notebooks` | List active or trashed notebooks and parent relationships |
 | `joplin_get_notebook` | Read notebook metadata and trash state |
-| `joplin_create_notebook` | Create a root or nested notebook |
+| `joplin_create_notebook` | Create a root or nested notebook; reject an occupied sibling title |
 | `joplin_update_notebook` | Rename, move, or update notebook metadata |
 | `joplin_delete_notebook` / `joplin_restore_notebook` | Move to trash or restore; never permanently delete |
 | `joplin_list_notebook_notes` | List notes directly contained in a notebook |
 | `joplin_list_notes` | List note IDs and core metadata, without bodies |
 | `joplin_get_note` | Read Markdown body, tags, notebook, timestamps, todo/source metadata |
-| `joplin_create_note` | Create Markdown/HTML notes with metadata, tags, and base64 attachments |
+| `joplin_create_note` | Create Markdown/HTML notes with metadata, tags, and base64 attachments; reject an occupied title in the destination notebook |
 | `joplin_update_note` | Partially update content/metadata; supplied tags replace the tag set |
 | `joplin_delete_note` / `joplin_restore_note` | Move a note to trash or restore it |
 | `joplin_search_notes` | Run the normal Joplin full-text search syntax |
 | `joplin_list_tags` / `joplin_get_tag` | List or read tag metadata |
-| `joplin_create_tag` / `joplin_update_tag` | Create or rename a tag |
+| `joplin_create_tag` / `joplin_update_tag` | Create a unique normalized title or rename a tag |
 | `joplin_delete_tag` | Permanently delete a tag and its note associations |
 | `joplin_list_tag_notes` | List notes associated with a tag |
 | `joplin_add_tag_to_note` / `joplin_remove_tag_from_note` | Change one tag relation without replacing other tags |
 | `joplin_list_resources` / `joplin_get_resource` | List or read attachment metadata |
 | `joplin_read_resource` | Return attachment content as base64, up to 10 MiB decoded |
-| `joplin_create_resource` / `joplin_update_resource` | Multipart upload or replace binary content and metadata |
+| `joplin_create_resource` / `joplin_update_resource` | Upload a unique resource identity or replace binary content and metadata |
 | `joplin_delete_resource` | Permanently delete an attachment |
 | `joplin_list_note_resources` / `joplin_list_resource_notes` | Traverse note-resource relationships in either direction |
 
@@ -71,10 +71,36 @@ List and search results accept a bounded `limit` (maximum 100). Use
 Tool results contain both JSON text and MCP `structuredContent`.
 
 `joplin_create_note` accepts either an existing `parent_id` or a
-`notebook_title`. With `notebook_title`, the tool reuses an exact title match or
-creates that notebook. If neither is supplied, it similarly finds or creates
-`MCP Notes`. Supplying an unknown `parent_id` returns `NOTEBOOK_NOT_FOUND` and
-does not attempt the note write.
+`notebook_title`. With `notebook_title`, the tool reuses one normalized root
+title match or creates that notebook. If neither is supplied, it similarly
+finds or creates `MCP Notes`. Multiple matches return
+`NOTEBOOK_PATH_AMBIGUOUS`; a matching trashed notebook returns
+`NOTEBOOK_NOT_ACTIVE`. Supplying an unknown `parent_id` returns
+`NOTEBOOK_NOT_FOUND` and does not attempt the note write.
+
+## Create conflicts
+
+Create tools refuse to create a second object with the same natural identity:
+
+| Object | Compared identity | Error |
+| --- | --- | --- |
+| Notebook | parent notebook ID and normalized title | `NOTEBOOK_ALREADY_EXISTS` |
+| Note | destination notebook ID and normalized title | `NOTE_ALREADY_EXISTS` |
+| Tag | normalized title | `TAG_ALREADY_EXISTS` |
+| Resource | normalized resource title (`filename` is the default title) | `RESOURCE_ALREADY_EXISTS` |
+
+Name comparison trims surrounding whitespace, uses Unicode NFC, and is
+case-insensitive. The check includes notes and notebooks in trash. An error
+contains `details.existing_ids`, `details.existing_id` when there is one match,
+and `details.recommended_tool`. It is non-retryable and causes no create-side
+effect. MCP returns it as an `isError: true` tool result; the same shared error
+is HTTP `409 Conflict` through GPT Actions.
+
+Use the returned ID with the corresponding update tool. When a required
+replacement cannot be expressed as an update, first rename the old object,
+create and verify the replacement at the released path, and only then trash or
+delete the renamed object. If an old match is already in trash, restore it long
+enough to rename it before creating the replacement.
 
 The note body can be supplied as `body` (Joplin Markdown, which may include
 HTML) or `body_html` with an optional `base_url`. Joplin's native

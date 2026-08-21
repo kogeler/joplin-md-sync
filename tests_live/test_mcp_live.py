@@ -602,6 +602,107 @@ class LiveMcpTest(unittest.TestCase):
         self.assertEqual(status, 405)
         self.assertEqual(headers["Allow"], "POST")
 
+    def test_02_explicit_creates_reject_existing_natural_identities(self) -> None:
+        notebook_title = f"jms-live-duplicate-guard-{self.run_id}"
+        notebook = self._create_owned_notebook("duplicate-guard")
+        notebook_id = str(notebook["id"])
+        note_title = f"jms-live-duplicate-note-{self.run_id}"
+        note = self._create_owned_note(
+            title=note_title,
+            body=f"original duplicate-guard body {self.run_id}",
+            parent_id=notebook_id,
+            tags=[],
+        )
+        note_id = str(note["id"])
+        tag_title = f"jms-live-duplicate-tag-{self.run_id}"
+        tag = self._create_owned_tag("duplicate-tag")
+        tag_id = str(tag["id"])
+        filename = f"jms-live-duplicate-resource-{self.run_id}.txt"
+        resource = self._create_owned_resource(
+            filename=filename,
+            mime="text/plain",
+            data=f"original resource {self.run_id}".encode(),
+        )
+        resource_id = str(resource["id"])
+
+        conflicts = (
+            (
+                "joplin_create_notebook",
+                {"title": f" {notebook_title.upper()} "},
+                "NOTEBOOK_ALREADY_EXISTS",
+                notebook_id,
+                "joplin_update_notebook",
+            ),
+            (
+                "joplin_create_note",
+                {
+                    "title": f" {note_title.upper()} ",
+                    "body": f"replacement body {self.run_id}",
+                    "parent_id": notebook_id,
+                },
+                "NOTE_ALREADY_EXISTS",
+                note_id,
+                "joplin_update_note",
+            ),
+            (
+                "joplin_create_tag",
+                {"title": f" {tag_title.upper()} "},
+                "TAG_ALREADY_EXISTS",
+                tag_id,
+                "joplin_update_tag",
+            ),
+            (
+                "joplin_create_resource",
+                {
+                    "filename": f"replacement-{self.run_id}.bin",
+                    "title": f" {filename.upper()} ",
+                    "mime": "application/x-replacement",
+                    "content_base64": base64.b64encode(
+                        f"different resource content {self.run_id}".encode()
+                    ).decode("ascii"),
+                },
+                "RESOURCE_ALREADY_EXISTS",
+                resource_id,
+                "joplin_update_resource",
+            ),
+        )
+        for tool, arguments, code, existing_id, update_tool in conflicts:
+            error = self._tool(tool, arguments, expect_error=code)
+            self.assertFalse(error["retryable"])
+            self.assertEqual(error["details"]["existing_id"], existing_id)
+            self.assertEqual(error["details"]["existing_ids"], [existing_id])
+            self.assertEqual(error["details"]["recommended_tool"], update_tool)
+
+        def key(value: object) -> str:
+            return str(value or "").strip().casefold()
+
+        folders = [
+            folder
+            for folder in self.api.list_folders(include_deleted=True)
+            if key(folder.get("title")) == key(notebook_title)
+            and str(folder.get("parent_id") or "") == ""
+        ]
+        notes = [
+            item
+            for item in self.api.list_folder_notes(
+                notebook_id,
+                include_deleted=True,
+                include_conflicts=True,
+            )
+            if key(item.get("title")) == key(note_title)
+        ]
+        tags = [item for item in self.api.list_tags() if key(item.get("title")) == key(tag_title)]
+        resources = [
+            item for item in self.api.list_resources() if key(item.get("title")) == key(filename)
+        ]
+        self.assertEqual([str(item["id"]) for item in folders], [notebook_id])
+        self.assertEqual([str(item["id"]) for item in notes], [note_id])
+        self.assertEqual([str(item["id"]) for item in tags], [tag_id])
+        self.assertEqual([str(item["id"]) for item in resources], [resource_id])
+        unchanged = self.api.get_note(note_id, include_deleted=True)
+        assert unchanged is not None
+        self.assertEqual(unchanged["body"], f"original duplicate-guard body {self.run_id}")
+
     def test_02_owned_note_crud_metadata_tags_search_and_trash(self) -> None:
         suffix = self.run_id
         search_token = f"jmss{secrets.token_hex(4)}"

@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -146,6 +147,10 @@ class McpHttpTest(WorkspaceTestCase):
         assert body is not None
         self.assertEqual(body["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("tools", body["result"]["capabilities"])
+        self.assertIn(
+            "Create tools reject an existing natural identity", body["result"]["instructions"]
+        )
+        self.assertIn("update tool", body["result"]["instructions"])
 
         status, body, _ = self.request({"jsonrpc": "2.0", "method": "notifications/initialized"})
         self.assertEqual((status, body), (202, None))
@@ -287,6 +292,189 @@ class McpHttpTest(WorkspaceTestCase):
         ]
         self.assertFalse(restored["already_active"])
         self.assertEqual(self.server.store.folders[disposable_id]["deleted_time"], 0)
+
+    def test_create_tools_reject_existing_object_identities(self) -> None:
+        def assert_conflict(
+            result: dict[str, Any], *, code: str, existing_id: str, update_tool: str
+        ) -> None:
+            self.assertTrue(result["isError"])
+            error = result["structuredContent"]["error"]
+            self.assertEqual(error["code"], code)
+            self.assertFalse(error["retryable"])
+            self.assertEqual(error["details"]["existing_id"], existing_id)
+            self.assertEqual(error["details"]["recommended_tool"], update_tool)
+
+        notebook_count = len(self.server.store.folders)
+        assert_conflict(
+            self.call_tool(1, "joplin_create_notebook", {"title": " work "}),
+            code="NOTEBOOK_ALREADY_EXISTS",
+            existing_id=self.folder_work,
+            update_tool="joplin_update_notebook",
+        )
+        self.assertEqual(len(self.server.store.folders), notebook_count)
+
+        unicode_notebook_id = self.server.store.add_folder("Café")
+        assert_conflict(
+            self.call_tool(6, "joplin_create_notebook", {"title": " CAFE\u0301 "}),
+            code="NOTEBOOK_ALREADY_EXISTS",
+            existing_id=unicode_notebook_id,
+            update_tool="joplin_update_notebook",
+        )
+
+        note_count = len(self.server.store.notes)
+        assert_conflict(
+            self.call_tool(
+                2,
+                "joplin_create_note",
+                {"title": " KUBERNETES ", "parent_id": self.folder_work},
+            ),
+            code="NOTE_ALREADY_EXISTS",
+            existing_id=self.note_k8s,
+            update_tool="joplin_update_note",
+        )
+        self.assertEqual(len(self.server.store.notes), note_count)
+
+        duplicate_note_id = self.server.store.add_note(
+            "kubernetes",
+            "duplicate body",
+            self.folder_work,
+        )
+        duplicate_result = self.call_tool(
+            8,
+            "joplin_create_note",
+            {"title": "Kubernetes", "parent_id": self.folder_work},
+        )
+        duplicate_error = duplicate_result["structuredContent"]["error"]
+        self.assertEqual(duplicate_error["code"], "NOTE_ALREADY_EXISTS")
+        self.assertEqual(
+            duplicate_error["details"]["existing_ids"],
+            sorted((self.note_k8s, duplicate_note_id)),
+        )
+        self.assertNotIn("existing_id", duplicate_error["details"])
+
+        same_title_elsewhere = self.call_tool(
+            3,
+            "joplin_create_note",
+            {"title": "Kubernetes", "parent_id": self.folder_personal},
+        )
+        self.assertFalse(same_title_elsewhere["isError"])
+
+        tag_id = next(
+            tag_id for tag_id, tag in self.server.store.tags.items() if tag["title"] == "homelab"
+        )
+        tag_count = len(self.server.store.tags)
+        assert_conflict(
+            self.call_tool(4, "joplin_create_tag", {"title": " HomeLab "}),
+            code="TAG_ALREADY_EXISTS",
+            existing_id=tag_id,
+            update_tool="joplin_update_tag",
+        )
+        self.assertEqual(len(self.server.store.tags), tag_count)
+
+        resource_data = b"existing resource"
+        replacement_data = b"replacement resource content"
+        resource_id = self.server.store.add_resource(
+            resource_data,
+            filename="existing.bin",
+            mime="application/octet-stream",
+            title="Existing resource",
+        )
+        resource_count = len(self.server.store.resources)
+        assert_conflict(
+            self.call_tool(
+                5,
+                "joplin_create_resource",
+                {
+                    "filename": "replacement.bin",
+                    "mime": "application/x-replacement",
+                    "title": " existing resource ",
+                    "content_base64": base64.b64encode(replacement_data).decode("ascii"),
+                },
+            ),
+            code="RESOURCE_ALREADY_EXISTS",
+            existing_id=resource_id,
+            update_tool="joplin_update_resource",
+        )
+        self.assertEqual(len(self.server.store.resources), resource_count)
+
+        same_title_nested = self.call_tool(
+            7,
+            "joplin_create_notebook",
+            {"title": "Work", "parent_id": self.folder_personal},
+        )
+        self.assertFalse(same_title_nested["isError"])
+
+    def test_notebook_title_resolves_only_one_root_destination(self) -> None:
+        nested_id = self.server.store.add_folder("Target", parent_id=self.folder_personal)
+        created = self.call_tool(
+            1,
+            "joplin_create_note",
+            {"title": "First root note", "notebook_title": " target "},
+        )
+        self.assertFalse(created["isError"])
+        root_id = created["structuredContent"]["note"]["metadata"]["notebook"]["id"]
+        self.assertNotEqual(root_id, nested_id)
+        self.assertEqual(self.server.store.folders[root_id]["parent_id"], "")
+
+        self.server.store.add_folder("TARGET")
+        note_count = len(self.server.store.notes)
+        ambiguous = self.call_tool(
+            2,
+            "joplin_create_note",
+            {"title": "Blocked note", "notebook_title": "Target"},
+        )
+        self.assertTrue(ambiguous["isError"])
+        error = ambiguous["structuredContent"]["error"]
+        self.assertEqual(error["code"], "NOTEBOOK_PATH_AMBIGUOUS")
+        self.assertEqual(len(error["details"]["existing_ids"]), 2)
+        self.assertEqual(len(self.server.store.notes), note_count)
+
+    def test_concurrent_note_create_allows_exactly_one_object(self) -> None:
+        arguments = {"title": "Concurrent note", "parent_id": self.folder_work}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(
+                    lambda request_id: self.call_tool(request_id, "joplin_create_note", arguments),
+                    (1, 2),
+                )
+            )
+
+        self.assertEqual(sum(not result["isError"] for result in results), 1)
+        errors = [result["structuredContent"]["error"] for result in results if result["isError"]]
+        self.assertEqual([error["code"] for error in errors], ["NOTE_ALREADY_EXISTS"])
+        matches = [
+            note
+            for note in self.server.store.notes.values()
+            if note["parent_id"] == self.folder_work and note["title"] == "Concurrent note"
+        ]
+        self.assertEqual(len(matches), 1)
+
+    def test_create_rejects_matching_trashed_note_and_notebook(self) -> None:
+        trashed_notebook_id = self.server.store.add_folder("Archived destination")
+        self.server.store.folders[trashed_notebook_id]["deleted_time"] = self.server.store.tick()
+        notebook_result = self.call_tool(
+            1,
+            "joplin_create_notebook",
+            {"title": "archived destination"},
+        )
+        notebook_error = notebook_result["structuredContent"]["error"]
+        self.assertEqual(notebook_error["code"], "NOTEBOOK_ALREADY_EXISTS")
+        self.assertEqual(notebook_error["details"]["deleted_ids"], [trashed_notebook_id])
+
+        trashed_note_id = self.server.store.add_note(
+            "Archived note",
+            "old body",
+            self.folder_work,
+            deleted_time=self.server.store.tick(),
+        )
+        note_result = self.call_tool(
+            2,
+            "joplin_create_note",
+            {"title": "archived note", "parent_id": self.folder_work},
+        )
+        note_error = note_result["structuredContent"]["error"]
+        self.assertEqual(note_error["code"], "NOTE_ALREADY_EXISTS")
+        self.assertEqual(note_error["details"]["deleted_ids"], [trashed_note_id])
 
     def test_tag_crud_listing_and_note_relations(self) -> None:
         created = self.call_tool(1, "joplin_create_tag", {"title": "MCP Tag"})["structuredContent"]
