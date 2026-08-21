@@ -20,13 +20,15 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
+      pypi_required: ${{ steps.check.outputs.pypi_required }}
       release_required: ${{ steps.check.outputs.release_required }}
     steps:
-      - name: Check whether the current version is already published
+      - name: Check publication state for the current version
         id: check
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           EXPECTED_REPOSITORY: kogeler/joplin-md-sync
+          PYPI_PROJECT: joplin-md-sync
         with:
           script: |
             const repository = `${context.repo.owner}/${context.repo.repo}`;
@@ -102,35 +104,161 @@ jobs:
             if (!existing || existing.data.draft) {
               core.notice(`Release ${tagName} is not published; running release gates`);
               core.setOutput("release_required", "true");
+            } else {
+              if (
+                existing.data.tag_name !== tagName ||
+                existing.data.name !== tagName ||
+                existing.data.prerelease ||
+                commit !== existing.data.target_commitish
+              ) {
+                throw new Error(`Existing release ${tagName} has conflicting metadata`);
+              }
+              core.notice(`GitHub Release ${existing.data.html_url} already exists`);
+              core.setOutput("release_required", "false");
+            }
+
+            const project = process.env.PYPI_PROJECT;
+            const pypi = await fetch(
+              `https://pypi.org/pypi/${encodeURIComponent(project)}/${encodeURIComponent(version)}/json`,
+              { headers: { accept: "application/json" } },
+            );
+            if (pypi.status === 404) {
+              core.notice(`PyPI ${project} ${version} is not published; running release gates`);
+              core.setOutput("pypi_required", "true");
               return;
             }
-            if (
-              existing.data.tag_name !== tagName ||
-              existing.data.name !== tagName ||
-              existing.data.prerelease ||
-              commit !== existing.data.target_commitish
-            ) {
-              throw new Error(`Existing release ${tagName} has conflicting metadata`);
+            if (!pypi.ok) {
+              throw new Error(`PyPI state request failed with HTTP ${pypi.status}`);
             }
-            core.notice(`Release ${existing.data.html_url} already exists; skipping release gates`);
-            core.setOutput("release_required", "false");
+            const metadata = await pypi.json();
+            const normalize = (value) => value.toLowerCase().replace(/[-_.]+/g, "-");
+            if (
+              !metadata.info ||
+              typeof metadata.info.name !== "string" ||
+              normalize(metadata.info.name) !== normalize(project) ||
+              metadata.info.version !== version ||
+              !Array.isArray(metadata.urls)
+            ) {
+              throw new Error(`PyPI ${project} ${version} returned conflicting metadata`);
+            }
+            const expectedFiles = new Map([
+              [`joplin_md_sync-${version}-py3-none-any.whl`, "bdist_wheel"],
+              [`joplin_md_sync-${version}.tar.gz`, "sdist"],
+            ]);
+            if (metadata.urls.length !== expectedFiles.size) {
+              throw new Error(`PyPI ${project} ${version} has an unexpected file inventory`);
+            }
+            for (const file of metadata.urls) {
+              if (
+                expectedFiles.get(file.filename) !== file.packagetype ||
+                !Number.isInteger(file.size) ||
+                file.size <= 0 ||
+                !file.digests ||
+                !/^[0-9a-f]{64}$/.test(file.digests.sha256) ||
+                file.yanked !== false
+              ) {
+                throw new Error(`PyPI ${project} ${version} has an invalid file: ${file.filename}`);
+              }
+              expectedFiles.delete(file.filename);
+            }
+            if (expectedFiles.size !== 0) {
+              throw new Error(`PyPI ${project} ${version} is missing expected files`);
+            }
+            core.notice(`PyPI ${project} ${version} already exists`);
+            core.setOutput("pypi_required", "false");
 
   ci:
     name: CI gate
     needs: release-state
-    if: needs.release-state.outputs.release_required == 'true'
+    if: >-
+      needs.release-state.outputs.release_required == 'true' ||
+      needs.release-state.outputs.pypi_required == 'true'
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read
       contents: read
       security-events: write
 
-  publish:
-    name: Publish release
+  build-python-distributions:
+    name: Build Python distributions
     needs:
       - release-state
       - ci
-    if: needs.release-state.outputs.release_required == 'true'
+    if: needs.ci.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-package.txt
+
+      - name: Build and smoke-test wheel and sdist
+        run: make build smoke-wheel smoke-sdist PY=python
+
+      - name: Verify existing PyPI files match the rebuilt distributions
+        if: needs.release-state.outputs.pypi_required == 'false'
+        run: python .github/scripts/verify_pypi_release.py --dist-dir dist
+
+      - name: Upload verified Python distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-distributions
+          path: |
+            dist/joplin_md_sync-*.whl
+            dist/joplin_md_sync-*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish-pypi:
+    name: Publish Python distributions to PyPI
+    needs:
+      - release-state
+      - ci
+      - build-python-distributions
+    if: needs.release-state.outputs.pypi_required == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/joplin-md-sync/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified Python distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist
+          attestations: "true"
+
+  publish:
+    name: Publish GitHub release
+    needs:
+      - release-state
+      - ci
+      - build-python-distributions
+      - publish-pypi
+    if: >-
+      always() &&
+      needs.release-state.outputs.release_required == 'true' &&
+      needs.ci.result == 'success' &&
+      needs.build-python-distributions.result == 'success' &&
+      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
@@ -146,11 +274,15 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: requirements-package.txt
 
-      - name: Build wheel, sdist, and zipapp
-        run: make build zipapp PY=python
+      - name: Download verified Python distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Build zipapp
+        run: make zipapp PY=python
 
       - name: Download smoke-tested native executables
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

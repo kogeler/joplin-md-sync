@@ -13,9 +13,10 @@ exit codes, explicit conflict handling), and perfectly usable by humans.
 > interrupted syncs are recoverable. `diff` never mutates anything.
 
 The test-backed definitions of these guarantees live in the
-[contract catalog](docs/contracts/README.md).
+[contract catalog](https://joplin-mcp.romancello.net/contracts/).
 
-If you are an agent (or configuring one), start with **[AGENTS.md](AGENTS.md)**.
+If you are an agent (or configuring one), start with
+**[AGENTS.md](https://github.com/kogeler/joplin-md-sync/blob/main/AGENTS.md)**.
 
 ## How it works
 
@@ -36,8 +37,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+python -m pip install "joplin-md-sync==1.5.5"
+# or: pipx install "joplin-md-sync==1.5.5"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 
@@ -101,7 +102,7 @@ cross-platform test or package lock they need.
 
 ## Agent notes repository template
 
-[`examples/agent-notes-repository/`](examples/agent-notes-repository/) is a
+[`examples/agent-notes-repository/`](https://github.com/kogeler/joplin-md-sync/tree/main/examples/agent-notes-repository) is a
 copyable starter repository for users who want an agent to work on their
 Joplin notes as ordinary Markdown files. It includes:
 
@@ -115,7 +116,7 @@ Joplin notes as ordinary Markdown files. It includes:
   release into `.tools/`, verifies `SHA256SUMS.txt`, and validates the binary
   before replacing an existing installation.
 
-Start with the template's [README](examples/agent-notes-repository/README.md),
+Start with the template's [README](https://github.com/kogeler/joplin-md-sync/blob/main/examples/agent-notes-repository/README.md),
 not the development instructions for this source checkout.
 
 ## MCP and ChatGPT Actions service
@@ -131,11 +132,11 @@ protected file. MCP bearer authentication remains optional through a separate
 tokens, stores them in protected files, and reports only their paths after a
 successful install. It never creates a separate Actions service.
 
-Use [service installation and operations](docs/user/SERVICE.md) for Linux,
+Use [service installation and operations](https://joplin-mcp.romancello.net/user/SERVICE/) for Linux,
 Windows, credentials, URI isolation, and live tests;
-[MCP API](docs/user/MCP_API.md) for the
+[MCP API](https://joplin-mcp.romancello.net/user/MCP_API/) for the
 tool contract; and the single [ChatGPT Actions end-to-end
-setup](docs/user/CHATGPT_ACTIONS.md) for endpoint validation, schema export, GPT
+setup](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/) for endpoint validation, schema export, GPT
 Instructions, editor configuration, and acceptance testing.
 
 ## Architecture overview
@@ -149,7 +150,7 @@ state: SQLite base snapshots, conflicts, tombstones, run journal
 workspace: scanning, atomic writes, backups, quarantine, cross-platform lock
 ```
 
-Details in [Architecture](docs/maintenance/ARCHITECTURE.md).
+Details in [Architecture](https://joplin-mcp.romancello.net/maintenance/ARCHITECTURE/).
 
 ## Supported / not supported (v1)
 
@@ -165,11 +166,13 @@ Details in [Architecture](docs/maintenance/ARCHITECTURE.md).
 
 Semantic versioning; Git tags `vX.Y.Z` with GitHub releases carrying the
 wheel, sdist, `.pyz`, native executables, and SHA-256 checksums.
+The same wheel and sdist are published to PyPI through Trusted Publishing.
 `joplin-md-sync update-check --json` compares the installed version against
 the latest stable release
 (exit 8 when outdated). JSON output, exit codes, and the state schema are
-versioned and stable across patch releases. See [CHANGELOG.md](CHANGELOG.md).
+versioned and stable across patch releases. See
+[CHANGELOG.md](https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md).
 
 ## License
 
-[MIT](LICENSE).
+[MIT](https://github.com/kogeler/joplin-md-sync/blob/main/LICENSE).

@@ -54,6 +54,7 @@ RELEASE_NOTES := $(ARTIFACTS)/release-notes.md
 DOCS_SITE_URL := https://joplin-mcp.romancello.net/
 DOCS_SCREENSHOTS ?= $(ARTIFACTS)/docs-screenshots
 VERSION := $(shell cat .version)
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || printf '315532800')
 TEST_WORKERS ?= auto
 PYTEST_XDIST := -n $(TEST_WORKERS) --dist=worksteal
 COVERAGE_MIN ?= 87
@@ -68,7 +69,7 @@ CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/n
 	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
 	lock-platform-check test test-full test-live test-service-installer audit dependency-snapshot \
 	validate-actions release-notes check ci build zipapp standalone checksums \
-	package smoke smoke-artifacts smoke-wheel smoke-zipapp smoke-standalone \
+	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release clean
 
 help: ## list available targets
@@ -260,9 +261,11 @@ check: lint typecheck bandit syntax test verify-release dependency-snapshot ## l
 ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
 	freeze-check lock-platform-check docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
 
-build: venv-package ## build wheel and sdist into dist/
+build: venv-package ## reproducibly build wheel and sdist into dist/
 	rm -rf dist build
-	$(PYTHON_PACKAGE) -m build
+	SOURCE_DATE_EPOCH="$(SOURCE_DATE_EPOCH)" $(PYTHON_PACKAGE) -m build
+	$(PY) scripts/normalize_sdist.py --epoch "$(SOURCE_DATE_EPOCH)" \
+		dist/joplin_md_sync-$(VERSION).tar.gz
 
 zipapp: ## build the standalone zipapp
 	$(PY) scripts/build_zipapp.py
@@ -288,6 +291,15 @@ smoke-wheel: ## install and exercise the already-built wheel
 	$(VENV_SMOKE)/$(BIN)/python -c "import json, pathlib; doc=json.loads(pathlib.Path('$(VENV_SMOKE)/chatgpt-action.openapi.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -rf $(VENV_SMOKE)
 
+smoke-sdist: ## install and exercise the already-built source distribution
+	rm -rf $(VENV_SMOKE)
+	$(PY) -m venv $(VENV_SMOKE)
+	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet --no-deps \
+		dist/joplin_md_sync-$(VERSION).tar.gz
+	$(VENV_SMOKE)/$(BIN)/joplin-md-sync version
+	$(VENV_SMOKE)/$(BIN)/python -m joplin_md_sync capabilities --json > /dev/null
+	rm -rf $(VENV_SMOKE)
+
 smoke-zipapp: ## exercise the already-built standalone zipapp
 	$(PY) dist/joplin-md-sync.pyz version
 	$(PY) dist/joplin-md-sync.pyz capabilities --json > /dev/null
@@ -302,7 +314,7 @@ smoke-standalone: ## exercise the current-platform native executable
 	$(PY) -c "import json, pathlib; doc=json.loads(pathlib.Path('dist/chatgpt-action-standalone.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -f dist/chatgpt-action-standalone.json
 
-smoke-artifacts: smoke-wheel smoke-zipapp smoke-standalone ## exercise built artifacts
+smoke-artifacts: smoke-wheel smoke-sdist smoke-zipapp smoke-standalone ## exercise built artifacts
 
 smoke: package smoke-artifacts ## build and exercise all current-platform artifacts
 

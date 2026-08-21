@@ -54,7 +54,10 @@ package = [
 docs = ["mkdocs-material==9.7.7"]
 
 [project.urls]
+Homepage = "https://joplin-mcp.romancello.net/"
+Documentation = "https://joplin-mcp.romancello.net/"
 Repository = "https://github.com/kogeler/joplin-md-sync"
+Issues = "https://github.com/kogeler/joplin-md-sync/issues"
 Changelog = "https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md"
 
 [project.scripts]

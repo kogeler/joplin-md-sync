@@ -35,7 +35,9 @@ reviewed floor.
 CodeQL job MAY receive `security-events: write`, dependency submission MAY
 receive job-scoped `contents: write`, Pages deployment MAY receive job-scoped
 Pages and OIDC writes, PR-body automation MAY receive pull-request write, and
-release publication MAY receive job-scoped contents write.
+GitHub release publication MAY receive job-scoped contents write. PyPI
+publication MAY receive only job-scoped OIDC write and MUST NOT receive a
+stored credential.
 
 **Evidence:**
 
@@ -43,6 +45,7 @@ release publication MAY receive job-scoped contents write.
 - [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
 - [`test_pages_validates_prs_and_confines_publish_permissions`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pages_validates_prs_and_confines_publish_permissions`
 - [`test_pr_body_is_the_only_pull_request_target_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pr_body_is_the_only_pull_request_target_write_boundary`
+- [`test_pypi_publication_uses_oidc_and_verified_shared_artifacts`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pypi_publication_uses_oidc_and_verified_shared_artifacts`
 
 ### `CIR-004` - PR-body automation treats head content as data
 
@@ -74,12 +77,13 @@ base version and provide a matching non-empty dated changelog section.
 ### `CIR-006` - Publication reuses gated artifacts and never rewrites conflict
 
 **Contract:** A not-yet-published version on main MUST pass reusable CI before
-one publish job creates or resumes an exact draft Release, downloads the
-smoke-tested platform artifacts, verifies the full inventory and checksums,
-uploads each exact asset through GitHub's release upload endpoint with response
-verification, and publishes. Matching publication MUST be a read-only no-op;
-conflicting tags, targets, metadata, or assets MUST fail without moving or
-replacing history.
+its Python distributions are reproducibly built once, install-smoked, and its
+publication jobs run. The GitHub publish job MUST create or resume an exact
+draft Release, combine the shared Python distributions with the smoke-tested
+platform artifacts, verify the full inventory and checksums, upload each exact
+asset through GitHub's release upload endpoint with response verification, and
+publish. Matching publication MUST be a read-only no-op; conflicting tags,
+targets, metadata, or assets MUST fail without moving or replacing history.
 
 **Evidence:**
 
@@ -137,3 +141,25 @@ to every pull-request change.
 **Evidence:**
 
 - [`test_codeowners_assigns_entire_repository_to_maintainer`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_codeowners_assigns_entire_repository_to_maintainer`
+
+### `CIR-011` - PyPI publication is secretless, exact, and recoverable
+
+**Contract:** Release state MUST independently inspect the exact current
+version in PyPI and GitHub Releases. A missing PyPI version MUST publish only
+the gated wheel and sdist through the `pypi` GitHub Environment, PyPI Trusted
+Publishing, a job-scoped OIDC token, and the SHA-pinned official PyPA action;
+stored credentials and blind duplicate skipping are forbidden. GitHub MUST
+receive the same workflow artifact only after PyPI succeeds. If PyPI already
+contains the version while GitHub publication still needs recovery, the local
+file names, sizes, and SHA-256 digests MUST exactly match PyPI before GitHub
+publication continues.
+
+**Evidence:**
+
+- [`test_pypi_publication_uses_oidc_and_verified_shared_artifacts`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pypi_publication_uses_oidc_and_verified_shared_artifacts`
+- [`test_accepts_exact_local_and_pypi_distribution_inventory`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_accepts_exact_local_and_pypi_distribution_inventory`
+- [`test_rejects_a_local_distribution_that_differs_from_pypi`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_rejects_a_local_distribution_that_differs_from_pypi`
+- [`test_rejects_an_unexpected_or_yanked_pypi_distribution`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_rejects_an_unexpected_or_yanked_pypi_distribution`
+- [`test_normalization_makes_equivalent_sdist_archives_byte_identical`](../../tests/unit/test_normalize_sdist.py) - `tests/unit/test_normalize_sdist.py::test_normalization_makes_equivalent_sdist_archives_byte_identical`
+- [`test_pypi_readme_uses_only_portable_absolute_links`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_readme_uses_only_portable_absolute_links`
+- [`test_pypi_metadata_exposes_public_project_routes`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_metadata_exposes_public_project_routes`

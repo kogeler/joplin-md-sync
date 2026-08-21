@@ -27,14 +27,14 @@ later, because it makes the state and safety model concrete.
 === "pipx"
 
     ```bash
-    pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+    pipx install "joplin-md-sync==1.5.5"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+    python -m pip install "joplin-md-sync==1.5.5"
     joplin-md-sync version --json
     ```
 

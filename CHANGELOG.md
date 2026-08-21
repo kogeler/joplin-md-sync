@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-08-21
+
+### Added
+
+- Publish the verified wheel and source distribution to PyPI through Trusted
+  Publishing with provenance attestations, enabling versioned `pip` and
+  `pipx` installation directly from `joplin-md-sync`.
+
+### Changed
+
+- Build Python distributions once after the complete release gate and reuse
+  the same workflow artifact for PyPI and GitHub Releases.
+- Normalize source-distribution ownership and timestamps from the release
+  commit so recovery builds retain the original published SHA-256 digest.
+- Track PyPI and GitHub publication independently so a partially completed
+  release can resume without replacing an existing package, tag, or asset.
+
+### Security
+
+- Isolate PyPI publication in the protected `pypi` GitHub Environment with
+  only job-scoped OIDC permission and no stored PyPI credential.
+
 ## [1.5.4] - 2026-08-21
 
 ### Added

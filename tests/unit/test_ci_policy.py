@@ -103,7 +103,8 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "release-state:" in release
     assert "publish:" in release
     assert release.count("contents: write") == 1
-    assert "make build zipapp" in release
+    assert "make build smoke-wheel smoke-sdist" in release
+    assert "make zipapp" in release
     assert "actions/download-artifact@" in release
     assert "draft: true" in release
     assert "github.rest.repos.uploadReleaseAsset" in release
@@ -112,6 +113,33 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "deleteReleaseAsset" in release
     assert "softprops/" not in release
     assert "git push" not in release
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "SOURCE_DATE_EPOCH" in makefile
+    assert "scripts/normalize_sdist.py" in makefile
+
+
+def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
+    release = _workflow("release.yml")
+    assert "pypi_required" in release
+    assert "https://pypi.org/pypi/" in release
+    assert "file.yanked !== false" in release
+    assert "build-python-distributions:" in release
+    assert "publish-pypi:" in release
+    assert "name: python-distributions" in release
+    assert "verify_pypi_release.py --dist-dir dist" in release
+    assert "environment:\n      name: pypi" in release
+    assert release.count("id-token: write") == 1
+    assert "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33" in release
+    assert "packages-dir: dist" in release
+    assert 'attestations: "true"' in release
+    assert "needs.publish-pypi.result == 'success'" in release
+    assert release.index("Publish with PyPI Trusted Publishing") < release.index(
+        "Create exact-version release and upload assets"
+    )
+    assert "skip-existing" not in release
+    assert "PYPI_TOKEN" not in release
+    assert "password:" not in release
+    assert "secrets." not in release
 
 
 def test_pages_validates_prs_and_confines_publish_permissions() -> None:

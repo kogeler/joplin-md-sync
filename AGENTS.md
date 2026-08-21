@@ -18,9 +18,9 @@ Native release executables include Python.
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+python -m pip install "joplin-md-sync==1.5.5"
 # or:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+pipx install "joplin-md-sync==1.5.5"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```
