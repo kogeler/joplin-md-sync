@@ -37,9 +37,7 @@ def build() -> Path:
         # Embed the version file so the zipapp resolves it without metadata.
         shutil.copy(REPO / ".version", staging / "joplin_md_sync" / ".version")
         (staging / "__main__.py").write_text(MAIN, encoding="utf-8")
-        zipapp.create_archive(
-            staging, TARGET, interpreter="/usr/bin/env python3", compressed=True
-        )
+        zipapp.create_archive(staging, TARGET, interpreter="/usr/bin/env python3", compressed=True)
     return TARGET
 
 

@@ -147,9 +147,7 @@ class JoplinMcpService:
                 code="INVALID_ARGUMENT",
             ) from None
         if not isinstance(parsed, dict) or any(not isinstance(key, str) for key in parsed):
-            raise ToolServiceError(
-                "icon must encode one JSON object", code="INVALID_ARGUMENT"
-            )
+            raise ToolServiceError("icon must encode one JSON object", code="INVALID_ARGUMENT")
         allowed = {"type", "emoji", "name", "dataUrl"}
         unknown = set(parsed) - allowed
         if unknown:
@@ -158,7 +156,11 @@ class JoplinMcpService:
                 code="INVALID_ARGUMENT",
             )
         icon_type = parsed.get("type")
-        if isinstance(icon_type, bool) or not isinstance(icon_type, int) or icon_type not in {1, 2, 3}:
+        if (
+            isinstance(icon_type, bool)
+            or not isinstance(icon_type, int)
+            or icon_type not in {1, 2, 3}
+        ):
             raise ToolServiceError(
                 "icon.type must be 1 (emoji), 2 (data URL), or 3 (Font Awesome)",
                 code="INVALID_ARGUMENT",
@@ -167,9 +169,7 @@ class JoplinMcpService:
         for field in ("emoji", "name", "dataUrl"):
             field_value = parsed.get(field, "")
             if not isinstance(field_value, str):
-                raise ToolServiceError(
-                    f"icon.{field} must be a string", code="INVALID_ARGUMENT"
-                )
+                raise ToolServiceError(f"icon.{field} must be a string", code="INVALID_ARGUMENT")
             normalized[field] = field_value
         required_field = {1: "emoji", 2: "dataUrl", 3: "name"}[icon_type]
         if not str(normalized[required_field]).strip():
@@ -324,7 +324,9 @@ class JoplinMcpService:
                     f"attachments[{index}] unsupported field(s): {', '.join(sorted(unknown))}",
                     code="INVALID_ARGUMENT",
                 )
-            filename = cls._nonempty_text(item.get("filename"), name=f"attachments[{index}].filename")
+            filename = cls._nonempty_text(
+                item.get("filename"), name=f"attachments[{index}].filename"
+            )
             mime = cls._nonempty_text(item.get("mime"), name=f"attachments[{index}].mime")
             if any(character in filename for character in "\r\n") or any(
                 character in mime for character in "\r\n"
@@ -364,9 +366,7 @@ class JoplinMcpService:
             if tag.get("title")
         )
         notebook = client.get_folder(parent_id) if parent_id else None
-        metadata = {
-            key: value for key, value in note.items() if key not in {"id", "title", "body"}
-        }
+        metadata = {key: value for key, value in note.items() if key not in {"id", "title", "body"}}
         metadata["tags"] = tags
         metadata["notebook"] = notebook
         metadata["resources"] = client.list_note_resources(note_id)
@@ -410,13 +410,9 @@ class JoplinMcpService:
                 f"unsupported argument(s): {', '.join(sorted(unknown))}", code="INVALID_ARGUMENT"
             )
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         client = self._client_when_available()
-        notebooks = client.list_folders(
-            include_deleted=include_deleted, max_results=limit
-        )
+        notebooks = client.list_folders(include_deleted=include_deleted, max_results=limit)
         return {"notebooks": notebooks, "count": len(notebooks), "limit": limit}
 
     def get_notebook(self, notebook_id_value: object) -> dict[str, Any]:
@@ -474,7 +470,9 @@ class JoplinMcpService:
                 if not isinstance(value, str):
                     raise ToolServiceError(f"{name} must be a string", code="INVALID_ARGUMENT")
                 if name == "title" and not value.strip():
-                    raise ToolServiceError("title must be a non-empty string", code="INVALID_ARGUMENT")
+                    raise ToolServiceError(
+                        "title must be a non-empty string", code="INVALID_ARGUMENT"
+                    )
                 fields[name] = value.strip() if name in {"title", "parent_id"} else value
         if "icon" in arguments:
             fields["icon"] = self._folder_icon(arguments["icon"])
@@ -537,9 +535,7 @@ class JoplinMcpService:
             )
         notebook_id = self._notebook_id(arguments.get("notebook_id"))
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         include_conflicts = self._boolean(
             arguments.get("include_conflicts"), name="include_conflicts"
         )
@@ -555,9 +551,7 @@ class JoplinMcpService:
 
     def list_notes(self, arguments: Mapping[str, object]) -> dict[str, Any]:
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         include_conflicts = self._boolean(
             arguments.get("include_conflicts"), name="include_conflicts"
         )
@@ -962,7 +956,9 @@ class JoplinMcpService:
         client = self._client_when_available()
         current = self._require_resource(client, resource_id)
         data = self._resource_data(arguments.get("content_base64")) if has_content else None
-        filename = str(fields.get("filename") or current.get("filename") or current.get("title") or resource_id)
+        filename = str(
+            fields.get("filename") or current.get("filename") or current.get("title") or resource_id
+        )
         mime = str(fields.get("mime") or current.get("mime") or "application/octet-stream")
         client.update_resource(
             resource_id,

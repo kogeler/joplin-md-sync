@@ -1,6 +1,6 @@
 """Managed Markdown metadata header: parse and emit.
 
-Format (docs/WORKSPACE_FORMAT.md):
+Format contract: docs/contracts/WORKSPACE.md.
 
     <!-- joplin-md-sync: {"id":"<32 hex>","schema":1,"tags":["a","b"],"title":"..."} -->
     <blank line>
@@ -87,7 +87,9 @@ def parse_note_file(text: str) -> ParsedNoteFile:
 
     schema = meta.get("schema")
     if schema != NOTE_METADATA_SCHEMA_VERSION:
-        raise MetadataError(f"unsupported metadata schema {schema!r}, expected {NOTE_METADATA_SCHEMA_VERSION}")
+        raise MetadataError(
+            f"unsupported metadata schema {schema!r}, expected {NOTE_METADATA_SCHEMA_VERSION}"
+        )
 
     note_id = meta.get("id")
     if note_id is not None:

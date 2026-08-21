@@ -33,13 +33,11 @@ def _fetch_json(url: str, timeout: float) -> Any:
     req = urllib.request.Request(
         url, headers={"Accept": "application/vnd.github+json", "User-Agent": "joplin-md-sync"}
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
         return json.loads(resp.read().decode("utf-8"))
 
 
-def check_for_update(
-    *, include_prerelease: bool = False, timeout: float = 10.0
-) -> dict[str, Any]:
+def check_for_update(*, include_prerelease: bool = False, timeout: float = 10.0) -> dict[str, Any]:
     """Return {current, latest, outdated, update_command, ...}.
 
     Raises ApiError (code UPDATE_CHECK_FAILED) when GitHub cannot be reached
@@ -53,8 +51,16 @@ def check_for_update(
             )
             candidates = [r for r in releases if not r.get("draft")]
         else:
-            candidates = [_fetch_json(f"https://api.github.com/repos/{slug}/releases/latest", timeout)]
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as exc:
+            candidates = [
+                _fetch_json(f"https://api.github.com/repos/{slug}/releases/latest", timeout)
+            ]
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+    ) as exc:
         raise ApiError(
             f"update check could not be completed: {exc}", code="UPDATE_CHECK_FAILED"
         ) from exc

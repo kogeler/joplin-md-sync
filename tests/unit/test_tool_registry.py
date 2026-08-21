@@ -44,8 +44,7 @@ def definition(
         name=name,
         title="Read tool",
         description="Read test data.",
-        input_schema=schema
-        or {"type": "object", "properties": {}, "additionalProperties": False},
+        input_schema=schema or {"type": "object", "properties": {}, "additionalProperties": False},
         annotations=(
             annotations
             if annotations is not None
@@ -74,13 +73,7 @@ def test_registry_rejects_duplicate_missing_exposure_and_bad_effect() -> None:
     with pytest.raises(ValueError, match="exposure"):
         ToolRegistry((definition(exposure=""),))
     with pytest.raises(ValueError, match="both read-only and destructive"):
-        ToolRegistry(
-            (
-                definition(
-                    annotations={"readOnlyHint": True, "destructiveHint": True}
-                ),
-            )
-        )
+        ToolRegistry((definition(annotations={"readOnlyHint": True, "destructiveHint": True}),))
     with pytest.raises(ValueError, match="unknown effect"):
         ToolRegistry((definition(annotations={}),))
 
@@ -124,12 +117,14 @@ def test_schema_definition_and_instance_validation() -> None:
 
 def test_effect_and_route_are_centralized() -> None:
     assert tool_effect(definition()) == "read"
-    assert tool_effect(
-        definition(annotations={"readOnlyHint": False, "destructiveHint": False})
-    ) == "write"
-    assert tool_effect(
-        definition(annotations={"readOnlyHint": False, "destructiveHint": True})
-    ) == "destructive"
+    assert (
+        tool_effect(definition(annotations={"readOnlyHint": False, "destructiveHint": False}))
+        == "write"
+    )
+    assert (
+        tool_effect(definition(annotations={"readOnlyHint": False, "destructiveHint": True}))
+        == "destructive"
+    )
     assert action_route(definition("safe_tool-1")) == "safe_tool-1"
 
 
@@ -176,9 +171,7 @@ def test_executor_validates_and_preserves_domain_errors() -> None:
         (RuntimeError("unexpected"), "internal_error"),
     ),
 )
-def test_executor_classifies_expected_failures(
-    exception: Exception, category: str
-) -> None:
+def test_executor_classifies_expected_failures(exception: Exception, category: str) -> None:
     def handler(_arguments: Any) -> dict[str, Any]:
         raise exception
 

@@ -1,6 +1,6 @@
 """Synchronization engine: remote snapshot, plan execution, verification.
 
-Execution model per operation (docs/STATE_MODEL.md):
+Execution model per operation (docs/contracts/SYNCHRONIZATION.md):
 1. re-read the side(s) that the plan was built from and confirm they still
    match the planned state (optimistic concurrency guard);
 2. apply the operation;
@@ -57,9 +57,7 @@ log = logging.getLogger("joplin_md_sync.sync")
 # --------------------------------------------------------------------------
 
 
-def build_remote_snapshot(
-    client: JoplinClient, base_notes: dict[str, BaseNote]
-) -> RemoteSnapshot:
+def build_remote_snapshot(client: JoplinClient, base_notes: dict[str, BaseNote]) -> RemoteSnapshot:
     """Read folders, notes, and the full tag map from Joplin.
 
     Bodies are fetched only for notes whose ``updated_time`` differs from the
@@ -143,7 +141,9 @@ def fetch_remote_canonical(client: JoplinClient, note_id: str) -> RemoteNote | N
 
 
 def reconcile_tags(
-    client: JoplinClient, note_id: str, desired: tuple[str, ...],
+    client: JoplinClient,
+    note_id: str,
+    desired: tuple[str, ...],
     tag_map: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Attach/detach tags so the note's tag set equals ``desired``.
@@ -151,12 +151,9 @@ def reconcile_tags(
     Returns the (possibly extended) tag title -> id map for reuse.
     """
     if tag_map is None:
-        tag_map = {
-            (t.get("title") or "").strip().lower(): t["id"] for t in client.list_tags()
-        }
+        tag_map = {(t.get("title") or "").strip().lower(): t["id"] for t in client.list_tags()}
     current_map = {
-        (t.get("title") or "").strip().lower(): t["id"]
-        for t in client.list_note_tags(note_id)
+        (t.get("title") or "").strip().lower(): t["id"] for t in client.list_note_tags(note_id)
     }
     for title in desired:
         if title not in current_map:
@@ -193,8 +190,11 @@ class ExecutionReport:
             "skipped": self.skipped,
             "conflicts_created": self.conflicts_created,
             "operations": [
-                {**r.op.to_json(), "result": r.status,
-                 **({"result_detail": r.detail} if r.detail else {})}
+                {
+                    **r.op.to_json(),
+                    "result": r.status,
+                    **({"result_detail": r.detail} if r.detail else {}),
+                }
                 for r in self.results
             ],
         }
@@ -229,7 +229,7 @@ class Executor:
             if rel_path == old:
                 rel_path = new
             elif rel_path.startswith(old + "/"):
-                rel_path = new + rel_path[len(old):]
+                rel_path = new + rel_path[len(old) :]
         return rel_path
 
     def resolve_folder_id(self, dir_rel_path: str) -> str | None:
@@ -343,7 +343,9 @@ class Executor:
         }
         write_file_atomic(path / FOLDER_META, json.dumps(meta, indent=2, sort_keys=True) + "\n")
         self.store.upsert_folder(
-            folder_id=fs.remote.id, rel_path=rel, title=fs.remote.title,
+            folder_id=fs.remote.id,
+            rel_path=rel,
+            title=fs.remote.title,
             parent_id=fs.remote.parent_id,
         )
         return OperationResult(op, "applied")
@@ -357,20 +359,22 @@ class Executor:
         new_path = self.ws.abs_path(new_rel)
         if old_rel != new_rel:
             if new_path.exists():
-                return OperationResult(
-                    op, "failed", f"target already exists: {new_rel}"
-                )
+                return OperationResult(op, "failed", f"target already exists: {new_rel}")
             new_path.parent.mkdir(parents=True, exist_ok=True)
             old_path.rename(new_path)
             self._renames.append((old_rel, new_rel))
             self.store.move_prefix(old_rel, new_rel)
         meta = {
-            "id": fs.remote.id, "parent_id": fs.remote.parent_id,
-            "schema": 1, "title": fs.remote.title,
+            "id": fs.remote.id,
+            "parent_id": fs.remote.parent_id,
+            "schema": 1,
+            "title": fs.remote.title,
         }
         write_file_atomic(new_path / FOLDER_META, json.dumps(meta, indent=2, sort_keys=True) + "\n")
         self.store.upsert_folder(
-            folder_id=fs.remote.id, rel_path=new_rel, title=fs.remote.title,
+            folder_id=fs.remote.id,
+            rel_path=new_rel,
+            title=fs.remote.title,
             parent_id=fs.remote.parent_id,
         )
         return OperationResult(op, "applied")
@@ -396,8 +400,13 @@ class Executor:
             )
         self._write_local_note(rel, remote.id, current.title, current.tags, current.body)
         self.store.upsert_note(
-            note_id=remote.id, rel_path=rel, title=current.title, body=current.body,
-            tags=current.tags, parent_id=current.parent_id, updated_time=current.updated_time,
+            note_id=remote.id,
+            rel_path=rel,
+            title=current.title,
+            body=current.body,
+            tags=current.tags,
+            parent_id=current.parent_id,
+            updated_time=current.updated_time,
         )
         self.store.remove_tombstone(remote.id)
         return OperationResult(op, "applied")
@@ -415,8 +424,13 @@ class Executor:
         if new_rel != old_rel:
             self.ws.abs_path(old_rel).unlink(missing_ok=True)
         self.store.upsert_note(
-            note_id=remote.id, rel_path=new_rel, title=remote.title, body=remote.body,
-            tags=remote.tags, parent_id=remote.parent_id, updated_time=remote.updated_time,
+            note_id=remote.id,
+            rel_path=new_rel,
+            title=remote.title,
+            body=remote.body,
+            tags=remote.tags,
+            parent_id=remote.parent_id,
+            updated_time=remote.updated_time,
         )
         return OperationResult(op, "applied")
 
@@ -470,7 +484,10 @@ class Executor:
         current = self.client.get_folder(op.folder_id)
         if current is None:
             return OperationResult(op, "failed", "remote notebook disappeared")
-        if (current.get("title"), current.get("parent_id", "")) != (fs.base.title, fs.base.parent_id):
+        if (current.get("title"), current.get("parent_id", "")) != (
+            fs.base.title,
+            fs.base.parent_id,
+        ):
             raise ConcurrentModificationError(
                 f"remote notebook changed between planning and apply: {op.folder_id}"
             )
@@ -488,8 +505,10 @@ class Executor:
         ):
             return OperationResult(op, "failed", "post-write verification failed")
         self.store.upsert_folder(
-            folder_id=op.folder_id, rel_path=self.current_path(fs.local.rel_path),
-            title=fs.local.title, parent_id=fs.local.parent_id,
+            folder_id=op.folder_id,
+            rel_path=self.current_path(fs.local.rel_path),
+            title=fs.local.title,
+            parent_id=fs.local.parent_id,
         )
         return OperationResult(op, "applied")
 
@@ -525,8 +544,13 @@ class Executor:
         if new_rel != rel:
             self.ws.abs_path(rel).unlink(missing_ok=True)
         self.store.upsert_note(
-            note_id=note_id, rel_path=new_rel, title=title, body=body, tags=tags,
-            parent_id=parent_id, updated_time=remote.updated_time,
+            note_id=note_id,
+            rel_path=new_rel,
+            title=title,
+            body=body,
+            tags=tags,
+            parent_id=parent_id,
+            updated_time=remote.updated_time,
         )
         return OperationResult(op, "applied", f"created note {note_id}")
 
@@ -555,7 +579,8 @@ class Executor:
                 # Re-read and decide whether the write was applied.
                 probe = self._fetch_remote_canonical(op.note_id)
                 intended_probe = note_hashes(
-                    parsed.title, parsed.body,
+                    parsed.title,
+                    parsed.body,
                     parsed.tags if "tags" in op.fields else (probe.tags if probe else ()),
                     parent_id if "parent" in op.fields else (probe.parent_id if probe else ""),
                 ).combined
@@ -564,16 +589,16 @@ class Executor:
                 ).combined in (intended_probe,)
                 if not applied and (
                     probe is None
-                    or note_hashes(
-                        probe.title, probe.body, probe.tags, probe.parent_id
-                    ).combined != op.expected_remote_hash
+                    or note_hashes(probe.title, probe.body, probe.tags, probe.parent_id).combined
+                    != op.expected_remote_hash
                 ):
                     raise ConcurrentModificationError(
                         f"ambiguous write and unexpected remote state for {op.note_id}"
                     ) from None
                 if not applied:
                     return OperationResult(
-                        op, "failed",
+                        op,
+                        "failed",
                         "write did not reach Joplin (timeout); state unchanged, rerun push",
                     )
         if "tags" in op.fields:
@@ -597,8 +622,13 @@ class Executor:
         else:
             new_rel = rel
         self.store.upsert_note(
-            note_id=op.note_id, rel_path=new_rel, title=parsed.title, body=parsed.body,
-            tags=parsed.tags, parent_id=parent_id, updated_time=remote.updated_time,
+            note_id=op.note_id,
+            rel_path=new_rel,
+            title=parsed.title,
+            body=parsed.body,
+            tags=parsed.tags,
+            parent_id=parent_id,
+            updated_time=remote.updated_time,
         )
         return OperationResult(op, "applied")
 
@@ -611,7 +641,9 @@ class Executor:
         if check is not None and not check.get("deleted_time"):
             return OperationResult(op, "failed", "post-delete verification failed")
         self.store.add_tombstone(
-            note_id=op.note_id, side="local", rel_path=state.base.rel_path,
+            note_id=op.note_id,
+            side="local",
+            rel_path=state.base.rel_path,
             title=state.base.title,
         )
         self.store.delete_note(op.note_id)
@@ -625,7 +657,8 @@ class Executor:
             self.store.upsert_folder(
                 folder_id=fs.folder_id,
                 rel_path=self.current_path(fs.rel_path or ""),
-                title=src.title, parent_id=src.parent_id,
+                title=src.title,
+                parent_id=src.parent_id,
             )
             return OperationResult(op, "applied")
         state = op.state
@@ -635,9 +668,13 @@ class Executor:
         assert remote is not None
         local = state.local
         self.store.upsert_note(
-            note_id=remote.id, rel_path=self.current_path(local.rel_path),
-            title=local.title, body=local.body, tags=local.tags,
-            parent_id=remote.parent_id, updated_time=remote.updated_time,
+            note_id=remote.id,
+            rel_path=self.current_path(local.rel_path),
+            title=local.title,
+            body=local.body,
+            tags=local.tags,
+            parent_id=remote.parent_id,
+            updated_time=remote.updated_time,
         )
         # A headerless or id-less file cannot occur here (id matched remote).
         return OperationResult(op, "applied", "base snapshot updated; both sides identical")
@@ -645,8 +682,10 @@ class Executor:
     def _op_drop_base(self, op: PlanOperation) -> OperationResult:
         if op.note_id:
             self.store.add_tombstone(
-                note_id=op.note_id, side="both",
-                rel_path=op.rel_path or "", title=(op.state.title if op.state else "") or "",
+                note_id=op.note_id,
+                side="both",
+                rel_path=op.rel_path or "",
+                title=(op.state.title if op.state else "") or "",
             )
             self.store.delete_note(op.note_id)
         elif op.folder_id:
@@ -668,8 +707,13 @@ class Executor:
         base = self.store.get_note(op.note_id)
         if base is not None:
             self.store.upsert_note(
-                note_id=base.id, rel_path=new_rel, title=base.title, body=base.body,
-                tags=base.tags, parent_id=base.parent_id, updated_time=base.updated_time,
+                note_id=base.id,
+                rel_path=new_rel,
+                title=base.title,
+                body=base.body,
+                tags=base.tags,
+                parent_id=base.parent_id,
+                updated_time=base.updated_time,
             )
         return OperationResult(op, "applied", f"renamed to {new_rel}")
 

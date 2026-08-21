@@ -79,9 +79,7 @@ class LiveGptActionsTest(unittest.TestCase):
         if os.name == "posix" and TOKEN_FILE.stat().st_mode & 0o077:
             raise RuntimeError(f"live Joplin token file must have mode 0600: {TOKEN_FILE}")
 
-        cls.api = build_client(
-            token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25
-        )
+        cls.api = build_client(token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25)
         if not cls.api.ping():
             raise RuntimeError(f"unexpected Joplin ping response from {cls.api.base_url}")
         cls.joplin_token = TOKEN_FILE.read_text(encoding="utf-8").strip()
@@ -202,9 +200,8 @@ class LiveGptActionsTest(unittest.TestCase):
                     cls.owned_note_ids.add(note_id)
             for folder in cls.api.list_folders(include_deleted=True):
                 folder_id = str(folder["id"])
-                if (
-                    folder_id not in cls.initial_folders
-                    and cls.run_id in str(folder.get("title") or "")
+                if folder_id not in cls.initial_folders and cls.run_id in str(
+                    folder.get("title") or ""
                 ):
                     cls.owned_folder_ids.add(folder_id)
             for tag in cls.api.list_tags():
@@ -330,9 +327,7 @@ class LiveGptActionsTest(unittest.TestCase):
         env = dict(os.environ)
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = (
-            str(SRC)
-            if not existing_pythonpath
-            else str(SRC) + os.pathsep + existing_pythonpath
+            str(SRC) if not existing_pythonpath else str(SRC) + os.pathsep + existing_pythonpath
         )
         command = [
             sys.executable,
@@ -385,9 +380,7 @@ class LiveGptActionsTest(unittest.TestCase):
                     f"Actions process exited {process.returncode}: {stdout}\n{stderr}"
                 )
             try:
-                status, body, _ = cls._http_request(
-                    f"{base_url}/healthz", method="GET", token=None
-                )
+                status, body, _ = cls._http_request(f"{base_url}/healthz", method="GET", token=None)
                 if status == 200 and body == {"ok": True}:
                     return
                 last_error = f"unexpected Actions readiness response: {status} {body}"
@@ -404,7 +397,7 @@ class LiveGptActionsTest(unittest.TestCase):
         *,
         raw: bytes | None = None,
         method: str = "POST",
-        token: str | None | object = CURRENT_TOKEN,
+        token: str | object | None = CURRENT_TOKEN,
         content_type: str = "application/json",
         extra_headers: dict[str, str] | None = None,
     ) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
@@ -433,7 +426,7 @@ class LiveGptActionsTest(unittest.TestCase):
         arguments: object,
         *,
         base_url: str | None = None,
-        token: str | None | object = CURRENT_TOKEN,
+        token: str | object | None = CURRENT_TOKEN,
         method: str = "POST",
         raw: bytes | None = None,
         content_type: str = "application/json",
@@ -530,22 +523,16 @@ class LiveGptActionsTest(unittest.TestCase):
 
     def test_01_transport_auth_rotation_and_route_isolation(self) -> None:
         for path in ("/healthz", "/readyz"):
-            status, body, _ = self._http_request(
-                f"{self.base_url}{path}", method="GET", token=None
-            )
+            status, body, _ = self._http_request(f"{self.base_url}{path}", method="GET", token=None)
             self.assertEqual((status, body), (200, {"ok": True}))
 
         for token in (None, "incorrect-actions-token", self.mcp_token, self.joplin_token):
-            status, body, headers = self._request(
-                "route-that-does-not-exist", {}, token=token
-            )
+            status, body, headers = self._request("route-that-does-not-exist", {}, token=token)
             self.assertEqual(status, 401)
             self.assertEqual(body["error"]["code"], "UNAUTHORIZED")
             self.assertIn("joplin-md-sync-gpt-actions", headers["WWW-Authenticate"])
 
-        self._error(
-            "route-that-does-not-exist", {}, status=404, code="ACTION_NOT_FOUND"
-        )
+        self._error("route-that-does-not-exist", {}, status=404, code="ACTION_NOT_FOUND")
         for disabled in (
             "joplin_read_resource",
             "joplin_create_resource",
@@ -553,23 +540,15 @@ class LiveGptActionsTest(unittest.TestCase):
         ):
             self._error(disabled, {}, status=404, code="ACTION_NOT_FOUND")
 
-        status, body, headers = self._request(
-            "joplin_list_notes", {}, method="GET"
-        )
+        status, body, headers = self._request("joplin_list_notes", {}, method="GET")
         self.assertEqual(status, 405)
         self.assertEqual(body["error"]["code"], "METHOD_NOT_ALLOWED")
         self.assertEqual(headers["Allow"], "POST")
-        status, body, headers = self._request(
-            "joplin_list_notes", {}, method="HEAD"
-        )
+        status, body, headers = self._request("joplin_list_notes", {}, method="HEAD")
         self.assertEqual((status, body, headers["Allow"]), (405, None, "POST"))
 
-        self.assertEqual(
-            self._request("joplin_list_notes", {}, content_type="text/plain")[0], 415
-        )
-        self.assertEqual(
-            self._request("joplin_list_notes", {}, raw=b"{")[0], 400
-        )
+        self.assertEqual(self._request("joplin_list_notes", {}, content_type="text/plain")[0], 415)
+        self.assertEqual(self._request("joplin_list_notes", {}, raw=b"{")[0], 400)
         self.assertEqual(self._request("joplin_list_notes", [])[0], 400)
         self._error(
             "joplin_list_notes",
@@ -594,9 +573,7 @@ class LiveGptActionsTest(unittest.TestCase):
         os.replace(temporary, self.actions_token_file)
         type(self).actions_token = replacement
         self.sensitive_values.add(replacement)
-        self.assertEqual(
-            self._request("joplin_list_notes", {"limit": 1}, token=previous)[0], 401
-        )
+        self.assertEqual(self._request("joplin_list_notes", {"limit": 1}, token=previous)[0], 401)
         self.assertEqual(self._request("joplin_list_notes", {"limit": 1})[0], 200)
 
     def test_02_all_notebook_and_note_actions(self) -> None:
@@ -614,9 +591,9 @@ class LiveGptActionsTest(unittest.TestCase):
         )["notebook"]
         type(self).child_notebook_id = self._remember_notebook(child)
 
-        fetched = self._action(
-            "joplin_get_notebook", {"notebook_id": self.child_notebook_id}
-        )["notebook"]
+        fetched = self._action("joplin_get_notebook", {"notebook_id": self.child_notebook_id})[
+            "notebook"
+        ]
         self.assertEqual(fetched["parent_id"], self.notebook_id)
         renamed = self._action(
             "joplin_update_notebook",
@@ -626,9 +603,9 @@ class LiveGptActionsTest(unittest.TestCase):
             },
         )["notebook"]
         self.assertIn(self.run_id, renamed["title"])
-        notebooks = self._action(
-            "joplin_list_notebooks", {"limit": 100, "include_deleted": True}
-        )["notebooks"]
+        notebooks = self._action("joplin_list_notebooks", {"limit": 100, "include_deleted": True})[
+            "notebooks"
+        ]
         self.assertTrue(any(str(item["id"]) == self.child_notebook_id for item in notebooks))
 
         png = base64.b64decode(
@@ -730,9 +707,7 @@ class LiveGptActionsTest(unittest.TestCase):
         )
 
     def test_03_all_tag_and_resource_actions(self) -> None:
-        tag_result = self._action(
-            "joplin_create_tag", {"title": f"jms-gpt-tag-{self.run_id}"}
-        )
+        tag_result = self._action("joplin_create_tag", {"title": f"jms-gpt-tag-{self.run_id}"})
         tag = tag_result["tag"]
         tag_id = str(tag["id"])
         self.assertTrue(tag_result["created"])
@@ -753,13 +728,13 @@ class LiveGptActionsTest(unittest.TestCase):
         )
         self.assertFalse(attached["already_attached"])
         self.assertTrue(
-            self._action(
-                "joplin_add_tag_to_note", {"tag_id": tag_id, "note_id": self.note_id}
-            )["already_attached"]
+            self._action("joplin_add_tag_to_note", {"tag_id": tag_id, "note_id": self.note_id})[
+                "already_attached"
+            ]
         )
-        tagged_notes = self._action(
-            "joplin_list_tag_notes", {"tag_id": tag_id, "limit": 100}
-        )["notes"]
+        tagged_notes = self._action("joplin_list_tag_notes", {"tag_id": tag_id, "limit": 100})[
+            "notes"
+        ]
         self.assertTrue(any(str(item["id"]) == self.note_id for item in tagged_notes))
         self.assertTrue(
             self._action(
@@ -774,9 +749,9 @@ class LiveGptActionsTest(unittest.TestCase):
 
         resources = self._action("joplin_list_resources", {"limit": 100})["resources"]
         self.assertTrue(any(str(item["id"]) == self.resource_id for item in resources))
-        resource = self._action(
-            "joplin_get_resource", {"resource_id": self.resource_id}
-        )["resource"]
+        resource = self._action("joplin_get_resource", {"resource_id": self.resource_id})[
+            "resource"
+        ]
         self.assertEqual(resource["id"], self.resource_id)
         note_resources = self._action(
             "joplin_list_note_resources", {"note_id": self.note_id, "limit": 100}
@@ -793,13 +768,9 @@ class LiveGptActionsTest(unittest.TestCase):
             time.sleep(0.25)
         self.assertTrue(any(str(item["id"]) == self.note_id for item in resource_notes))
 
+        self.assertTrue(self._action("joplin_delete_tag", {"tag_id": tag_id})["permanent"])
         self.assertTrue(
-            self._action("joplin_delete_tag", {"tag_id": tag_id})["permanent"]
-        )
-        self.assertTrue(
-            self._action("joplin_delete_resource", {"resource_id": self.resource_id})[
-                "permanent"
-            ]
+            self._action("joplin_delete_resource", {"resource_id": self.resource_id})["permanent"]
         )
 
     def test_04_schema_domain_size_rate_and_upstream_failures(self) -> None:
@@ -810,9 +781,7 @@ class LiveGptActionsTest(unittest.TestCase):
             status=422,
             code="NOTE_NOT_FOUND",
         )
-        self._error(
-            "joplin_list_notes", {"limit": 101}, status=422, code="INVALID_ARGUMENT"
-        )
+        self._error("joplin_list_notes", {"limit": 101}, status=422, code="INVALID_ARGUMENT")
         before = self.api.get_note(self.note_id, include_deleted=True)
         self._error(
             "joplin_update_note",
@@ -875,9 +844,7 @@ class LiveGptActionsTest(unittest.TestCase):
         try:
             self._wait_until_ready(rate_process, rate_url)
             self.assertEqual(
-                self._request(
-                    "joplin_list_notes", {"limit": 1}, base_url=rate_url
-                )[0],
+                self._request("joplin_list_notes", {"limit": 1}, base_url=rate_url)[0],
                 200,
             )
             status, body, headers = self._request(
@@ -985,7 +952,7 @@ class LiveGptActionsTest(unittest.TestCase):
             timeout=10,
             check=True,
         )
-        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.5.3")
+        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.5.4")
 
     def test_99_every_exposed_action_was_exercised(self) -> None:
         expected = {tool.name for tool in registry_for_export().exposed}

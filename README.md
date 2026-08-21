@@ -12,6 +12,9 @@ exit codes, explicit conflict handling), and perfectly usable by humans.
 > verifies every write after applying it, and journals every mutating run so
 > interrupted syncs are recoverable. `diff` never mutates anything.
 
+The test-backed definitions of these guarantees live in the
+[contract catalog](docs/contracts/README.md).
+
 If you are an agent (or configuring one), start with **[AGENTS.md](AGENTS.md)**.
 
 ## How it works
@@ -33,8 +36,8 @@ Windows or Linux. Native release executables include Python and have no
 external runtime dependencies.
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
-# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+# or: pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
 # or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
 ```
 
@@ -57,17 +60,23 @@ From a checkout, everything is driven by the Makefile:
 
 ```bash
 make venv        # runtime venv/ with the CLI installed (venv/bin/joplin-md-sync)
-make venv-dev    # tooling venv-dev/ (ruff, mypy, pytest, PyInstaller, build)
+make venv-dev    # Linux quality tools (ruff, mypy, Bandit, pip-audit)
+make venv-test   # cross-platform pytest tools
+make venv-package # cross-platform PyInstaller and build tools
 make check       # lint + typecheck + full test suite
+make freeze-check # verify all generated dependency locks are current
 make test-live   # opt-in real-Joplin MCP + GPT Actions suites; reads ./token
-make test TEST_WORKERS=8  # override the default four parallel test workers
+make test TEST_WORKERS=8  # override automatic parallel test workers
 make package     # wheel, sdist, .pyz, current-platform executable, checksums
 make help        # all targets
 ```
 
 The version's single source is the root `.version` file; runtime
-dependencies are declared in `pyproject.toml` (none by design), dev tools
-in `[dependency-groups]` with a pip-freeze lock in `requirements-dev.txt`.
+dependencies are declared in `pyproject.toml` (none by design). Direct tools are
+pinned to their latest stable compatible releases in purpose-specific quality,
+test, package, and docs groups. The four committed `pip-compile` locks include
+SHA-256 hashes and are checked for drift in CI; Windows jobs install only the
+cross-platform test or package lock they need.
 
 ## Five-minute quick start
 
@@ -122,10 +131,11 @@ protected file. MCP bearer authentication remains optional through a separate
 tokens, stores them in protected files, and reports only their paths after a
 successful install. It never creates a separate Actions service.
 
-Use [service installation and operations](docs/SERVICE.md) for Linux, Windows,
-credentials, URI isolation, and live tests; [MCP API](docs/MCP_API.md) for the
+Use [service installation and operations](docs/user/SERVICE.md) for Linux,
+Windows, credentials, URI isolation, and live tests;
+[MCP API](docs/user/MCP_API.md) for the
 tool contract; and the single [ChatGPT Actions end-to-end
-setup](docs/CHATGPT_ACTIONS.md) for endpoint validation, schema export, GPT
+setup](docs/user/CHATGPT_ACTIONS.md) for endpoint validation, schema export, GPT
 Instructions, editor configuration, and acceptance testing.
 
 ## Architecture overview
@@ -139,7 +149,7 @@ state: SQLite base snapshots, conflicts, tombstones, run journal
 workspace: scanning, atomic writes, backups, quarantine, cross-platform lock
 ```
 
-Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Details in [Architecture](docs/maintenance/ARCHITECTURE.md).
 
 ## Supported / not supported (v1)
 

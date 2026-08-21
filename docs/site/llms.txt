@@ -1,0 +1,57 @@
+# joplin-md-sync
+
+> Safe two-way synchronization between Joplin and a Markdown workspace, plus
+> MCP and ChatGPT Actions interfaces for coding agents and AI assistants.
+
+Canonical documentation: https://joplin-mcp.romancello.net/
+Source: https://github.com/kogeler/joplin-md-sync
+
+## Start here
+
+- Overview: https://joplin-mcp.romancello.net/user/OVERVIEW/
+- Installation: https://joplin-mcp.romancello.net/user/GETTING_STARTED/
+- Agent workflows: https://joplin-mcp.romancello.net/user/AGENT_WORKFLOWS/
+- Interface guide: https://joplin-mcp.romancello.net/user/AGENT_INTERFACES/
+
+## Reference
+
+- CLI: https://joplin-mcp.romancello.net/user/CLI/
+- Workspace format: https://joplin-mcp.romancello.net/user/WORKSPACE_FORMAT/
+- Conflicts: https://joplin-mcp.romancello.net/user/CONFLICTS/
+- MCP API: https://joplin-mcp.romancello.net/user/MCP_API/
+- ChatGPT Actions: https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/
+- Self-hosting: https://joplin-mcp.romancello.net/user/SELF_HOSTED/
+- Service operations: https://joplin-mcp.romancello.net/user/SERVICE/
+
+## Contracts
+
+- Catalog: https://joplin-mcp.romancello.net/contracts/
+- CLI and output: https://joplin-mcp.romancello.net/contracts/CLI/
+- Workspace: https://joplin-mcp.romancello.net/contracts/WORKSPACE/
+- Synchronization: https://joplin-mcp.romancello.net/contracts/SYNCHRONIZATION/
+- Agent interfaces: https://joplin-mcp.romancello.net/contracts/AGENT_INTERFACES/
+- Service: https://joplin-mcp.romancello.net/contracts/SERVICE/
+- Security: https://joplin-mcp.romancello.net/contracts/SECURITY/
+- Dependencies: https://joplin-mcp.romancello.net/contracts/DEPENDENCIES/
+- CI and releases: https://joplin-mcp.romancello.net/contracts/CI_RELEASES/
+
+## Maintainers
+
+- Architecture: https://joplin-mcp.romancello.net/maintenance/ARCHITECTURE/
+- Synchronization design: https://joplin-mcp.romancello.net/maintenance/SYNCHRONIZATION/
+- Security rationale: https://joplin-mcp.romancello.net/maintenance/SECURITY/
+- Dependencies: https://joplin-mcp.romancello.net/maintenance/DEPENDENCIES/
+- Development: https://joplin-mcp.romancello.net/maintenance/DEVELOPMENT/
+- Service maintenance: https://joplin-mcp.romancello.net/maintenance/SERVICE/
+- Releases: https://joplin-mcp.romancello.net/maintenance/RELEASES/
+
+## Agent safety
+
+- Pull before editing.
+- Keep managed metadata headers intact.
+- Review a three-way diff and `push --dry-run` before a real push.
+- Do not edit `.joplin-sync/`.
+- Do not interleave MCP writes with unpushed local edits.
+- Do not expose the Joplin Data API to a network.
+- Never put a Joplin, MCP, Actions, sync, or encryption token in chat, Git, or
+  command arguments.

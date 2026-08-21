@@ -80,7 +80,8 @@ class WorkspaceTestCase(unittest.TestCase):
         result = run_cli(*argv, env=self.env)
         if expect is not None:
             self.assertEqual(
-                result.exit_code, expect,
+                result.exit_code,
+                expect,
                 f"argv={argv}\nstdout={result.stdout}\nstderr={result.stderr}",
             )
         return result
@@ -94,7 +95,8 @@ class WorkspaceTestCase(unittest.TestCase):
 
     def find_note_file(self, fragment: str) -> Path:
         matches = [
-            p for p in self.root.rglob("*.md")
+            p
+            for p in self.root.rglob("*.md")
             if fragment in p.name and ".joplin-sync" not in p.parts
         ]
         if len(matches) != 1:
@@ -109,7 +111,5 @@ class WorkspaceTestCase(unittest.TestCase):
         for path in sorted(self.root.rglob("*")):
             if ".joplin-sync" in path.parts or path.is_dir():
                 continue
-            digest[str(path.relative_to(self.root))] = hashlib.sha256(
-                path.read_bytes()
-            ).hexdigest()
+            digest[str(path.relative_to(self.root))] = hashlib.sha256(path.read_bytes()).hexdigest()
         return digest

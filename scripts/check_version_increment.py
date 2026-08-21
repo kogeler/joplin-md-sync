@@ -37,20 +37,25 @@ def read_base_version(base_ref: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-ref", required=True, help="Git revision to compare against")
+    base = parser.add_mutually_exclusive_group(required=True)
+    base.add_argument("--base-ref", help="Git revision to compare against")
+    base.add_argument("--base-version", help="Exact semantic version to compare against")
     args = parser.parse_args()
 
     try:
         current_text = (REPO / ".version").read_text(encoding="utf-8").strip()
-        base_text = read_base_version(args.base_ref)
+        base_text = (
+            read_base_version(args.base_ref) if args.base_ref is not None else args.base_version
+        )
+        assert base_text is not None
         current = parse_version(current_text, "current .version")
-        base = parse_version(base_text, f"{args.base_ref}:.version")
+        base_version = parse_version(base_text, "base version")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
 
-    if current <= base:
+    if current <= base_version:
         parser.error(
-            f".version must be incremented relative to the PR base: "
+            f".version must be incremented relative to the comparison base: "
             f"current {current_text}, base {base_text}"
         )
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# --- Item status codes (public contract, see docs/STATE_MODEL.md) ----------
+# --- Item status codes (see docs/contracts/SYNCHRONIZATION.md) -------------
 
 UNCHANGED = "UNCHANGED"
 LOCAL_MODIFIED = "LOCAL_MODIFIED"

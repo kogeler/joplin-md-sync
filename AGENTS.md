@@ -1,193 +1,121 @@
-# joplin-md-sync — Agent Runbook
+# joplin-md-sync Agent Runbook
 
-Safe two-way sync between a local Joplin desktop app and a directory of
-Markdown files. Built for autonomous coding agents: deterministic JSON
-output, stable exit codes, no silent overwrites.
+Safe two-way synchronization between Joplin and ordinary Markdown, with MCP
+and ChatGPT Actions interfaces for agents. Product guarantees are defined only
+by the [contract catalog](docs/contracts/README.md). This runbook tells an agent
+how to operate the project safely; it does not replace those contracts.
 
 ## Requirements
 
-- CPython **>= 3.13** (tested on 3.13 and 3.14), Windows or Linux, when using
-  source/wheel/zipapp distributions. Native release executables include Python.
-- Joplin desktop running locally with the **Web Clipper service** enabled
-  (Tools > Options > Web Clipper). Default port `41184`.
-- The Joplin **token** (shown in the Web Clipper options page).
+- CPython 3.13 or 3.14 on Windows or Linux for source, wheel, and zipapp use.
+- Joplin Desktop running locally with Web Clipper enabled, normally on port
+  `41184`.
+- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN` or a protected
+  token file.
+
+Native release executables include Python.
 
 ## Install
 
 ```bash
-python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
-# or with pipx:
-pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.3"
-# or run the standalone zipapp from a GitHub release asset:
+python -m pip install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
+# or:
+pipx install "git+https://github.com/kogeler/joplin-md-sync.git@v1.5.4"
 python joplin-md-sync.pyz --help
-# or run a native release executable without installing Python:
 ./joplin-md-sync-linux-amd64 version
 ```
 
-Verify the install and check freshness:
+Verify the installed version before changing notes:
 
 ```bash
-joplin-md-sync version --json
-joplin-md-sync update-check --json    # exit 8 = newer release exists
-```
-
-## Working from a checkout (development)
-
-Everything is driven by the Makefile (CI runs the same targets):
-
-```bash
-make venv        # runtime venv/ with the CLI installed:  venv/bin/joplin-md-sync
-make venv-dev    # tooling venv-dev/ from the requirements-dev.txt lock
-make check       # lint (ruff) + typecheck (mypy) + full test suite
-make test-service-installer # Linux headless installer tests
-make test-live   # opt-in live MCP + GPT Actions tests; reads ./token; not CI
-make package     # wheel, sdist, pyz, current-platform executable, checksums
-make smoke       # install the built wheel into a clean venv and exercise it
-make docs-build  # strict MkDocs build for the documentation site
-make docs-serve  # local documentation server with live reload
-make help        # list all targets
-```
-
-- The version's **single source is the `.version` file at the repo root**
-  (pyproject reads it dynamically; `agent-manifest.json` must match — both
-  are enforced by `make verify-release`).
-- Runtime dependencies are declared in `pyproject.toml` (`dependencies`,
-  currently empty by design); dev tools are declared in
-  `[dependency-groups]` and pinned via pip freeze in `requirements-dev.txt`
-  (refresh with `make freeze`).
-- The public site at `https://joplin-mcp.romancello.net/` is built from
-  `docs/` with `mkdocs.yml`; `docs/index.md` is its product homepage. GitHub
-  Pages deployment lives in `.github/workflows/pages.yml`.
-
-## Authentication
-
-| Source (highest wins) | How |
-| --- | --- |
-| CLI | `--base-url URL`, `--port N`, `--token-file PATH` |
-| Environment | `JOPLIN_TOKEN`, `JOPLIN_BASE_URL`, `JOPLIN_PORT` |
-| Built-in default | `http://127.0.0.1:41184` (standard Clipper endpoint) |
-| Discovery fallback | probes `127.0.0.1:41184-41194` via `GET /ping` |
-
-**Only `JOPLIN_TOKEN` is required** when Joplin runs with default Clipper
-settings — the URL and port never need to be specified. The token is never
-accepted as a raw CLI argument, never logged, never stored in the
-workspace. Non-loopback API addresses are refused unless
-`--allow-remote-api` is passed.
-
-## Canonical workflow
-
-```bash
-export JOPLIN_TOKEN=...                                   # once per session
 joplin-md-sync version --json
 joplin-md-sync update-check --json
-joplin-md-sync init --root ./notes --mode remote-first    # first time only
+```
+
+## Repository development
+
+Use Make targets so local checks use the same locked environments as CI:
+
+```bash
+make venv
+make venv-dev
+make check
+make ci
+make freeze-check
+make test-service-installer
+make test-live
+make package
+make smoke
+make docs-build
+make docs-audit
+make docs-screenshots
+make docs-serve
+make help
+```
+
+Development procedures are in
+[Development](docs/maintenance/DEVELOPMENT.md), dependency updates in
+[Dependency maintenance](docs/maintenance/DEPENDENCIES.md), and releases in
+[Releases](docs/maintenance/RELEASES.md). The root `.version` file is the human
+maintained version source.
+
+## Safe Markdown workflow
+
+```bash
+export JOPLIN_TOKEN=...
+joplin-md-sync init --root ./notes --mode remote-first    # first run only
 joplin-md-sync doctor --root ./notes --json
 joplin-md-sync pull --root ./notes --json
-# ... edit Markdown files with normal filesystem tools ...
+# Edit managed Markdown without changing an existing metadata id.
 joplin-md-sync diff --root ./notes --three-way --unified
 joplin-md-sync push --root ./notes --dry-run --json
 joplin-md-sync push --root ./notes --json
 joplin-md-sync status --root ./notes --json
 ```
 
-When unsure about state:
+When state is uncertain, stop writes and inspect it:
 
 ```bash
 joplin-md-sync diff --root ./notes --three-way --json
 joplin-md-sync conflicts list --root ./notes --json
 ```
 
-## Managed file format
+Detailed tasks are in [Agent workflows](docs/user/AGENT_WORKFLOWS.md). Command
+and file reference material is in [CLI reference](docs/user/CLI.md) and
+[Workspace format](docs/user/WORKSPACE_FORMAT.md). Exact behavior and evidence
+are in the [CLI](docs/contracts/CLI.md),
+[workspace](docs/contracts/WORKSPACE.md), and
+[synchronization](docs/contracts/SYNCHRONIZATION.md) contracts.
 
-Every managed note starts with one single-line header, then one blank
-line, then the exact Joplin Markdown body:
+## Agent interfaces
 
-```markdown
-<!-- joplin-md-sync: {"id":"17a35454fbb34ee080e29fba9ee88730","schema":1,"tags":["homelab"],"title":"Kubernetes"} -->
+Use the Markdown workspace for broad, reviewable transformations. Use MCP for
+immediate structured Joplin operations. Use authenticated Actions for a private
+Custom GPT. Choose deliberately with
+[Choose an agent interface](docs/user/AGENT_INTERFACES.md).
 
-The exact Joplin Markdown body begins here.
+The foreground server listens on `http://127.0.0.1:8765/mcp` by default and
+does not need a Markdown workspace:
+
+```bash
+joplin-md-sync mcp serve --token-file /protected/joplin-token
 ```
 
-- **Keep the header intact.** A malformed header blocks push for that file.
-- To create a new note: add a `.md` file inside a notebook directory,
-  either with a header without `"id"` or as plain Markdown (the file name
-  becomes the title). Push assigns the Joplin id and rewrites the header.
-- Edit `title`/`tags` via the header or, safer:
-  `joplin-md-sync note set-title PATH "New title"` /
-  `note set-tags PATH tag1 tag2` / `note validate PATH`.
-- `:/resource-id` links must stay unchanged;
-  `joplin-md-sync resources pull --root ./notes` downloads the binaries to
-  `.joplin-sync/resources/` for inspection.
-- Notebook = directory with `.joplin-folder.json`. A new directory becomes
-  a new notebook on push. Directory names are cosmetic (normalized on
-  pull); identity lives in the metadata files.
+Setup and operation:
 
-## Command table
+- [MCP API](docs/user/MCP_API.md)
+- [ChatGPT Actions](docs/user/CHATGPT_ACTIONS.md)
+- [Self-hosted deployment](docs/user/SELF_HOSTED.md)
+- [Service operations](docs/user/SERVICE.md)
 
-| Command | Purpose | Mutates |
-| --- | --- | --- |
-| `version` / `capabilities` / `update-check` | environment info | no |
-| `init --root P [--mode remote-first\|local-first]` | create workspace | local |
-| `doctor --root P [--offline]` | health checks | no |
-| `status --root P` | offline state vs base | no |
-| `diff --root P [--three-way --unified --name-status --note X --exit-code --offline]` | compare states | **never** |
-| `pull --root P [--dry-run]` | remote -> local | local |
-| `push --root P [--dry-run]` | local -> remote | remote |
-| `sync --root P [--dry-run]` | both directions | both |
-| `recover --root P` | settle interrupted runs | local state |
-| `conflicts list/show/resolve/discard` | conflict handling | varies |
-| `note set-title/set-tags/validate` | header editing | local file |
-| `resources pull --root P` | download attachments | `.joplin-sync/` only |
-| `mcp serve [--host H --mcp-port N]` | combined MCP/Actions Joplin API daemon | notes, notebooks, tags, resources |
-| `gpt-actions export-openapi --server-url U --output P` | generate Custom GPT Actions contract | output file |
+The normative transport and deployment requirements are in the
+[agent-interface](docs/contracts/AGENT_INTERFACES.md),
+[service](docs/contracts/SERVICE.md), and
+[security](docs/contracts/SECURITY.md) contracts.
 
-All operational commands accept `--json`, `--verbose`, `--quiet`,
-`--log-file PATH`. JSON goes to stdout; logs go to stderr.
+## Conflict and recovery procedure
 
-`mcp serve` is a foreground Streamable HTTP daemon and does not require a
-workspace. It listens at `http://127.0.0.1:8765/mcp` by default; see
-[docs/MCP_API.md](docs/MCP_API.md). MCP bearer authorization is disabled by default
-and enabled with a separate `--auth-token-file`.
-
-The same binary and listener expose authenticated Custom GPT Actions with
-`--gpt-actions --gpt-actions-token-file PATH`. A production HTTPS publishing
-layer may expose the shared `/mcp` and `/api/gpt/v1/*` listener because both
-transports use separate bearer tokens. Joplin Data API ports must remain
-private. The headless installer always enables Actions in the single
-`joplin-md-sync.service`, generates separate Actions and MCP bearer tokens, and
-always enables MCP authentication. See
-[docs/CHATGPT_ACTIONS.md](docs/CHATGPT_ACTIONS.md) for the complete setup and
-[docs/SERVICE.md](docs/SERVICE.md) for service operations.
-
-Deletions are **never propagated by default** — they are reported. Pass
-`--propagate-deletes` to apply them (local files go to quarantine under
-`.joplin-sync/quarantine/`; remote notes go to the normal Joplin trash,
-never permanent deletion).
-
-## Exit codes (stable)
-
-| Code | Meaning |
-| --- | --- |
-| 0 | success; no differences where relevant |
-| 1 | differences or pending actions found (`--dry-run`, `diff --exit-code`) |
-| 2 | unresolved conflicts present |
-| 3 | invalid workspace or malformed managed file |
-| 4 | Joplin API unavailable or authentication failed |
-| 5 | concurrent modification detected (or workspace locked) |
-| 6 | partial operation; recovery required |
-| 7 | unsafe operation blocked (explicit flag missing) |
-| 8 | tool outdated (`update-check` only) |
-| 9 | internal failure |
-
-JSON responses always contain `code` (e.g. `OK`, `DIFF_FOUND`,
-`CONFLICTS_PRESENT`, `API_AUTH_FAILED`, `CONCURRENT_MODIFICATION`,
-`RECOVERY_REQUIRED`) plus `success`, `exit_code`, `schema_version`.
-
-## Conflicts
-
-A divergent concurrent edit never overwrites either side. It produces exit
-code 2 and a bundle under `.joplin-sync/conflicts/<id>/` with `base.md`,
-`local.md`, `remote.md`, `metadata.json`:
+Use only the supported conflict commands; never delete or edit bundle files:
 
 ```bash
 joplin-md-sync conflicts list --root ./notes --json
@@ -198,48 +126,27 @@ joplin-md-sync conflicts resolve CONFLICT_ID --merged-file PATH
 joplin-md-sync conflicts discard CONFLICT_ID
 ```
 
-Resolution re-validates both sides first; if anything changed since the
-bundle was created it refuses (exit 5) — rerun `sync` and resolve again.
-
-## Recovery
-
-If a run is interrupted, the next mutating command fails with exit 6:
+If a mutating run was interrupted, use the recovery command before retrying:
 
 ```bash
 joplin-md-sync recover --root ./notes --json
 ```
 
-`recover` checks which journaled operations verifiably completed, settles
-the journal, and unblocks the workspace. Then rerun the original command.
-Overwritten files are backed up under `.joplin-sync/backups/<run-id>/`.
+Review [Conflict handling](docs/user/CONFLICTS.md) before selecting a side.
 
 ## Safety prohibitions
 
-- Never edit anything under `.joplin-sync/`.
-- Never remove or hand-edit the first-line metadata comment's `id`.
-- Run `pull` before editing; run `diff` and `push --dry-run` before `push`.
-- Never resolve a conflict by deleting bundle files manually — use
-  `conflicts resolve` / `conflicts discard`.
-- Never touch Joplin's own database, profile directory, or sync directory.
-- Never use the Joplin token in shell arguments or commit it anywhere.
+- Never edit, delete, or commit anything under `.joplin-sync/`.
+- Never remove or hand-edit the `id` in an existing metadata header.
+- Pull before editing; review `diff` and `push --dry-run` before pushing.
+- Never resolve a conflict by manipulating its bundle directly.
+- Never access Joplin's database, profile, or sync target directly.
+- Never put Joplin, MCP, Actions, sync, or encryption credentials in Git,
+  chat, logs, or shell arguments.
+- Never expose the Joplin Data API to a public network.
+- Do not interleave direct MCP/Actions writes with unpushed Markdown edits.
 
-## Complete example session
-
-```console
-$ joplin-md-sync pull --root ./notes --json
-{"code": "OK", "command": "pull", "exit_code": 0, ... "execution": {"applied": 3, ...}}
-$ echo "extra line" >> "notes/Work/Kubernetes--17a35454.md"   # (after the header!)
-$ joplin-md-sync push --root ./notes --dry-run --json
-{"code": "PENDING_ACTIONS", "exit_code": 1, "planned_operations": [
-  {"op_id": "op-0001", "kind": "push_update_remote", "fields": ["body"],
-   "path": "Work/Kubernetes--17a35454.md"}], ...}
-$ joplin-md-sync push --root ./notes --json
-{"code": "OK", "exit_code": 0, "execution": {"applied": 1, "failed": 0}, ...}
-$ joplin-md-sync diff --root ./notes --exit-code; echo "exit=$?"
-exit=0
-```
-
-Details: [docs/CLI.md](docs/CLI.md),
-[docs/WORKSPACE_FORMAT.md](docs/WORKSPACE_FORMAT.md),
-[docs/STATE_MODEL.md](docs/STATE_MODEL.md),
-[docs/CONFLICTS.md](docs/CONFLICTS.md).
+The public documentation site is built from `docs/` with `mkdocs.yml` and is
+published at <https://joplin-mcp.romancello.net/>. Documentation ownership and
+evidence conventions are described in the
+[contract catalog](docs/contracts/README.md).

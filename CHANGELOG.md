@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-08-21
+
+### Added
+
+- Add a test-backed contract catalog with stable requirement IDs and exact
+  pytest or unittest evidence links for CLI, workspace, synchronization, agent
+  interfaces, service, security, dependencies, CI, and releases.
+- Add reproducible generated-site and Chromium screenshot audits for routes,
+  links, anchors, canonical metadata, assets, and responsive rendering.
+
+### Changed
+
+- Replace the complete CI/CD pipeline with reusable, least-privilege quality,
+  compatibility, distribution, dependency-review, CodeQL, version, Pages,
+  dependency-submission, PR-body, and idempotent release workflows.
+- Replace environment-specific `pip freeze` output with four reproducible,
+  purpose-specific `pip-compile` locks whose artifacts are all verified by
+  SHA-256. Direct dependencies remain on their latest stable releases while
+  Windows jobs install only the cross-platform test or package tools they need.
+- Separate public documentation into user, contract, maintenance, and
+  site-input sections, and publish the complete structure through MkDocs,
+  `llms.txt`, and the canonical-domain sitemap.
+
+### Security
+
+- Pin every external GitHub Action to a reviewed commit SHA, submit exact
+  direct and transitive Python dependencies to GitHub's dependency graph, and
+  enforce Bandit, dependency audit, actionlint, and CodeQL gates.
+
 ## [1.5.3] - 2026-07-29
 
 ### Added

@@ -74,9 +74,7 @@ class McpHttpTest(WorkspaceTestCase):
                 self.server.base_url, TOKEN, timeout=0.2, retries=1, backoff_base=0.001
             )
 
-        service = JoplinMcpService(
-            client_factory, availability_timeout=0, retry_delay=0.001
-        )
+        service = JoplinMcpService(client_factory, availability_timeout=0, retry_delay=0.001)
         self.dispatcher = McpDispatcher(service)
         self.httpd = McpHttpServer(("127.0.0.1", 0), self.dispatcher)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -149,9 +147,7 @@ class McpHttpTest(WorkspaceTestCase):
         self.assertEqual(body["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("tools", body["result"]["capabilities"])
 
-        status, body, _ = self.request(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"}
-        )
+        status, body, _ = self.request({"jsonrpc": "2.0", "method": "notifications/initialized"})
         self.assertEqual((status, body), (202, None))
 
         status, body, _ = self.request(
@@ -239,18 +235,16 @@ class McpHttpTest(WorkspaceTestCase):
             "joplin_create_notebook",
             {
                 "title": "MCP notebook",
-                "icon": json.dumps(
-                    {"type": 3, "emoji": "", "name": "fas fa-book", "dataUrl": ""}
-                ),
+                "icon": json.dumps({"type": 3, "emoji": "", "name": "fas fa-book", "dataUrl": ""}),
             },
         )["structuredContent"]["notebook"]
         notebook_id = created["id"]
         self.assertEqual(created["title"], "MCP notebook")
         self.assertEqual(json.loads(created["icon"])["name"], "fas fa-book")
 
-        read = self.call_tool(
-            2, "joplin_get_notebook", {"notebook_id": notebook_id}
-        )["structuredContent"]["notebook"]
+        read = self.call_tool(2, "joplin_get_notebook", {"notebook_id": notebook_id})[
+            "structuredContent"
+        ]["notebook"]
         self.assertEqual(read["id"], notebook_id)
 
         updated = self.call_tool(
@@ -270,42 +264,38 @@ class McpHttpTest(WorkspaceTestCase):
             "joplin_create_note",
             {"title": "Notebook child", "parent_id": notebook_id},
         )["structuredContent"]["note"]
-        listed = self.call_tool(
-            5, "joplin_list_notebook_notes", {"notebook_id": notebook_id}
-        )["structuredContent"]
+        listed = self.call_tool(5, "joplin_list_notebook_notes", {"notebook_id": notebook_id})[
+            "structuredContent"
+        ]
         self.assertEqual([item["id"] for item in listed["notes"]], [note["id"]])
 
         disposable = self.call_tool(
             6, "joplin_create_notebook", {"title": "Disposable MCP notebook"}
         )["structuredContent"]["notebook"]
         disposable_id = disposable["id"]
-        deleted = self.call_tool(
-            7, "joplin_delete_notebook", {"notebook_id": disposable_id}
-        )["structuredContent"]
+        deleted = self.call_tool(7, "joplin_delete_notebook", {"notebook_id": disposable_id})[
+            "structuredContent"
+        ]
         self.assertFalse(deleted["already_trashed"])
         self.assertGreater(self.server.store.folders[disposable_id]["deleted_time"], 0)
-        deleted_list = self.call_tool(
-            8, "joplin_list_notebooks", {"include_deleted": True}
-        )["structuredContent"]["notebooks"]
+        deleted_list = self.call_tool(8, "joplin_list_notebooks", {"include_deleted": True})[
+            "structuredContent"
+        ]["notebooks"]
         self.assertTrue(any(item["id"] == disposable_id for item in deleted_list))
-        restored = self.call_tool(
-            9, "joplin_restore_notebook", {"notebook_id": disposable_id}
-        )["structuredContent"]
+        restored = self.call_tool(9, "joplin_restore_notebook", {"notebook_id": disposable_id})[
+            "structuredContent"
+        ]
         self.assertFalse(restored["already_active"])
         self.assertEqual(self.server.store.folders[disposable_id]["deleted_time"], 0)
 
     def test_tag_crud_listing_and_note_relations(self) -> None:
-        created = self.call_tool(
-            1, "joplin_create_tag", {"title": "MCP Tag"}
-        )["structuredContent"]
+        created = self.call_tool(1, "joplin_create_tag", {"title": "MCP Tag"})["structuredContent"]
         tag_id = created["tag"]["id"]
         self.assertTrue(created["created"])
 
         listed = self.call_tool(2, "joplin_list_tags", {})["structuredContent"]["tags"]
         self.assertTrue(any(item["id"] == tag_id for item in listed))
-        read = self.call_tool(3, "joplin_get_tag", {"tag_id": tag_id})[
-            "structuredContent"
-        ]["tag"]
+        read = self.call_tool(3, "joplin_get_tag", {"tag_id": tag_id})["structuredContent"]["tag"]
         self.assertEqual(read["title"], "mcp tag")
 
         renamed = self.call_tool(
@@ -319,9 +309,9 @@ class McpHttpTest(WorkspaceTestCase):
             {"tag_id": tag_id, "note_id": self.note_k8s},
         )["structuredContent"]
         self.assertFalse(attached["already_attached"])
-        tag_notes = self.call_tool(
-            6, "joplin_list_tag_notes", {"tag_id": tag_id}
-        )["structuredContent"]["notes"]
+        tag_notes = self.call_tool(6, "joplin_list_tag_notes", {"tag_id": tag_id})[
+            "structuredContent"
+        ]["notes"]
         self.assertEqual([item["id"] for item in tag_notes], [self.note_k8s])
 
         removed = self.call_tool(
@@ -330,9 +320,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"tag_id": tag_id, "note_id": self.note_k8s},
         )["structuredContent"]
         self.assertTrue(removed["was_attached"])
-        deleted = self.call_tool(
-            8, "joplin_delete_tag", {"tag_id": tag_id}
-        )["structuredContent"]
+        deleted = self.call_tool(8, "joplin_delete_tag", {"tag_id": tag_id})["structuredContent"]
         self.assertTrue(deleted["permanent"])
         self.assertNotIn(tag_id, self.server.store.tags)
 
@@ -351,9 +339,9 @@ class McpHttpTest(WorkspaceTestCase):
         resource_id = created["id"]
         self.assertEqual(created["size"], len(initial_data))
 
-        read = self.call_tool(
-            2, "joplin_read_resource", {"resource_id": resource_id}
-        )["structuredContent"]
+        read = self.call_tool(2, "joplin_read_resource", {"resource_id": resource_id})[
+            "structuredContent"
+        ]
         self.assertEqual(base64.b64decode(read["content_base64"]), initial_data)
 
         replacement = b"updated resource payload"
@@ -383,13 +371,11 @@ class McpHttpTest(WorkspaceTestCase):
         )["structuredContent"]["notes"]
         self.assertEqual([item["id"] for item in resource_notes], [self.note_k8s])
 
-        resources = self.call_tool(7, "joplin_list_resources", {})[
-            "structuredContent"
-        ]["resources"]
+        resources = self.call_tool(7, "joplin_list_resources", {})["structuredContent"]["resources"]
         self.assertTrue(any(item["id"] == resource_id for item in resources))
-        deleted = self.call_tool(
-            8, "joplin_delete_resource", {"resource_id": resource_id}
-        )["structuredContent"]
+        deleted = self.call_tool(8, "joplin_delete_resource", {"resource_id": resource_id})[
+            "structuredContent"
+        ]
         self.assertTrue(deleted["permanent"])
 
     def test_create_note_from_html_and_with_binary_attachments(self) -> None:
@@ -458,9 +444,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid parent", "parent_id": "0" * 32},
         )
         self.assertTrue(failed["isError"])
-        self.assertEqual(
-            failed["structuredContent"]["error"]["code"], "NOTEBOOK_NOT_FOUND"
-        )
+        self.assertEqual(failed["structuredContent"]["error"]["code"], "NOTEBOOK_NOT_FOUND")
 
     def test_entity_and_content_validation_errors_are_structured(self) -> None:
         invalid_icon = self.call_tool(
@@ -469,9 +453,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid icon", "icon": "fas fa-book"},
         )
         self.assertTrue(invalid_icon["isError"])
-        self.assertEqual(
-            invalid_icon["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(invalid_icon["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         both_bodies = self.call_tool(
             1,
@@ -479,9 +461,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid bodies", "body": "Markdown", "body_html": "<p>HTML</p>"},
         )
         self.assertTrue(both_bodies["isError"])
-        self.assertEqual(
-            both_bodies["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(both_bodies["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         invalid_base64 = self.call_tool(
             2,
@@ -493,9 +473,7 @@ class McpHttpTest(WorkspaceTestCase):
             },
         )
         self.assertTrue(invalid_base64["isError"])
-        self.assertEqual(
-            invalid_base64["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(invalid_base64["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         missing_id = "0" * 32
         for request_id, tool, key, code in (
@@ -513,9 +491,7 @@ class McpHttpTest(WorkspaceTestCase):
         self.assertEqual(status, 406)
         status, _, _ = self.request(payload, headers={"Origin": "https://evil.example"})
         self.assertEqual(status, 403)
-        status, body, _ = self.request(
-            payload, headers={"MCP-Protocol-Version": "1900-01-01"}
-        )
+        status, body, _ = self.request(payload, headers={"MCP-Protocol-Version": "1900-01-01"})
         self.assertEqual(status, 400)
         assert body is not None
         self.assertIn("Unsupported", body["error"]["message"])
@@ -577,9 +553,7 @@ class McpHttpTest(WorkspaceTestCase):
                     )
                     try:
                         connection.putrequest("POST", "/mcp")
-                        connection.putheader(
-                            "Accept", "application/json, text/event-stream"
-                        )
+                        connection.putheader("Accept", "application/json, text/event-stream")
                         connection.putheader("Content-Type", "application/json")
                         connection.putheader("Content-Length", str(len(raw)))
                         for authorization in authorizations:
@@ -674,7 +648,12 @@ class McpCliSafetyTest(WorkspaceTestCase):
         self.assertIn("--allow-remote-mcp", result.stdout)
 
         result = run_cli(
-            "mcp", "serve", "--host", "0.0.0.0", "--mcp-port", "8765",
+            "mcp",
+            "serve",
+            "--host",
+            "0.0.0.0",
+            "--mcp-port",
+            "8765",
             "--allow-remote-mcp",
         )
         self.assertEqual(result.exit_code, 7)

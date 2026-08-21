@@ -1,7 +1,7 @@
 """Cross-platform-safe filename generation and path safety checks.
 
 Filenames are cosmetic: identity always lives in the metadata header and the
-state database. Rules (docs/WORKSPACE_FORMAT.md):
+state database. Contract: docs/contracts/WORKSPACE.md.
 
 * note files:   ``<sanitized title>--<first 8 chars of note id>.md``
 * notebook dirs: ``<sanitized title>`` (plus ``--<first 8 of id>`` only when
@@ -20,7 +20,10 @@ _INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
 
 # Windows reserved device names (case-insensitive, with or without extension).
 _RESERVED = {
-    "CON", "PRN", "AUX", "NUL",
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }

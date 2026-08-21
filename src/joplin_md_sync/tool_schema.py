@@ -113,9 +113,7 @@ def _validate_nonnegative_integer_keyword(
     schema: Mapping[str, object], keyword: str, path: str
 ) -> None:
     value = schema.get(keyword)
-    if value is not None and (
-        not isinstance(value, int) or isinstance(value, bool) or value < 0
-    ):
+    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
         raise SchemaDefinitionError(f"{path}.{keyword} must be a non-negative integer")
 
 
@@ -191,9 +189,7 @@ def validate_instance(value: object, schema: Mapping[str, object], *, path: str 
     raise AssertionError(f"validated schema has unknown type: {schema_type}")
 
 
-def _validate_numeric_instance(
-    value: int | float, schema: Mapping[str, object], path: str
-) -> None:
+def _validate_numeric_instance(value: int | float, schema: Mapping[str, object], path: str) -> None:
     minimum = schema.get("minimum")
     maximum = schema.get("maximum")
     if isinstance(minimum, int | float) and not isinstance(minimum, bool) and value < minimum:

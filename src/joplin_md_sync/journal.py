@@ -55,15 +55,16 @@ class Journal:
         """Persist the immutable plan before anything is applied."""
         self._doc["input"] = input_summary
         self._doc["operations"] = [
-            {**op.to_json(), "status": OP_PLANNED,
-             "expected_local_hash": op.expected_local_hash,
-             "expected_remote_hash": op.expected_remote_hash}
+            {
+                **op.to_json(),
+                "status": OP_PLANNED,
+                "expected_local_hash": op.expected_local_hash,
+                "expected_remote_hash": op.expected_remote_hash,
+            }
             for op in operations
         ]
         self._flush()
-        self.store.record_run(
-            run_id=self.run_id, command=self.command, journal_path=str(self.path)
-        )
+        self.store.record_run(run_id=self.run_id, command=self.command, journal_path=str(self.path))
 
     def mark(self, op_id: str, status: str, detail: str = "") -> None:
         for op in self._doc["operations"]:
@@ -129,9 +130,7 @@ def _op_was_applied(op: dict[str, Any], store: StateStore) -> bool | None:
     if kind == models.OP_PUSH_CREATE_REMOTE:
         if not isinstance(expected_local, str):
             return None
-        return any(
-            note.hashes.combined == expected_local for note in store.all_notes().values()
-        )
+        return any(note.hashes.combined == expected_local for note in store.all_notes().values())
     if kind in (models.OP_PUSH_DELETE_REMOTE, models.OP_PULL_DELETE_LOCAL, models.OP_DROP_BASE):
         if isinstance(note_id, str):
             return store.get_note(note_id) is None
@@ -145,8 +144,12 @@ def _op_was_applied(op: dict[str, Any], store: StateStore) -> bool | None:
             base = store.get_note(note_id)
             return base is not None and base.rel_path == op.get("new_path")
         return None
-    if kind in (models.OP_PULL_CREATE_DIR, models.OP_PUSH_CREATE_FOLDER,
-                models.OP_PULL_UPDATE_DIR, models.OP_PUSH_UPDATE_FOLDER):
+    if kind in (
+        models.OP_PULL_CREATE_DIR,
+        models.OP_PUSH_CREATE_FOLDER,
+        models.OP_PULL_UPDATE_DIR,
+        models.OP_PUSH_UPDATE_FOLDER,
+    ):
         folder_id = op.get("folder_id")
         if isinstance(folder_id, str):
             return folder_id in store.all_folders()

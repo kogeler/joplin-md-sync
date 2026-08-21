@@ -38,9 +38,7 @@ def registry_for_export() -> ToolRegistry:
     def unavailable_client() -> JoplinClient:
         raise RuntimeError("OpenAPI export does not execute tool handlers")
 
-    return build_tool_registry(
-        JoplinMcpService(unavailable_client, availability_timeout=0)
-    )
+    return build_tool_registry(JoplinMcpService(unavailable_client, availability_timeout=0))
 
 
 def validate_server_url(server_url: str, *, allow_http_for_tests: bool = False) -> str:
@@ -150,9 +148,7 @@ def _error_schema() -> JsonObject:
 def _response(description: str, schema_ref: str) -> JsonObject:
     return {
         "description": description,
-        "content": {
-            "application/json": {"schema": {"$ref": schema_ref}}
-        },
+        "content": {"application/json": {"schema": {"$ref": schema_ref}}},
     }
 
 
@@ -176,9 +172,7 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
     for tool in registry.exposed:
         _check_descriptions(tool)
         effect = tool_effect(tool)
-        responses: JsonObject = {
-            "200": {"$ref": "#/components/responses/ActionSuccess"}
-        }
+        responses: JsonObject = {"200": {"$ref": "#/components/responses/ActionSuccess"}}
         responses.update(
             {
                 status: {"$ref": f"#/components/responses/Action{status}"}
@@ -195,11 +189,7 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
                 "x-joplin-md-sync-effect": effect,
                 "requestBody": {
                     "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": mutable_json(tool.input_schema)
-                        }
-                    },
+                    "content": {"application/json": {"schema": mutable_json(tool.input_schema)}},
                 },
                 "responses": responses,
             }
@@ -214,9 +204,7 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
         "servers": [{"url": server_url}],
         "paths": paths,
         "components": {
-            "securitySchemes": {
-                "GPTActionBearer": {"type": "http", "scheme": "bearer"}
-            },
+            "securitySchemes": {"GPTActionBearer": {"type": "http", "scheme": "bearer"}},
             "schemas": {
                 "ActionSuccess": _success_schema(),
                 "ActionError": _error_schema(),
@@ -227,9 +215,7 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
                     "#/components/schemas/ActionSuccess",
                 ),
                 **{
-                    f"Action{status}": _response(
-                        description, "#/components/schemas/ActionError"
-                    )
+                    f"Action{status}": _response(description, "#/components/schemas/ActionError")
                     for status, description in error_responses.items()
                 },
             },
@@ -239,12 +225,15 @@ def generate_openapi(registry: ToolRegistry, server_url: str) -> JsonObject:
 
 
 def render_openapi(registry: ToolRegistry, server_url: str) -> str:
-    return json.dumps(
-        generate_openapi(registry, server_url),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+    return (
+        json.dumps(
+            generate_openapi(registry, server_url),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def export_openapi(output: Path, server_url: str) -> str:

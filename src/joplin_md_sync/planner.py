@@ -40,8 +40,8 @@ class Classification:
         for fitem in self.folder_items:
             counts[fitem.status] = counts.get(fitem.status, 0) + 1
         if self.invalid:
-            counts[models.INVALID_LOCAL_FILE] = (
-                counts.get(models.INVALID_LOCAL_FILE, 0) + len(self.invalid)
+            counts[models.INVALID_LOCAL_FILE] = counts.get(models.INVALID_LOCAL_FILE, 0) + len(
+                self.invalid
             )
         return dict(sorted(counts.items()))
 
@@ -128,61 +128,88 @@ def _classify_folders(
                 if (local.title, local.parent_id) == (remote.title, remote.parent_id):
                     result.folder_items.append(
                         FolderState(
-                            status=models.BOTH_IDENTICAL, folder_id=fid, rel_path=local.rel_path,
-                            title=local.title, detail="same folder change on both sides",
-                            base=base, local=local, remote=remote,
+                            status=models.BOTH_IDENTICAL,
+                            folder_id=fid,
+                            rel_path=local.rel_path,
+                            title=local.title,
+                            detail="same folder change on both sides",
+                            base=base,
+                            local=local,
+                            remote=remote,
                         )
                     )
                 else:
                     result.folder_items.append(
                         FolderState(
-                            status=models.FOLDER_CONFLICT, folder_id=fid, rel_path=local.rel_path,
+                            status=models.FOLDER_CONFLICT,
+                            folder_id=fid,
+                            rel_path=local.rel_path,
                             title=local.title,
                             detail="folder renamed/moved differently on both sides; resolve manually",
-                            base=base, local=local, remote=remote,
+                            base=base,
+                            local=local,
+                            remote=remote,
                         )
                     )
             elif l_changed:
                 result.folder_items.append(
                     FolderState(
-                        status=models.FOLDER_LOCAL_MODIFIED, folder_id=fid,
-                        rel_path=local.rel_path, title=local.title,
-                        base=base, local=local, remote=remote,
+                        status=models.FOLDER_LOCAL_MODIFIED,
+                        folder_id=fid,
+                        rel_path=local.rel_path,
+                        title=local.title,
+                        base=base,
+                        local=local,
+                        remote=remote,
                     )
                 )
             else:
                 result.folder_items.append(
                     FolderState(
-                        status=models.FOLDER_REMOTE_MODIFIED, folder_id=fid,
-                        rel_path=local.rel_path, title=remote.title,
-                        base=base, local=local, remote=remote,
+                        status=models.FOLDER_REMOTE_MODIFIED,
+                        folder_id=fid,
+                        rel_path=local.rel_path,
+                        title=remote.title,
+                        base=base,
+                        local=local,
+                        remote=remote,
                     )
                 )
         elif base and local and not remote:
             result.folder_items.append(
                 FolderState(
-                    status=models.FOLDER_REMOTE_DELETED, folder_id=fid,
-                    rel_path=local.rel_path, title=local.title,
+                    status=models.FOLDER_REMOTE_DELETED,
+                    folder_id=fid,
+                    rel_path=local.rel_path,
+                    title=local.title,
                     detail="notebook deleted in Joplin; local directory kept (folder deletions never propagate in v1)",
-                    base=base, local=local,
+                    base=base,
+                    local=local,
                 )
             )
         elif base and remote and not local:
             result.folder_items.append(
                 FolderState(
-                    status=models.FOLDER_LOCAL_DELETED, folder_id=fid,
-                    rel_path=base.rel_path, title=remote.title,
+                    status=models.FOLDER_LOCAL_DELETED,
+                    folder_id=fid,
+                    rel_path=base.rel_path,
+                    title=remote.title,
                     detail="local notebook directory deleted; remote notebook kept (folder deletions never propagate in v1)",
-                    base=base, remote=remote,
+                    base=base,
+                    remote=remote,
                 )
             )
         elif local and remote and not base:
             # Reconstruction after a lost/cloned state database.
             result.folder_items.append(
                 FolderState(
-                    status=models.BOTH_IDENTICAL, folder_id=fid, rel_path=local.rel_path,
-                    title=local.title, detail="folder base snapshot adopted",
-                    local=local, remote=remote,
+                    status=models.BOTH_IDENTICAL,
+                    folder_id=fid,
+                    rel_path=local.rel_path,
+                    title=local.title,
+                    detail="folder base snapshot adopted",
+                    local=local,
+                    remote=remote,
                 )
             )
         elif local and not remote and not base:
@@ -196,16 +223,21 @@ def _classify_folders(
         elif remote and not local and not base:
             result.folder_items.append(
                 FolderState(
-                    status=models.FOLDER_REMOTE_NEW, folder_id=fid,
-                    rel_path=result.remote_folder_paths.get(fid), title=remote.title,
+                    status=models.FOLDER_REMOTE_NEW,
+                    folder_id=fid,
+                    rel_path=result.remote_folder_paths.get(fid),
+                    title=remote.title,
                     remote=remote,
                 )
             )
         elif base and not local and not remote:
             result.folder_items.append(
                 FolderState(
-                    status=models.FOLDER_LOCAL_DELETED, folder_id=fid, rel_path=base.rel_path,
-                    title=base.title, detail="folder gone on both sides; base forgotten",
+                    status=models.FOLDER_LOCAL_DELETED,
+                    folder_id=fid,
+                    rel_path=base.rel_path,
+                    title=base.title,
+                    detail="folder gone on both sides; base forgotten",
                     base=base,
                 )
             )
@@ -214,8 +246,11 @@ def _classify_folders(
     for cand in scan.candidate_folders:
         result.folder_items.append(
             FolderState(
-                status=models.FOLDER_LOCAL_NEW, folder_id=None,
-                rel_path=cand.rel_path, title=cand.title, local=cand,
+                status=models.FOLDER_LOCAL_NEW,
+                folder_id=None,
+                rel_path=cand.rel_path,
+                title=cand.title,
+                local=cand,
             )
         )
 
@@ -255,8 +290,11 @@ def _classify_notes(
     for note in new_locals:
         result.items.append(
             ItemState(
-                status=models.LOCAL_NEW, note_id=None, rel_path=note.rel_path,
-                title=note.title, local=note,
+                status=models.LOCAL_NEW,
+                note_id=None,
+                rel_path=note.rel_path,
+                title=note.title,
+                local=note,
                 detail="" if note.has_header else "no metadata header; will be adopted on push",
             )
         )
@@ -270,9 +308,7 @@ def _classify_one_note(
     snapshot: RemoteSnapshot,
     open_conflict_note_ids: frozenset[str],
 ) -> ItemState | None:
-    l_hashes = (
-        note_hashes(local.title, local.body, local.tags, local.parent_id) if local else None
-    )
+    l_hashes = note_hashes(local.title, local.body, local.tags, local.parent_id) if local else None
     r_hashes = (
         note_hashes(remote.title, remote.body, remote.tags, remote.parent_id) if remote else None
     )
@@ -283,33 +319,61 @@ def _classify_one_note(
         remote_diff = changed_components(r_hashes, base.hashes)
         if not local_diff and not remote_diff:
             return ItemState(
-                status=models.UNCHANGED, note_id=nid, rel_path=local.rel_path,
-                title=local.title, base=base, local=local, remote=remote,
+                status=models.UNCHANGED,
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=local.title,
+                base=base,
+                local=local,
+                remote=remote,
             )
         if local_diff and not remote_diff:
             return ItemState(
-                status=_local_status(local_diff), note_id=nid, rel_path=local.rel_path,
-                title=local.title, changed_components=local_diff,
-                base=base, local=local, remote=remote,
+                status=_local_status(local_diff),
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=local.title,
+                changed_components=local_diff,
+                base=base,
+                local=local,
+                remote=remote,
             )
         if remote_diff and not local_diff:
             status = models.MOVED_REMOTE if remote_diff == ("parent",) else models.REMOTE_MODIFIED
             return ItemState(
-                status=status, note_id=nid, rel_path=local.rel_path, title=remote.title,
-                remote_changed_components=remote_diff, base=base, local=local, remote=remote,
+                status=status,
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=remote.title,
+                remote_changed_components=remote_diff,
+                base=base,
+                local=local,
+                remote=remote,
             )
         if l_hashes.combined == r_hashes.combined:
             return ItemState(
-                status=models.BOTH_IDENTICAL, note_id=nid, rel_path=local.rel_path,
-                title=local.title, changed_components=local_diff,
+                status=models.BOTH_IDENTICAL,
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=local.title,
+                changed_components=local_diff,
                 remote_changed_components=remote_diff,
-                detail="same change on both sides", base=base, local=local, remote=remote,
+                detail="same change on both sides",
+                base=base,
+                local=local,
+                remote=remote,
             )
         return ItemState(
-            status=models.CONFLICT, note_id=nid, rel_path=local.rel_path, title=local.title,
-            changed_components=local_diff, remote_changed_components=remote_diff,
+            status=models.CONFLICT,
+            note_id=nid,
+            rel_path=local.rel_path,
+            title=local.title,
+            changed_components=local_diff,
+            remote_changed_components=remote_diff,
             detail=_conflict_detail(nid, open_conflict_note_ids),
-            base=base, local=local, remote=remote,
+            base=base,
+            local=local,
+            remote=remote,
         )
 
     if base and local and not remote:
@@ -317,54 +381,81 @@ def _classify_one_note(
         where = "trash" if nid in snapshot.trashed_note_ids else "Joplin"
         if l_hashes.combined == base.hashes.combined:
             return ItemState(
-                status=models.REMOTE_DELETED, note_id=nid, rel_path=local.rel_path,
-                title=local.title, detail=f"note deleted in {where}; local file kept "
+                status=models.REMOTE_DELETED,
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=local.title,
+                detail=f"note deleted in {where}; local file kept "
                 "(pass --propagate-deletes to quarantine it)",
-                base=base, local=local,
+                base=base,
+                local=local,
             )
         return ItemState(
-            status=models.DELETE_CONFLICT, note_id=nid, rel_path=local.rel_path,
-            title=local.title, changed_components=changed_components(l_hashes, base.hashes),
+            status=models.DELETE_CONFLICT,
+            note_id=nid,
+            rel_path=local.rel_path,
+            title=local.title,
+            changed_components=changed_components(l_hashes, base.hashes),
             detail=f"edited locally but deleted in {where}",
-            base=base, local=local,
+            base=base,
+            local=local,
         )
 
     if base and remote and not local:
         assert r_hashes
         if r_hashes.combined == base.hashes.combined:
             return ItemState(
-                status=models.LOCAL_DELETED, note_id=nid, rel_path=base.rel_path,
-                title=base.title, detail="local file deleted; remote note kept "
+                status=models.LOCAL_DELETED,
+                note_id=nid,
+                rel_path=base.rel_path,
+                title=base.title,
+                detail="local file deleted; remote note kept "
                 "(pass --propagate-deletes on push to move it to Joplin trash)",
-                base=base, remote=remote,
+                base=base,
+                remote=remote,
             )
         return ItemState(
-            status=models.DELETE_CONFLICT, note_id=nid, rel_path=base.rel_path,
+            status=models.DELETE_CONFLICT,
+            note_id=nid,
+            rel_path=base.rel_path,
             title=remote.title,
             remote_changed_components=changed_components(r_hashes, base.hashes),
             detail="deleted locally but edited in Joplin",
-            base=base, remote=remote,
+            base=base,
+            remote=remote,
         )
 
     if base and not local and not remote:
         return ItemState(
-            status=models.BOTH_DELETED, note_id=nid, rel_path=base.rel_path, title=base.title,
-            detail="deleted on both sides; base snapshot will be dropped", base=base,
+            status=models.BOTH_DELETED,
+            note_id=nid,
+            rel_path=base.rel_path,
+            title=base.title,
+            detail="deleted on both sides; base snapshot will be dropped",
+            base=base,
         )
 
     if local and remote and not base:
         assert l_hashes and r_hashes
         if l_hashes.combined == r_hashes.combined:
             return ItemState(
-                status=models.BOTH_IDENTICAL, note_id=nid, rel_path=local.rel_path,
-                title=local.title, detail="base snapshot adopted (reconstructed workspace)",
-                local=local, remote=remote,
+                status=models.BOTH_IDENTICAL,
+                note_id=nid,
+                rel_path=local.rel_path,
+                title=local.title,
+                detail="base snapshot adopted (reconstructed workspace)",
+                local=local,
+                remote=remote,
             )
         return ItemState(
-            status=models.CONFLICT, note_id=nid, rel_path=local.rel_path, title=local.title,
+            status=models.CONFLICT,
+            note_id=nid,
+            rel_path=local.rel_path,
+            title=local.title,
             detail="local and remote differ and no base snapshot exists "
             "(reconstructed workspace); " + _conflict_detail(nid, open_conflict_note_ids),
-            local=local, remote=remote,
+            local=local,
+            remote=remote,
         )
 
     if local and not remote and not base:
@@ -374,7 +465,9 @@ def _classify_one_note(
             else "does not exist in Joplin"
         )
         return ItemState(
-            status=models.INVALID_LOCAL_FILE, note_id=nid, rel_path=local.rel_path,
+            status=models.INVALID_LOCAL_FILE,
+            note_id=nid,
+            rel_path=local.rel_path,
             title=local.title,
             detail=f"note id {where} and no base snapshot exists; "
             "remove the 'id' key from the header to push it as a new note",
@@ -383,7 +476,10 @@ def _classify_one_note(
 
     if remote and not local and not base:
         return ItemState(
-            status=models.REMOTE_NEW, note_id=nid, rel_path=None, title=remote.title,
+            status=models.REMOTE_NEW,
+            note_id=nid,
+            rel_path=None,
+            title=remote.title,
             remote=remote,
         )
 
@@ -440,17 +536,25 @@ def build_plan(
             assert fs.remote is not None
             ops.append(
                 new_op(
-                    models.OP_PULL_CREATE_DIR, folder_id=fs.folder_id,
-                    new_rel_path=fs.rel_path, folder_state=fs, detail=f"notebook '{fs.title}'",
+                    models.OP_PULL_CREATE_DIR,
+                    folder_id=fs.folder_id,
+                    new_rel_path=fs.rel_path,
+                    folder_state=fs,
+                    detail=f"notebook '{fs.title}'",
                 )
             )
-        for fs in (f for f in classification.folder_items if f.status == models.FOLDER_REMOTE_MODIFIED):
+        for fs in (
+            f for f in classification.folder_items if f.status == models.FOLDER_REMOTE_MODIFIED
+        ):
             assert fs.local is not None and fs.remote is not None
             ops.append(
                 new_op(
-                    models.OP_PULL_UPDATE_DIR, folder_id=fs.folder_id,
-                    rel_path=fs.local.rel_path, new_rel_path=folder_paths.get(fs.folder_id or ""),
-                    folder_state=fs, detail=f"notebook renamed/moved to '{fs.remote.title}'",
+                    models.OP_PULL_UPDATE_DIR,
+                    folder_id=fs.folder_id,
+                    rel_path=fs.local.rel_path,
+                    new_rel_path=folder_paths.get(fs.folder_id or ""),
+                    folder_state=fs,
+                    detail=f"notebook renamed/moved to '{fs.remote.title}'",
                 )
             )
 
@@ -462,16 +566,22 @@ def build_plan(
         ):
             ops.append(
                 new_op(
-                    models.OP_PUSH_CREATE_FOLDER, rel_path=fs.rel_path,
-                    folder_state=fs, detail=f"new notebook '{fs.title}'",
+                    models.OP_PUSH_CREATE_FOLDER,
+                    rel_path=fs.rel_path,
+                    folder_state=fs,
+                    detail=f"new notebook '{fs.title}'",
                 )
             )
-        for fs in (f for f in classification.folder_items if f.status == models.FOLDER_LOCAL_MODIFIED):
+        for fs in (
+            f for f in classification.folder_items if f.status == models.FOLDER_LOCAL_MODIFIED
+        ):
             assert fs.local is not None
             ops.append(
                 new_op(
-                    models.OP_PUSH_UPDATE_FOLDER, folder_id=fs.folder_id,
-                    rel_path=fs.local.rel_path, folder_state=fs,
+                    models.OP_PUSH_UPDATE_FOLDER,
+                    folder_id=fs.folder_id,
+                    rel_path=fs.local.rel_path,
+                    folder_state=fs,
                     detail=f"notebook renamed/moved to '{fs.local.title}'",
                 )
             )
@@ -480,8 +590,11 @@ def build_plan(
     for fs in (f for f in classification.folder_items if f.status == models.BOTH_IDENTICAL):
         ops.append(
             new_op(
-                models.OP_ADOPT_BASE, folder_id=fs.folder_id,
-                rel_path=fs.rel_path, folder_state=fs, detail=fs.detail,
+                models.OP_ADOPT_BASE,
+                folder_id=fs.folder_id,
+                rel_path=fs.rel_path,
+                folder_state=fs,
+                detail=fs.detail,
             )
         )
     for fs in (
@@ -490,8 +603,13 @@ def build_plan(
         if f.status == models.FOLDER_LOCAL_DELETED and f.remote is None and f.base is not None
     ):
         ops.append(
-            new_op(models.OP_DROP_BASE, folder_id=fs.folder_id, rel_path=fs.rel_path,
-                   folder_state=fs, detail="folder gone on both sides")
+            new_op(
+                models.OP_DROP_BASE,
+                folder_id=fs.folder_id,
+                rel_path=fs.rel_path,
+                folder_state=fs,
+                detail="folder gone on both sides",
+            )
         )
 
     # 3. Note operations.
@@ -504,8 +622,11 @@ def build_plan(
                 if target is not None and target != item.local.rel_path:
                     ops.append(
                         new_op(
-                            models.OP_NORMALIZE_LOCAL_PATH, note_id=item.note_id,
-                            rel_path=item.local.rel_path, new_rel_path=target, state=item,
+                            models.OP_NORMALIZE_LOCAL_PATH,
+                            note_id=item.note_id,
+                            rel_path=item.local.rel_path,
+                            new_rel_path=target,
+                            state=item,
                             expected_local_hash=_combined(item.local),
                             detail="rename to canonical filename",
                         )
@@ -516,9 +637,11 @@ def build_plan(
             assert item.remote is not None and item.local is not None
             ops.append(
                 new_op(
-                    models.OP_PULL_UPDATE_LOCAL, note_id=item.note_id,
+                    models.OP_PULL_UPDATE_LOCAL,
+                    note_id=item.note_id,
                     rel_path=item.local.rel_path,
-                    new_rel_path=_note_target_path(item.remote, folder_paths) or item.local.rel_path,
+                    new_rel_path=_note_target_path(item.remote, folder_paths)
+                    or item.local.rel_path,
                     state=item,
                     expected_local_hash=_combined(item.local),
                     expected_remote_hash=_combined(item.remote),
@@ -532,8 +655,11 @@ def build_plan(
                 continue  # parent folder not visible; skip safely
             ops.append(
                 new_op(
-                    models.OP_PULL_CREATE_LOCAL, note_id=item.note_id, new_rel_path=target,
-                    state=item, expected_remote_hash=_combined(item.remote),
+                    models.OP_PULL_CREATE_LOCAL,
+                    note_id=item.note_id,
+                    new_rel_path=target,
+                    state=item,
+                    expected_remote_hash=_combined(item.remote),
                     detail=f"new remote note '{item.title}'",
                 )
             )
@@ -541,8 +667,10 @@ def build_plan(
             assert item.local is not None
             ops.append(
                 new_op(
-                    models.OP_PULL_DELETE_LOCAL, note_id=item.note_id,
-                    rel_path=item.local.rel_path, state=item,
+                    models.OP_PULL_DELETE_LOCAL,
+                    note_id=item.note_id,
+                    rel_path=item.local.rel_path,
+                    state=item,
                     expected_local_hash=_combined(item.local),
                     detail="remote note deleted; local file will be quarantined",
                 )
@@ -551,9 +679,11 @@ def build_plan(
             assert item.local is not None
             ops.append(
                 new_op(
-                    models.OP_PUSH_UPDATE_REMOTE, note_id=item.note_id,
+                    models.OP_PUSH_UPDATE_REMOTE,
+                    note_id=item.note_id,
                     rel_path=item.local.rel_path,
-                    fields=item.changed_components, state=item,
+                    fields=item.changed_components,
+                    state=item,
                     expected_local_hash=_combined(item.local),
                     expected_remote_hash=_combined(item.remote) if item.remote else None,
                     detail=f"local changed: {', '.join(sorted(item.changed_components))}",
@@ -563,7 +693,9 @@ def build_plan(
             assert item.local is not None
             ops.append(
                 new_op(
-                    models.OP_PUSH_CREATE_REMOTE, rel_path=item.local.rel_path, state=item,
+                    models.OP_PUSH_CREATE_REMOTE,
+                    rel_path=item.local.rel_path,
+                    state=item,
                     expected_local_hash=_combined(item.local),
                     detail=f"new local note '{item.title}'",
                 )
@@ -571,7 +703,9 @@ def build_plan(
         elif status == models.LOCAL_DELETED and push and propagate_deletes:
             ops.append(
                 new_op(
-                    models.OP_PUSH_DELETE_REMOTE, note_id=item.note_id, rel_path=item.rel_path,
+                    models.OP_PUSH_DELETE_REMOTE,
+                    note_id=item.note_id,
+                    rel_path=item.rel_path,
                     state=item,
                     expected_remote_hash=_combined(item.remote) if item.remote else None,
                     detail="local file deleted; remote note will move to Joplin trash",
@@ -581,7 +715,10 @@ def build_plan(
             kind = models.OP_ADOPT_BASE if item.base is None else models.OP_REBASE
             ops.append(
                 new_op(
-                    kind, note_id=item.note_id, rel_path=item.rel_path, state=item,
+                    kind,
+                    note_id=item.note_id,
+                    rel_path=item.rel_path,
+                    state=item,
                     expected_local_hash=_combined(item.local) if item.local else None,
                     expected_remote_hash=_combined(item.remote) if item.remote else None,
                     detail=item.detail,
@@ -589,14 +726,21 @@ def build_plan(
             )
         elif status == models.BOTH_DELETED:
             ops.append(
-                new_op(models.OP_DROP_BASE, note_id=item.note_id, rel_path=item.rel_path,
-                       state=item, detail=item.detail)
+                new_op(
+                    models.OP_DROP_BASE,
+                    note_id=item.note_id,
+                    rel_path=item.rel_path,
+                    state=item,
+                    detail=item.detail,
+                )
             )
         elif status in (models.CONFLICT, models.DELETE_CONFLICT):
             if "bundle already exists" not in item.detail:
                 ops.append(
                     new_op(
-                        models.OP_CREATE_CONFLICT, note_id=item.note_id, rel_path=item.rel_path,
+                        models.OP_CREATE_CONFLICT,
+                        note_id=item.note_id,
+                        rel_path=item.rel_path,
                         state=item,
                         expected_local_hash=_combined(item.local) if item.local else None,
                         expected_remote_hash=_combined(item.remote) if item.remote else None,

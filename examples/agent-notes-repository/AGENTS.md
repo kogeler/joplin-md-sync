@@ -218,5 +218,5 @@ file changes are awaiting push. Do not bind MCP to a non-loopback address as
 an ad hoc way to reach a remote agent.
 
 For client details and persistent service setup, consult the upstream
-[MCP API](https://github.com/kogeler/joplin-md-sync/blob/main/docs/MCP_API.md)
-and [service guide](https://github.com/kogeler/joplin-md-sync/blob/main/docs/SERVICE.md).
+[MCP API](https://github.com/kogeler/joplin-md-sync/blob/main/docs/user/MCP_API.md)
+and [service guide](https://github.com/kogeler/joplin-md-sync/blob/main/docs/user/SERVICE.md).

@@ -110,7 +110,7 @@ class JoplinClient:
                 log.debug("retrying %s %s in %.1fs (attempt %d)", method, path, delay, attempt + 1)
                 time.sleep(delay)
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:  # nosec B310
                     body = resp.read()
                 if raw:
                     return body
@@ -142,8 +142,7 @@ class JoplinClient:
                         f"ambiguous failure during {method} {path}: {reason}"
                     ) from None
                 timed_out = isinstance(exc, TimeoutError) or (
-                    isinstance(exc, urllib.error.URLError)
-                    and isinstance(exc.reason, TimeoutError)
+                    isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, TimeoutError)
                 )
                 last_exc = ApiError(
                     f"Joplin API unreachable for {method} {path}: {reason}",
@@ -271,16 +270,15 @@ class JoplinClient:
         payload.update({"title": title, "parent_id": parent_id})
         if body is not None:
             payload["body"] = body
-        return self._request(
-            "POST", "/notes", payload=payload
-        )
+        return self._request("POST", "/notes", payload=payload)
 
     def create_note_with_id(
         self, *, note_id: str, title: str, body: str, parent_id: str
     ) -> dict[str, Any]:
         """Recreate a note under a known id (conflict resolution of deletions)."""
         return self._request(
-            "POST", "/notes",
+            "POST",
+            "/notes",
             payload={"id": note_id, "title": title, "body": body, "parent_id": parent_id},
         )
 
@@ -315,9 +313,7 @@ class JoplinClient:
             "fields": fields or self._NOTE_LIST_FIELDS + ",is_conflict,deleted_time",
         }
         return list(
-            self._paginate(
-                "/search", params=params, max_results=max_results, order_by=None
-            )
+            self._paginate("/search", params=params, max_results=max_results, order_by=None)
         )
 
     # --- folders ----------------------------------------------------------
@@ -373,9 +369,7 @@ class JoplinClient:
         if include_conflicts:
             params["include_conflicts"] = 1
         return list(
-            self._paginate(
-                f"/folders/{folder_id}/notes", params=params, max_results=max_results
-            )
+            self._paginate(f"/folders/{folder_id}/notes", params=params, max_results=max_results)
         )
 
     def create_folder(self, *, title: str, parent_id: str = "") -> dict[str, Any]:
@@ -482,9 +476,7 @@ class JoplinClient:
             )
         )
 
-    def get_resource(
-        self, resource_id: str, *, fields: str | None = None
-    ) -> dict[str, Any] | None:
+    def get_resource(self, resource_id: str, *, fields: str | None = None) -> dict[str, Any] | None:
         try:
             return self._request(
                 "GET",
@@ -597,7 +589,7 @@ class JoplinClient:
 def ping_url(base_url: str, *, timeout: float = 2.0) -> bool:
     """True when ``base_url`` answers ``GET /ping`` with the Clipper banner."""
     try:
-        with urllib.request.urlopen(f"{base_url}/ping", timeout=timeout) as resp:
+        with urllib.request.urlopen(f"{base_url}/ping", timeout=timeout) as resp:  # nosec B310
             return resp.read().decode("utf-8", "replace").strip() == PING_RESPONSE
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
         return False
@@ -613,7 +605,7 @@ def discover_base_url(*, host: str = "127.0.0.1", timeout: float = 2.0) -> str:
     for port in ports:
         url = f"http://{host}:{port}"
         try:
-            with urllib.request.urlopen(f"{url}/ping", timeout=timeout) as resp:
+            with urllib.request.urlopen(f"{url}/ping", timeout=timeout) as resp:  # nosec B310
                 if resp.read().decode("utf-8", "replace").strip() == PING_RESPONSE:
                     found.append(url)
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):

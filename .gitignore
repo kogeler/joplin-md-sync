@@ -15,12 +15,16 @@ __pycache__/
 venv/
 venv-dev/
 venv-docs/
+venv-lock/
+venv-package/
 venv-smoke/
+venv-test/
 
 # Build artifacts
 /dist/
 /build/
 /site/
+/.artifacts/
 
 # Tooling caches
 .coverage

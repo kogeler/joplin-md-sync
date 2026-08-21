@@ -13,27 +13,33 @@ from joplin_md_sync.errors import ApiError, AuthError, UnsafeOperationError
 class ResolveBaseUrlTest(unittest.TestCase):
     def test_builtin_default_used_when_it_answers(self):
         """Nothing configured + default endpoint alive -> no discovery scan."""
-        with mock.patch.object(config_mod, "ping_url", return_value=True) as ping, \
-             mock.patch.object(config_mod, "discover_base_url") as disc:
+        with (
+            mock.patch.object(config_mod, "ping_url", return_value=True) as ping,
+            mock.patch.object(config_mod, "discover_base_url") as disc,
+        ):
             url = resolve_base_url(env={})
         self.assertEqual(url, "http://127.0.0.1:41184")
         ping.assert_called_once_with("http://127.0.0.1:41184", timeout=2.0)
         disc.assert_not_called()
 
     def test_falls_back_to_discovery_when_default_silent(self):
-        with mock.patch.object(config_mod, "ping_url", return_value=False), \
-             mock.patch.object(
-                 config_mod, "discover_base_url", return_value="http://127.0.0.1:41187"
-             ) as disc:
+        with (
+            mock.patch.object(config_mod, "ping_url", return_value=False),
+            mock.patch.object(
+                config_mod, "discover_base_url", return_value="http://127.0.0.1:41187"
+            ) as disc,
+        ):
             url = resolve_base_url(env={})
         self.assertEqual(url, "http://127.0.0.1:41187")
         disc.assert_called_once_with(timeout=2.0)
 
     def test_custom_discovery_timeout_is_forwarded(self):
-        with mock.patch.object(config_mod, "ping_url", return_value=False) as ping, \
-             mock.patch.object(
-                 config_mod, "discover_base_url", return_value="http://127.0.0.1:41187"
-             ) as disc:
+        with (
+            mock.patch.object(config_mod, "ping_url", return_value=False) as ping,
+            mock.patch.object(
+                config_mod, "discover_base_url", return_value="http://127.0.0.1:41187"
+            ) as disc,
+        ):
             resolve_base_url(env={}, discovery_timeout=0.25)
         ping.assert_called_once_with("http://127.0.0.1:41184", timeout=0.25)
         disc.assert_called_once_with(timeout=0.25)
@@ -98,9 +104,7 @@ class ResolveTokenTest(unittest.TestCase):
 
         with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
             fh.write("file-token\n")
-        self.assertEqual(
-            resolve_token(fh.name, env={"JOPLIN_TOKEN": "env-token"}), "file-token"
-        )
+        self.assertEqual(resolve_token(fh.name, env={"JOPLIN_TOKEN": "env-token"}), "file-token")
         Path(fh.name).unlink()
 
 

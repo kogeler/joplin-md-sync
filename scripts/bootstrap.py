@@ -57,7 +57,9 @@ def main() -> int:
     # Smoke test: capabilities must succeed and be valid JSON.
     out = subprocess.run(
         [python, "-m", "joplin_md_sync", "capabilities", "--json"],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     import json
 

@@ -1,7 +1,30 @@
+# Copyright (c) 2026 kogeler
+# SPDX-License-Identifier: MIT
+
 version: 2
 updates:
-  # Zero runtime dependencies by design; only GitHub Actions need updates.
-  - package-ecosystem: github-actions
-    directory: "/"
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Helsinki
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Helsinki
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

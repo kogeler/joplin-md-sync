@@ -1,152 +1,282 @@
+# Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT.
+
 name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 concurrency:
   group: release-main
   cancel-in-progress: false
 
-permissions:
-  contents: read
-
 jobs:
-  test:
-    name: full test suite (${{ matrix.platform }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            platform: linux
-            arch: amd64
-            python_arch: x64
-          - runner: ubuntu-24.04-arm
-            platform: linux
-            arch: arm64
-            python_arch: arm64
-          - runner: windows-latest
-            platform: windows
-            arch: amd64
-            python_arch: x64
+  release-state:
+    name: Release state
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      release_required: ${{ steps.check.outputs.release_required }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - name: Check whether the current version is already published
+        id: check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_REPOSITORY: kogeler/joplin-md-sync
         with:
-          python-version: "3.14"
-          architecture: ${{ matrix.python_arch }}
-      - name: Verify version/manifest consistency
-        shell: bash
-        run: make verify-release PY=python
-      - name: Full check suite
-        shell: bash
-        run: make check PY=python
-      - name: Headless service installer tests
-        if: matrix.platform == 'linux'
-        shell: bash
-        run: make test-service-installer PY=python
-      - name: Build standalone executable
-        shell: bash
-        run: make standalone PY=python
-      - name: Smoke-test standalone executable
-        shell: bash
-        run: make smoke-standalone PY=python
-      - name: Upload smoke-tested standalone executable
-        uses: actions/upload-artifact@v7
-        with:
-          name: standalone-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/joplin-md-sync-*
-          if-no-files-found: error
-          retention-days: 1
+          script: |
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            if (repository !== process.env.EXPECTED_REPOSITORY) {
+              throw new Error(`Refusing to inspect unexpected repository ${repository}`);
+            }
+            const versionFile = await github.rest.repos.getContent({
+              ...context.repo,
+              path: ".version",
+              ref: context.sha,
+            });
+            if (
+              Array.isArray(versionFile.data) ||
+              versionFile.data.type !== "file" ||
+              versionFile.data.encoding !== "base64"
+            ) {
+              throw new Error(".version is not a base64-encoded repository file");
+            }
+            const version = Buffer.from(
+              versionFile.data.content.replace(/\n/g, ""),
+              "base64",
+            ).toString("utf8").trim();
+            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
+              throw new Error(".version is not a stable semantic version");
+            }
+            const tagName = `v${version}`;
 
-  release:
-    needs: test
-    runs-on: ubuntu-latest
+            async function taggedCommit() {
+              let reference;
+              try {
+                reference = await github.rest.git.getRef({
+                  ...context.repo,
+                  ref: `tags/${tagName}`,
+                });
+              } catch (error) {
+                if (error.status === 404) return null;
+                throw error;
+              }
+              let object = reference.data.object;
+              for (let depth = 0; object.type === "tag" && depth < 8; depth += 1) {
+                const tag = await github.rest.git.getTag({ ...context.repo, tag_sha: object.sha });
+                object = tag.data.object;
+              }
+              if (object.type !== "commit") {
+                throw new Error(`Tag ${tagName} does not resolve to a commit`);
+              }
+              return object.sha;
+            }
+
+            let existing;
+            try {
+              existing = await github.rest.repos.getReleaseByTag({
+                ...context.repo,
+                tag: tagName,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (!existing) {
+              const releases = await github.paginate(github.rest.repos.listReleases, {
+                ...context.repo,
+                per_page: 100,
+              });
+              const draft = releases.find(
+                (candidate) => candidate.tag_name === tagName && candidate.draft,
+              );
+              if (draft) existing = { data: draft };
+            }
+            const commit = await taggedCommit();
+            if (commit && commit !== context.sha) {
+              throw new Error(`Tag ${tagName} already points to ${commit}`);
+            }
+            if (!existing || existing.data.draft) {
+              core.notice(`Release ${tagName} is not published; running release gates`);
+              core.setOutput("release_required", "true");
+              return;
+            }
+            if (
+              existing.data.tag_name !== tagName ||
+              existing.data.name !== tagName ||
+              existing.data.prerelease ||
+              commit !== existing.data.target_commitish
+            ) {
+              throw new Error(`Existing release ${tagName} has conflicting metadata`);
+            }
+            core.notice(`Release ${existing.data.html_url} already exists; skipping release gates`);
+            core.setOutput("release_required", "false");
+
+  ci:
+    name: CI gate
+    needs: release-state
+    if: needs.release-state.outputs.release_required == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  publish:
+    name: Publish release
+    needs:
+      - release-state
+      - ci
+    if: needs.release-state.outputs.release_required == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-
-      - name: Read and validate release version
-        id: version
-        shell: bash
-        run: |
-          version="$(tr -d '\r\n' < .version)"
-          tag="v${version}"
-          python scripts/verify_release.py --tag "${tag}"
-          echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-
-      - name: Check release tag
-        id: release_tag
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null; then
-            tagged_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
-            if [[ "${tagged_commit}" != "${GITHUB_SHA}" ]]; then
-              echo "::error::.version must be incremented: ${RELEASE_TAG} already points to ${tagged_commit}"
-              exit 1
-            fi
-            echo "exists=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "exists=false" >> "${GITHUB_OUTPUT}"
-          fi
+          cache: pip
+          cache-dependency-path: requirements-package.txt
 
       - name: Build wheel, sdist, and zipapp
         run: make build zipapp PY=python
 
-      - name: Download smoke-tested standalone executables
-        uses: actions/download-artifact@v8
+      - name: Download smoke-tested native executables
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: standalone-*
           path: dist
           merge-multiple: true
 
-      - name: Write release checksums
-        run: make checksums PY=python
-
-      - name: Verify release consistency and artifacts
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: >-
-          make verify-release PY=python TAG="${RELEASE_TAG}"
-          REQUIRE_ALL_STANDALONES=1
-
-      - name: Smoke-test wheel and zipapp
-        run: make smoke-wheel smoke-zipapp PY=python
-
-      - name: Create release tag
-        if: steps.release_tag.outputs.exists != 'true'
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+      - name: Verify complete release inventory
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag --annotate "${RELEASE_TAG}" --message "Release ${RELEASE_TAG}" "${GITHUB_SHA}"
-          git push origin "${RELEASE_TAG}"
+          make checksums PY=python
+          make verify-release PY=python TAG="v$(tr -d '\r\n' < .version)" REQUIRE_ALL_STANDALONES=1
+          make smoke-wheel smoke-zipapp PY=python
+          make release-notes PY=python
 
-      - name: Create or update GitHub release with assets
-        uses: softprops/action-gh-release@v3
+      - name: Create exact-version release and upload assets
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          EXPECTED_REPOSITORY: kogeler/joplin-md-sync
+          RELEASE_NOTES_PATH: .artifacts/release-notes.md
+          TARGET_SHA: ${{ github.sha }}
+          VERSION_PATH: .version
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          files: |
-            dist/*.whl
-            dist/*.tar.gz
-            dist/joplin-md-sync.pyz
-            dist/joplin-md-sync-linux-amd64
-            dist/joplin-md-sync-linux-arm64
-            dist/joplin-md-sync-windows-amd64.exe
-            dist/SHA256SUMS.txt
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          script: |
+            const fs = await import("node:fs/promises");
+            const path = await import("node:path");
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            if (repository !== process.env.EXPECTED_REPOSITORY) {
+              throw new Error(`Refusing to publish unexpected repository ${repository}`);
+            }
+            const version = (await fs.readFile(process.env.VERSION_PATH, "utf8")).trim();
+            const tagName = `v${version}`;
+            const body = await fs.readFile(process.env.RELEASE_NOTES_PATH, "utf8");
+            const target = process.env.TARGET_SHA;
+            const assetPaths = [
+              `dist/joplin_md_sync-${version}-py3-none-any.whl`,
+              `dist/joplin_md_sync-${version}.tar.gz`,
+              "dist/joplin-md-sync.pyz",
+              "dist/joplin-md-sync-linux-amd64",
+              "dist/joplin-md-sync-linux-arm64",
+              "dist/joplin-md-sync-windows-amd64.exe",
+              "dist/SHA256SUMS.txt",
+            ];
+            for (const assetPath of assetPaths) {
+              const stat = await fs.stat(assetPath);
+              if (!stat.isFile() || stat.size === 0) {
+                throw new Error(`Release asset is missing or empty: ${assetPath}`);
+              }
+            }
+
+            let release;
+            try {
+              release = await github.rest.repos.getReleaseByTag({
+                ...context.repo,
+                tag: tagName,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (!release) {
+              const releases = await github.paginate(github.rest.repos.listReleases, {
+                ...context.repo,
+                per_page: 100,
+              });
+              const draft = releases.find(
+                (candidate) => candidate.tag_name === tagName && candidate.draft,
+              );
+              if (draft) release = { data: draft };
+            }
+            if (release) {
+              if (
+                !release.data.draft ||
+                release.data.name !== tagName ||
+                release.data.body !== body ||
+                release.data.target_commitish !== target ||
+                release.data.prerelease
+              ) {
+                throw new Error(`Existing release ${tagName} is not a recoverable matching draft`);
+              }
+              const existingAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
+                ...context.repo,
+                release_id: release.data.id,
+                per_page: 100,
+              });
+              for (const asset of existingAssets) {
+                await github.rest.repos.deleteReleaseAsset({
+                  ...context.repo,
+                  asset_id: asset.id,
+                });
+              }
+            } else {
+              release = await github.rest.repos.createRelease({
+                ...context.repo,
+                tag_name: tagName,
+                target_commitish: target,
+                name: tagName,
+                body,
+                draft: true,
+                prerelease: false,
+              });
+            }
+
+            for (const assetPath of assetPaths) {
+              const data = await fs.readFile(assetPath);
+              await github.request(
+                "POST /repos/{owner}/{repo}/releases/{release_id}/assets{?name}",
+                {
+                  ...context.repo,
+                  release_id: release.data.id,
+                  name: path.basename(assetPath),
+                  data,
+                  headers: {
+                    "content-type": "application/octet-stream",
+                    "content-length": data.byteLength,
+                  },
+                },
+              );
+            }
+            const published = await github.rest.repos.updateRelease({
+              ...context.repo,
+              release_id: release.data.id,
+              tag_name: tagName,
+              target_commitish: target,
+              name: tagName,
+              body,
+              draft: false,
+              prerelease: false,
+            });
+            core.notice(`Published ${published.data.html_url}`);

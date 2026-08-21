@@ -36,7 +36,12 @@ def test_folder_icon_rejects_values_that_joplin_cannot_unserialize(value: object
     ("value", "expected_type", "expected_field", "expected_value"),
     [
         (r'{"type":1,"emoji":"\ud83d\udcda"}', 1, "emoji", "\U0001f4da"),
-        ('{"type":2,"dataUrl":"data:image/png;base64,AA=="}', 2, "dataUrl", "data:image/png;base64,AA=="),
+        (
+            '{"type":2,"dataUrl":"data:image/png;base64,AA=="}',
+            2,
+            "dataUrl",
+            "data:image/png;base64,AA==",
+        ),
         ('{"type":3,"name":"fas fa-book"}', 3, "name", "fas fa-book"),
     ],
 )

@@ -77,9 +77,7 @@ class ParserTests(unittest.TestCase):
         self.assertFalse(args.yes)
 
     def test_help_describes_operational_defaults(self) -> None:
-        help_text = " ".join(
-            installer.build_parser({"HOME": "/tmp/home"}).format_help().split()
-        )
+        help_text = " ".join(installer.build_parser({"HOME": "/tmp/home"}).format_help().split())
         for expected in (
             "required for a full install",
             "default: https://s3.amazonaws.com/",
@@ -109,9 +107,7 @@ class ParserTests(unittest.TestCase):
             mock.patch("sys.stderr", new=io.StringIO()),
             self.assertRaises(SystemExit),
         ):
-            installer.build_parser({"HOME": "/tmp/home"}).parse_args(
-                ["--mcp-version", "1.2.0"]
-            )
+            installer.build_parser({"HOME": "/tmp/home"}).parse_args(["--mcp-version", "1.2.0"])
 
     def test_rejects_unsupported_sync_interval(self) -> None:
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
@@ -172,8 +168,9 @@ class ParserTests(unittest.TestCase):
             args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
                 ["--sync-target", target, "--non-interactive", *extra]
             )
-            with self.subTest(target=target), self.assertRaisesRegex(
-                ToolError, "interactive terminal"
+            with (
+                self.subTest(target=target),
+                self.assertRaisesRegex(ToolError, "interactive terminal"),
             ):
                 installer.validate_args(args)
 
@@ -540,9 +537,9 @@ class PurgeTests(unittest.TestCase):
         self.paths.unit_path.write_text("unit\n")
         self.paths.adapter_unit_path.write_text("adapter unit\n")
         self.paths.unit_path.with_name(f"{installer.SERVICE_NAME}.bak-test").write_text("backup\n")
-        self.paths.adapter_unit_path.with_name(f"{installer.ADAPTER_SERVICE_NAME}.bak-test").write_text(
-            "backup\n"
-        )
+        self.paths.adapter_unit_path.with_name(
+            f"{installer.ADAPTER_SERVICE_NAME}.bak-test"
+        ).write_text("backup\n")
         unrelated_bin = self.paths.launcher.parent / "keep-me"
         unrelated_bin.write_text("keep\n")
         unrelated_unit = self.paths.unit_path.parent / "keep-me.service"
@@ -1130,9 +1127,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_browser_sync_requires_persisted_auth_before_verification(self) -> None:
         paths = mock.Mock(launcher=Path("/joplin"), profile_dir=Path("/profile"))
         runner = mock.Mock()
-        runner.run.return_value = subprocess.CompletedProcess(
-            [], 0, "sync.7.auth = null\n", ""
-        )
+        runner.run.return_value = subprocess.CompletedProcess([], 0, "sync.7.auth = null\n", "")
         with self.assertRaisesRegex(ToolError, "authentication was not completed"):
             installer.run_browser_authenticated_sync(
                 runner,
@@ -1479,8 +1474,9 @@ class ServiceLifecycleTests(unittest.TestCase):
                 mock.patch.object(
                     installer,
                     "resolve_gpt_actions_token",
-                    side_effect=lambda *_args, **_kwargs: order.append("gpt-token")
-                    or GPT_ACTIONS_TOKEN,
+                    side_effect=lambda *_args, **_kwargs: (
+                        order.append("gpt-token") or GPT_ACTIONS_TOKEN
+                    ),
                 ),
                 mock.patch.object(
                     installer,
@@ -1798,9 +1794,7 @@ else:
         with (
             mock.patch.object(installer, "MCP_RELEASES_URL", base),
             mock.patch.object(installer, "mcp_asset_name", return_value=self.asset),
-            mock.patch.object(
-                installer, "resolve_latest_mcp_version", return_value=self.version
-            ),
+            mock.patch.object(installer, "resolve_latest_mcp_version", return_value=self.version),
         ):
             actual = installer.install_or_update_mcp(
                 self.runner,
