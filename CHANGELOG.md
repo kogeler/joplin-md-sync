@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.6] - 2026-08-21
+
+### Changed
+
+- Reframe the GitHub and PyPI project page around direct ChatGPT Actions, MCP,
+  and automated headless Joplin deployment, with Markdown synchronization
+  presented as the review-oriented secondary interface.
+- Rebuild the documentation homepage, navigation, product overview, interface
+  chooser, and self-hosted guide around the same ChatGPT/MCP-first workflow.
+- Add a concise end-to-end headless example that installs Joplin Terminal and
+  the combined agent service, publishes only the guarded interface, and
+  prepares a private Custom GPT.
+- Update package summary and search keywords to describe ChatGPT, MCP, and
+  self-hosted use cases on PyPI.
+
+### Fixed
+
+- Keep the complete product name and a hint of the next section visible in the
+  mobile homepage viewport while preserving the Joplin data-flow visual.
+
 ## [1.5.5] - 2026-08-21
 
 ### Added

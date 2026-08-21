@@ -177,7 +177,7 @@ follows:
    which makes **Always allow** available for reads, writes, and destructive
    Actions.
 7. Confirm that the editor detects the same number of Actions printed by the
-   setup assistant. Version 1.5.5 generates 27 Actions.
+   setup assistant. Version 1.5.6 generates 27 Actions.
 8. Leave **Privacy policy** empty while the GPT is private. A publicly shared
    or GPT Store Action requires a valid privacy-policy URL that you control.
 

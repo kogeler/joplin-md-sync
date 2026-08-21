@@ -11,34 +11,10 @@ Self-hosting is not one switch. It is control over four separate layers:
 3. where the agent bridge listens; and
 4. which bridge routes are reachable by each client.
 
-`joplin-md-sync` supports a local desktop topology and a headless Linux
+`joplin-md-sync` supports a headless Linux topology and a local desktop
 topology. Neither requires publishing Joplin's own Data API.
 
-## Topology A: local desktop
-
-```text
-agent or MCP client
-        |
-        | Markdown files or http://127.0.0.1:8765/mcp
-        v
-joplin-md-sync
-        |
-        | http://127.0.0.1:41184 + Web Clipper token
-        v
-Joplin Desktop -> your configured Joplin sync target
-```
-
-This is the smallest trust boundary. Keep Joplin Desktop running during online
-operations. The bridge and Joplin Data API both remain on loopback.
-
-Use it when:
-
-- a coding agent runs on the same workstation;
-- you want Git-reviewed Markdown changes;
-- an editor or desktop assistant supports local MCP; or
-- you are evaluating the service before operating a server.
-
-## Topology B: headless Linux host
+## Topology A: headless Linux host
 
 ```text
 MCP client on private network       ChatGPT
@@ -65,13 +41,38 @@ The included non-root installer creates two coordinated systemd user services:
   8765 by default.
 
 There is no separate Actions service. The bridge starts even when Joplin is
-temporarily unavailable and retries availability on later calls.
+temporarily unavailable and retries availability on later calls. Joplin
+Desktop does not need to run on this host or remain online elsewhere.
 
 The installer supports filesystem, OneDrive, Nextcloud, WebDAV, Dropbox, S3,
 Joplin Server, Joplin Cloud, and Joplin Server SAML targets. Browser-based and
 password-based targets have different setup paths; use the canonical
 [service installation guide](SERVICE.md#headless-linux-installation) instead
 of constructing profile commands manually.
+
+## Topology B: local desktop
+
+```text
+agent or MCP client
+        |
+        | Markdown files or http://127.0.0.1:8765/mcp
+        v
+joplin-md-sync
+        |
+        | http://127.0.0.1:41184 + Web Clipper token
+        v
+Joplin Desktop -> your configured Joplin sync target
+```
+
+This is the smallest trust boundary. Keep Joplin Desktop running during online
+operations. The bridge and Joplin Data API both remain on loopback.
+
+Use it when:
+
+- an editor or desktop assistant supports local MCP;
+- a coding agent runs on the same workstation;
+- you want Git-reviewed Markdown changes; or
+- you are evaluating the service before operating a server.
 
 ## Network boundaries
 
@@ -95,9 +96,9 @@ serve different trust boundaries and are never interchangeable.
 
 The bridge does not force one storage product. You can:
 
-- keep Joplin Desktop as the only active profile and use its normal sync;
 - run the headless profile against your own filesystem, WebDAV, Nextcloud, S3,
   or Joplin Server;
+- keep Joplin Desktop as the only active profile and use its normal sync;
 - use Joplin's end-to-end encryption when supported by the chosen topology;
 - publish only the narrow agent interface you need; and
 - remove the headless service without deleting remote sync data.
@@ -108,15 +109,19 @@ system, the selected sync target remains the data transport, and
 
 ## Recommended rollout
 
-1. Complete the [local quick start](GETTING_STARTED.md) and make one reviewed
-   Markdown change.
-2. Test loopback MCP with a read-only notebook or note listing.
-3. Decide whether the client actually needs remote access.
-4. Install the headless services using the documented dry-run.
-5. Keep the Joplin Data API on loopback.
-6. Add separate MCP and Actions credentials for the interfaces you enable.
-7. Put remote routes behind TLS and explicit network policy.
-8. Run the live acceptance checks before relying on the service.
+1. Choose the Joplin sync target and whether the client needs Actions, MCP, or
+   both.
+2. Review the headless installer dry-run and its planned filesystem and service
+   changes.
+3. Install the coordinated services and verify recurrent Joplin sync.
+4. Keep the Joplin Data API on loopback and retain the three separate generated
+   credentials.
+5. Publish only the required adapter routes behind TLS and explicit network
+   policy.
+6. Configure the private GPT or MCP client with its dedicated credential.
+7. Run the live acceptance checks before relying on the service.
+8. If you also create a Markdown workspace, pull after every direct MCP or
+   Actions write and never interleave the two write models.
 
 For commands, installer options, upgrades, rollback, removal, and
 troubleshooting, continue to [Service operations](SERVICE.md).

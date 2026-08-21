@@ -155,9 +155,12 @@ body {
 
 .home-hero h1 {
   color: #fff;
-  font-size: 4.5rem;
+  font-size: 3.8rem;
   line-height: 1.02;
   margin-bottom: 22px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 1040px;
 }
 
 .home-hero h1::after {
@@ -452,6 +455,12 @@ body {
 .home-workflow,
 .home-safety {
   background: var(--jms-paper);
+}
+
+.home-deploy {
+  background: #eef5f8;
+  border-bottom: 1px solid #d5e2e9;
+  border-top: 1px solid #d5e2e9;
 }
 
 .home-intro {
@@ -895,7 +904,7 @@ body {
   }
 
   .home-hero h1 {
-    font-size: 3.25rem;
+    font-size: 3rem;
   }
 
   .home-hero__lead {
@@ -959,7 +968,7 @@ body {
   }
 
   .home-hero h1 {
-    font-size: 3.25rem;
+    font-size: 3rem;
     margin-bottom: 17px;
   }
 
@@ -997,6 +1006,10 @@ body {
 }
 
 @media screen and (max-width: 760px) {
+  .md-header__topic {
+    font-size: 0.7rem;
+  }
+
   .home-shell {
     padding-left: 18px;
     padding-right: 18px;
@@ -1022,7 +1035,8 @@ body {
 
   .home-hero h1 {
     font-size: 2rem;
-    white-space: nowrap;
+    max-width: 520px;
+    white-space: normal;
   }
 
   .home-hero h1::after {
@@ -1100,15 +1114,7 @@ body {
   }
 
   .hero-console__run {
-    font-size: 0.51rem;
-    overflow: auto;
-    padding: 12px;
-  }
-
-  .hero-console__run code {
-    display: block;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    display: none;
   }
 
   .hero-console__checks {

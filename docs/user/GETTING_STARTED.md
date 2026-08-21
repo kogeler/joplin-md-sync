@@ -4,8 +4,11 @@ The behavioral guarantees used by this tutorial are defined by the
 [contract catalog](../contracts/README.md).
 
 This path connects a local Joplin Desktop installation to a reviewable
-Markdown workspace. It is the best first setup even if you plan to add MCP
-later, because it makes the state and safety model concrete.
+Markdown workspace. Use it when an agent needs ordinary files, repository
+context, an exact three-way diff, or Git history. For direct note operations,
+start with [ChatGPT Actions](CHATGPT_ACTIONS.md) or the [MCP API](MCP_API.md);
+for a server without a desktop session, use the
+[headless service installer](SERVICE.md#headless-linux-installation).
 
 ## Prerequisites
 
@@ -27,14 +30,14 @@ later, because it makes the state and safety model concrete.
 === "pipx"
 
     ```bash
-    pipx install "joplin-md-sync==1.5.5"
+    pipx install "joplin-md-sync==1.5.6"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "joplin-md-sync==1.5.5"
+    python -m pip install "joplin-md-sync==1.5.6"
     joplin-md-sync version --json
     ```
 

@@ -38,7 +38,7 @@ class VersionIncrementTest(unittest.TestCase):
             text=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("1.5.3 -> 1.5.5", result.stdout)
+        self.assertIn("1.5.3 -> 1.5.6", result.stdout)
 
 
 if __name__ == "__main__":

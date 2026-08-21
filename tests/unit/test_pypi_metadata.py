@@ -15,6 +15,17 @@ def test_pypi_readme_uses_only_portable_absolute_links() -> None:
     assert all(link.startswith(("https://", "http://")) for link in links)
 
 
+def test_pypi_readme_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert readme.startswith("# Joplin for ChatGPT and MCP\n")
+    headless = readme.index("## Fast path: headless Joplin for ChatGPT")
+    mcp = readme.index("## Use Joplin from an MCP client")
+    markdown = readme.index("## Use Joplin notes as reviewable files")
+    assert headless < mcp < markdown
+    assert "install_joplin_terminal.py" in readme
+    assert "python3 scripts/prepare_chatgpt_action.py" in readme
+
+
 def test_pypi_metadata_exposes_public_project_routes() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     for expected in (

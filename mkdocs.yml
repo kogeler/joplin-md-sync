@@ -1,7 +1,7 @@
-site_name: joplin-md-sync
+site_name: "Joplin for ChatGPT & MCP"
 site_description: >-
-  Safe two-way Joplin and Markdown synchronization, plus MCP and ChatGPT
-  Actions access for coding agents and AI assistants.
+  Use self-hosted Joplin notes directly from ChatGPT and MCP clients, with an
+  automated headless deployment and a separate reviewable Markdown workflow.
 site_url: https://joplin-mcp.romancello.net/
 site_author: kogeler
 copyright: MIT licensed. Joplin is a trademark of Laurent Cozic.
@@ -106,20 +106,19 @@ extra:
 
 nav:
   - Home: index.md
-  - User guide:
-      - Overview: user/OVERVIEW.md
-      - Installation and quick start: user/GETTING_STARTED.md
-      - Agent workflows: user/AGENT_WORKFLOWS.md
+  - "ChatGPT & MCP":
+      - Choose an interface: user/AGENT_INTERFACES.md
+      - ChatGPT Actions: user/CHATGPT_ACTIONS.md
+      - MCP API: user/MCP_API.md
+      - Self-hosted deployment: user/SELF_HOSTED.md
+      - Service operations: user/SERVICE.md
   - Markdown sync:
+      - Quick start: user/GETTING_STARTED.md
+      - Agent workflows: user/AGENT_WORKFLOWS.md
       - Workspace format: user/WORKSPACE_FORMAT.md
       - CLI reference: user/CLI.md
       - Conflict handling: user/CONFLICTS.md
-  - Agent interfaces:
-      - Choose an interface: user/AGENT_INTERFACES.md
-      - MCP API: user/MCP_API.md
-      - ChatGPT Actions: user/CHATGPT_ACTIONS.md
-      - Self-hosted service: user/SELF_HOSTED.md
-      - Service operations: user/SERVICE.md
+  - Product overview: user/OVERVIEW.md
   - Contracts:
       - Catalog: contracts/README.md
       - CLI and output: contracts/CLI.md

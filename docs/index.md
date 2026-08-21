@@ -1,6 +1,6 @@
 ---
-title: Safe Joplin access for AI agents
-description: Safe, reviewable access to self-hosted Joplin notes for coding agents, MCP clients, and ChatGPT.
+title: Joplin for ChatGPT and MCP
+description: Use self-hosted Joplin notes directly from ChatGPT and MCP clients, with an automated headless deployment and a separate reviewable Markdown workflow.
 template: home.html
 hide:
   - navigation
@@ -9,63 +9,64 @@ hide:
 
 <section class="home-hero">
   <div class="home-shell home-hero__content">
-    <p class="home-kicker" data-reveal>Open source <span></span> Local first <span></span> Agent ready</p>
-    <h1 data-reveal>joplin-md-sync</h1>
+    <p class="home-kicker" data-reveal>ChatGPT Actions <span></span> Streamable HTTP MCP <span></span> Self-hosted Joplin</p>
+    <h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>
     <p class="home-hero__lead" data-reveal>
-      Give agents useful access to your notes without giving up control of them.
-      Bridge self-hosted Joplin to reviewable Markdown, MCP clients, and ChatGPT
-      Actions through one safety-focused tool.
+      Search, read, create, organize, and update your own Joplin notes from the
+      assistants you already use. Keep Joplin, its sync target, and its Data API
+      under your control while a guarded bridge exposes only the operations you need.
     </p>
     <div class="home-actions" data-reveal>
-      <a class="home-button home-button--primary" href="user/GETTING_STARTED/">
-        Start in five minutes
+      <a class="home-button home-button--primary" href="user/CHATGPT_ACTIONS/">
+        Connect ChatGPT
       </a>
-      <a class="home-button home-button--secondary" href="https://github.com/kogeler/joplin-md-sync">
-        View on GitHub
+      <a class="home-button home-button--secondary" href="user/SERVICE/">
+        Deploy headless
       </a>
     </div>
     <p class="home-proof" data-reveal>
-      MIT licensed <span></span> Windows and Linux <span></span> Zero runtime dependencies
+      Open source <span></span> Private by design <span></span> Desktop optional
     </p>
 
     <div class="hero-console" data-reveal>
       <div class="hero-console__bar">
         <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-        <span>safe agent session</span>
-        <strong>verified</strong>
+        <span>private Joplin assistant</span>
+        <strong>authenticated</strong>
       </div>
-      <div class="hero-console__flow" aria-label="Joplin to agent data flow">
-        <div class="flow-node flow-node--joplin">
-          <!-- Official brandmark from https://joplinapp.org/brand/, used for identification only. -->
-          <img src="site/assets/images/joplin-brandmark.png" alt="" width="44" height="42">
-          <div><strong>Joplin</strong><small>Your private source</small></div>
+      <div class="hero-console__flow" aria-label="Assistant to private Joplin data flow">
+        <div class="flow-node flow-node--agent">
+          <b>AI</b>
+          <div><strong>ChatGPT or MCP</strong><small>Your chosen client</small></div>
         </div>
         <div class="flow-link">
-          <span>local Data API</span>
+          <span>typed operations</span>
           <i aria-hidden="true"></i>
         </div>
         <div class="flow-node flow-node--bridge">
           <b>J</b>
-          <div><strong>joplin-md-sync</strong><small>Guard, apply, verify</small></div>
+          <div><strong>Guarded bridge</strong><small>Authenticate, validate, execute</small></div>
         </div>
         <div class="flow-link">
-          <span>Markdown / MCP</span>
+          <span>loopback Data API</span>
           <i aria-hidden="true"></i>
         </div>
-        <div class="flow-node flow-node--agent">
-          <b>&gt;_</b>
-          <div><strong>Your agent</strong><small>Structured, bounded access</small></div>
+        <div class="flow-node flow-node--joplin">
+          <!-- Official brandmark from https://joplinapp.org/brand/, used for identification only. -->
+          <img src="site/assets/images/joplin-brandmark.png" alt="" width="44" height="42">
+          <div><strong>Your Joplin</strong><small>Your profile and sync target</small></div>
         </div>
       </div>
       <div class="hero-console__run">
-        <code><span>$</span> joplin-md-sync push --root ./notes --dry-run --json</code>
-        <code class="console-result">{"code":"PENDING_ACTIONS","exit_code":1,"planned_operations":1}</code>
+        <code><span>You</span> Find my notes about the production migration.</code>
+        <code><span>Tool</span> joplin_search_notes {"query":"production migration"}</code>
+        <code class="console-result">{"success":true,"results":[{"title":"Migration runbook"}]}</code>
       </div>
       <div class="hero-console__checks">
-        <span><i></i> Pulled first</span>
-        <span><i></i> Three-way diff</span>
-        <span><i></i> No silent overwrite</span>
-        <span><i></i> Recovery journal</span>
+        <span><i></i> ChatGPT Actions</span>
+        <span><i></i> MCP tool schemas</span>
+        <span><i></i> Duplicate guards</span>
+        <span><i></i> Private Joplin API</span>
       </div>
     </div>
   </div>
@@ -74,41 +75,85 @@ hide:
 <section class="home-band home-intro">
   <div class="home-shell">
     <div class="section-heading" data-reveal>
-      <p class="section-label">One knowledge base, two ways to work</p>
-      <h2>Your notes stay yours. Agents become useful.</h2>
+      <p class="section-label">One knowledge base, direct agent access</p>
+      <h2>Use Joplin where you already think and work.</h2>
       <p>
-        Joplin remains the place where you capture, organize, encrypt, and sync
-        knowledge. The bridge adds controlled interfaces for the work agents do best.
+        Joplin remains the system of record. The bridge adds authenticated,
+        structured interfaces without introducing another note store or requiring
+        a permanent desktop session.
       </p>
     </div>
     <div class="value-columns">
       <article data-reveal>
         <span class="value-number">01</span>
-        <h3>Review every edit</h3>
+        <h3>Talk to your notes in ChatGPT</h3>
         <p>
-          Pull notes into ordinary Markdown, let an agent make a focused change,
-          inspect a true three-way diff, then dry-run the exact push plan.
+          Give a private Custom GPT live access to search, read, create, update,
+          move, tag, and trash exact Joplin objects through generated Actions.
         </p>
-        <a href="user/AGENT_WORKFLOWS/">Use the file workflow &rarr;</a>
+        <a href="user/CHATGPT_ACTIONS/">Configure your Joplin GPT &rarr;</a>
       </article>
       <article data-reveal>
         <span class="value-number">02</span>
-        <h3>Call Joplin directly</h3>
+        <h3>Connect any MCP client</h3>
         <p>
-          Search, read, create, tag, move, and trash notes through typed MCP tools
-          when an immediate structured operation is the better fit.
+          Expose typed Streamable HTTP tools for notes, notebooks, tags, search,
+          and attachments to editors, coding agents, and other MCP assistants.
         </p>
-        <a href="user/MCP_API/">Explore the MCP API &rarr;</a>
+        <a href="user/MCP_API/">Explore the MCP tools &rarr;</a>
       </article>
       <article data-reveal>
         <span class="value-number">03</span>
-        <h3>Host the whole path</h3>
+        <h3>Run Joplin without a desktop</h3>
         <p>
-          Run Joplin Terminal and the authenticated bridge on your own Linux host,
-          while keeping the upstream Data API private on loopback.
+          Install Joplin Terminal, recurrent sync, MCP, and Actions as coordinated
+          rootless services on a Linux host with one interactive installer.
         </p>
-        <a href="user/SELF_HOSTED/">Plan a self-hosted setup &rarr;</a>
+        <a href="user/SERVICE/">Deploy the complete service &rarr;</a>
       </article>
+    </div>
+  </div>
+</section>
+
+<section class="home-band home-workflow home-deploy">
+  <div class="home-shell">
+    <div class="section-heading" data-reveal>
+      <p class="section-label">From sync target to private GPT</p>
+      <h2>Deploy the complete headless path.</h2>
+      <p>
+        The installer coordinates Joplin Terminal and the agent adapter. You choose
+        the Joplin sync target and the HTTPS publishing layer; the upstream Data API
+        never needs to leave loopback.
+      </p>
+      <a class="text-link" href="user/SELF_HOSTED/">Review the deployment boundaries &rarr;</a>
+    </div>
+    <div class="workflow-layout">
+      <ol class="workflow-steps" data-reveal>
+        <li><span>1</span><div><strong>Choose storage</strong><small>Connect the headless profile to your existing Joplin sync target.</small></div></li>
+        <li><span>2</span><div><strong>Install services</strong><small>Deploy Joplin Terminal and the shared MCP/Actions adapter.</small></div></li>
+        <li><span>3</span><div><strong>Publish Actions</strong><small>Route only the authenticated Actions namespace through HTTPS.</small></div></li>
+        <li><span>4</span><div><strong>Generate the schema</strong><small>Validate TLS, authentication, and live reads before opening ChatGPT.</small></div></li>
+        <li><span>5</span><div><strong>Use your notes</strong><small>Search and change current Joplin data from a private Custom GPT.</small></div></li>
+      </ol>
+      <div class="workflow-terminal" data-reveal>
+        <div class="workflow-terminal__title">
+          <span>headless-joplin.sh</span>
+          <small>rootless systemd services</small>
+        </div>
+        <pre><code><em>$</em> set -o pipefail
+<em>$</em> curl --proto '=https' --tlsv1.2 --fail \
+    --silent --show-error --location \
+    https://raw.githubusercontent.com/kogeler/\
+joplin-md-sync/main/scripts/joplin_terminal_service/\
+install_joplin_terminal.py | python3 - \
+    --sync-target nextcloud \
+    --sync-location https://cloud.example/Joplin \
+    --sync-username user
+
+<b>OK</b>  joplin-terminal.service active
+<b>OK</b>  joplin-md-sync.service active
+<b>OK</b>  separate MCP and Actions tokens created</code></pre>
+      </div>
     </div>
   </div>
 </section>
@@ -117,44 +162,44 @@ hide:
   <div class="home-shell">
     <div class="section-heading section-heading--split" data-reveal>
       <div>
-        <p class="section-label">Built for real note workflows</p>
-        <h2>Six jobs, one controlled bridge</h2>
+        <p class="section-label">Useful every day</p>
+        <h2>Current notes, not another stale export.</h2>
       </div>
       <p>
-        Use the interface that matches the task. Reviewed file transformations
-        and immediate API operations are intentionally separate.
+        Both direct interfaces use the same validated operation registry. Choose
+        ChatGPT for conversation or MCP for any compatible client.
       </p>
     </div>
     <div class="use-case-grid">
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">Developers</span>
-        <h3>Agent-maintained runbooks</h3>
-        <p>Let a coding agent update commands, rollback steps, and incident notes from the project it is already working in.</p>
+        <span class="use-case__tag">ChatGPT</span>
+        <h3>Search and synthesize your knowledge</h3>
+        <p>Find the relevant Joplin notes, read only the selected results, and turn current private context into a focused answer.</p>
       </article>
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">Second brain</span>
-        <h3>Private semantic work</h3>
-        <p>Find related notes, summarize a topic, and organize results without exporting your whole notebook archive to another note platform.</p>
+        <span class="use-case__tag">Capture</span>
+        <h3>Turn a conversation into a note</h3>
+        <p>Create a decision record, meeting follow-up, research summary, or checklist in the exact notebook you name.</p>
       </article>
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">Git</span>
-        <h3>Versioned knowledge</h3>
-        <p>Keep a reviewable history of selected Joplin notebooks as Markdown while local state, credentials, backups, and conflicts stay out of Git.</p>
+        <span class="use-case__tag">Organize</span>
+        <h3>Maintain notebooks and tags</h3>
+        <p>Rename, move, tag, restore, and trash exact objects while duplicate identities are rejected instead of silently multiplied.</p>
       </article>
       <article class="use-case" data-reveal>
         <span class="use-case__tag">MCP</span>
-        <h3>Tools for any compatible client</h3>
-        <p>Expose notes, notebooks, tags, search, and attachments over Streamable HTTP with explicit schemas and bounded payloads.</p>
+        <h3>Bring Joplin into an agent workspace</h3>
+        <p>Let an MCP-capable editor or coding assistant inspect runbooks and update targeted notes without exporting the whole archive.</p>
       </article>
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">ChatGPT</span>
-        <h3>Your own Joplin assistant</h3>
-        <p>Connect a private Custom GPT through authenticated Actions, generated OpenAPI, isolated credentials, and a tested HTTPS endpoint.</p>
+        <span class="use-case__tag">Resources</span>
+        <h3>Work with attachments through MCP</h3>
+        <p>Read, upload, replace, and traverse note-resource relationships with bounded payloads and explicit destructive operations.</p>
       </article>
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">Homelab</span>
-        <h3>Headless knowledge service</h3>
-        <p>Pair Joplin Terminal with systemd services and your chosen sync target, without exposing Joplin's own Data API to the internet.</p>
+        <span class="use-case__tag">Always on</span>
+        <h3>Keep the assistant available headlessly</h3>
+        <p>Run recurrent Joplin sync and the adapter as user services on your server while desktop and laptop clients come and go.</p>
       </article>
     </div>
   </div>
@@ -164,61 +209,62 @@ hide:
   <div class="home-shell control-layout">
     <div class="control-copy" data-reveal>
       <p class="section-label">Control is the feature</p>
-      <h2>Self-hosted notes should not require blind trust.</h2>
+      <h2>Your assistant should adapt to your notes, not own them.</h2>
       <p>
-        Your notes can stay in Joplin, on infrastructure and sync targets you
-        choose. joplin-md-sync works through the documented Data API, never the
-        Joplin database or profile internals.
+        Keep the Joplin clients, sync provider, encryption choices, profile, and
+        backups you already trust. The bridge is a replaceable open-source adapter,
+        not a new proprietary knowledge store.
       </p>
       <a class="text-link" href="contracts/SECURITY/">Read the security contract &rarr;</a>
     </div>
     <div class="control-stack" data-reveal>
       <div class="control-layer">
-        <span>Interface</span>
-        <strong>Markdown workspace <i>or</i> MCP / Actions</strong>
-        <small>Choose reviewed changes or direct tools per task</small>
+        <span>Clients</span>
+        <strong>Private Custom GPT <i>or</i> MCP client</strong>
+        <small>Separate transports over one shared, validated operation registry</small>
       </div>
       <div class="control-layer">
-        <span>Safety</span>
-        <strong>Plan &rarr; guard &rarr; apply &rarr; verify</strong>
-        <small>Stable exit codes and deterministic JSON at every boundary</small>
+        <span>Boundary</span>
+        <strong>Dedicated Actions and MCP credentials</strong>
+        <small>Independent tokens, authenticated routes, and bounded payloads</small>
       </div>
       <div class="control-layer">
         <span>Joplin</span>
         <strong>Loopback Data API</strong>
-        <small>Tokens remain separate; remote access requires an explicit override</small>
+        <small>The upstream token and API never need public network exposure</small>
       </div>
       <div class="control-layer control-layer--owner">
         <span>Owner</span>
-        <strong>Your profile, storage, sync, and backups</strong>
-        <small>No replacement cloud and no proprietary note format</small>
+        <strong>Your Joplin profile, sync target, encryption, and backups</strong>
+        <small>Remove the adapter without migrating or deleting your knowledge base</small>
       </div>
     </div>
   </div>
 </section>
 
-<section class="home-band home-workflow">
+<section class="home-band home-workflow home-files">
   <div class="home-shell">
     <div class="section-heading" data-reveal>
-      <p class="section-label">A boringly explicit write path</p>
-      <h2>See what will change before Joplin changes.</h2>
+      <p class="section-label">A second interface for review-heavy work</p>
+      <h2>Use ordinary Markdown when the diff matters.</h2>
       <p>
-        The file workflow gives autonomous agents the same guardrails a careful
-        operator would use by hand.
+        Direct tools are ideal for current, targeted operations. For broad changes,
+        repository context, or Git review, pull selected Joplin notebooks to files
+        and approve the exact push plan.
       </p>
     </div>
     <div class="workflow-layout">
       <ol class="workflow-steps" data-reveal>
         <li><span>1</span><div><strong>Pull</strong><small>Start from current Joplin state.</small></div></li>
-        <li><span>2</span><div><strong>Edit</strong><small>Work in plain Markdown with normal tools.</small></div></li>
+        <li><span>2</span><div><strong>Edit</strong><small>Work in plain Markdown with normal agent tools.</small></div></li>
         <li><span>3</span><div><strong>Diff</strong><small>Compare base, local, and remote states.</small></div></li>
         <li><span>4</span><div><strong>Dry-run</strong><small>Review the exact operation plan.</small></div></li>
         <li><span>5</span><div><strong>Push</strong><small>Guard, apply, verify, and journal.</small></div></li>
       </ol>
       <div class="workflow-terminal" data-reveal>
         <div class="workflow-terminal__title">
-          <span>notes-agent-session.sh</span>
-          <small>exit codes are part of the API</small>
+          <span>reviewed-note-change.sh</span>
+          <small>stable JSON and exit codes</small>
         </div>
         <pre><code><em>$</em> joplin-md-sync pull --root ./notes --json
 <b>OK</b>  remote and base refreshed
@@ -242,21 +288,21 @@ hide:
   <div class="home-shell">
     <div class="section-heading section-heading--split" data-reveal>
       <div>
-        <p class="section-label">Failure is a first-class state</p>
-        <h2>Designed to stop, explain, and recover.</h2>
+        <p class="section-label">Predictable failure boundaries</p>
+        <h2>Agents get explicit errors, not accidental damage.</h2>
       </div>
       <p>
-        Automation is only useful when its boundaries are predictable. The CLI
-        never hides a divergent edit behind a successful-looking message.
+        Direct tools and file synchronization use different consistency models,
+        but both expose failures instead of guessing or silently repeating writes.
       </p>
     </div>
     <div class="safety-grid">
-      <div data-reveal><strong>No silent overwrites</strong><span>Divergent edits produce a conflict bundle and exit code 2.</span></div>
-      <div data-reveal><strong>No default deletion</strong><span>Deletes are reported until an explicit propagation flag is approved.</span></div>
-      <div data-reveal><strong>No mystery partial runs</strong><span>A journal blocks further writes until recovery verifies what completed.</span></div>
-      <div data-reveal><strong>No token in arguments</strong><span>Credentials come from protected files or the environment and are redacted.</span></div>
-      <div data-reveal><strong>No direct database access</strong><span>Only Joplin's documented local Data API is used.</span></div>
-      <div data-reveal><strong>No mutating diff</strong><span><code>diff</code> is guaranteed to inspect state without changing it.</span></div>
+      <div data-reveal><strong>No duplicate create retries</strong><span>Occupied note, notebook, tag, and resource identities return the existing IDs and recommended update tool.</span></div>
+      <div data-reveal><strong>No ambiguous write replay</strong><span>A timed-out direct mutation is reported for inspection instead of being sent again.</span></div>
+      <div data-reveal><strong>No public Joplin API</strong><span>Remote clients reach the authenticated adapter; Joplin stays on loopback.</span></div>
+      <div data-reveal><strong>No permanent note deletion</strong><span>Notes and notebooks move to normal Joplin trash and can be restored.</span></div>
+      <div data-reveal><strong>No silent file overwrite</strong><span>Divergent edits produce a three-way conflict bundle and exit code 2.</span></div>
+      <div data-reveal><strong>No hidden partial sync</strong><span>A journal blocks later file writes until recovery verifies what completed.</span></div>
     </div>
   </div>
 </section>
@@ -264,12 +310,12 @@ hide:
 <section class="home-band home-cta">
   <div class="home-shell cta-layout" data-reveal>
     <div>
-      <p class="section-label">Keep Joplin. Add a safer interface.</p>
-      <h2>Make your private notes useful to agents.</h2>
+      <p class="section-label">Keep Joplin. Add the interfaces you need.</p>
+      <h2>Bring your private notes into ChatGPT and MCP.</h2>
     </div>
     <div class="cta-actions">
-      <a class="home-button home-button--light" href="user/GETTING_STARTED/">Install and connect</a>
-      <a class="home-button home-button--outline" href="user/AGENT_INTERFACES/">Choose an interface</a>
+      <a class="home-button home-button--light" href="user/CHATGPT_ACTIONS/">Connect ChatGPT</a>
+      <a class="home-button home-button--outline" href="user/AGENT_INTERFACES/">Compare interfaces</a>
     </div>
   </div>
 </section>
