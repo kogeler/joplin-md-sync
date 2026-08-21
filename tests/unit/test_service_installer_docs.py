@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE_DOC = ROOT / "docs" / "user" / "SERVICE.md"
 SERVICE_SCRIPTS = ROOT / "scripts" / "joplin_terminal_service"
@@ -21,6 +23,7 @@ def _installer_parser() -> argparse.ArgumentParser:
     return cast("argparse.ArgumentParser", build_parser({}))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
 def test_service_installer_reference_covers_every_public_option() -> None:
     contents = SERVICE_DOC.read_text(encoding="utf-8")
     assert "## Installer CLI reference" in contents

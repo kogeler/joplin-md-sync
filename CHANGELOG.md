@@ -45,6 +45,8 @@ All notable changes to this project are documented here. The format follows
   resolution from the complete Linux CI contract.
 - Omit Google Analytics configuration when the Pages variable exists but has
   no value, keeping strict documentation builds valid before analytics setup.
+- Keep the Linux-only service installer parser audit out of Windows package
+  tests and assign all repository paths to the project code owner.
 
 ## [1.5.3] - 2026-07-29
 

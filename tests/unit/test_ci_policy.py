@@ -34,6 +34,12 @@ def test_workflow_set_is_event_driven_and_every_action_is_sha_pinned() -> None:
         assert "persist-credentials: true" not in content
 
 
+def test_codeowners_assigns_entire_repository_to_maintainer() -> None:
+    codeowners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    rules = [line for line in codeowners.splitlines() if line and not line.startswith("#")]
+    assert rules == ["* @kogeler"]
+
+
 def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     ci = _workflow("ci.yml")
     for job in (

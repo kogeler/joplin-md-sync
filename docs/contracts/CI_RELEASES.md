@@ -126,3 +126,13 @@ resolve in a strict MkDocs build.
 - [`test_contract_assertions_have_unique_ids_and_real_evidence`](../../tests/unit/test_documentation_contracts.py) - `tests/unit/test_documentation_contracts.py::test_contract_assertions_have_unique_ids_and_real_evidence`
 - [`test_documentation_tree_and_site_navigation_are_complete`](../../tests/unit/test_documentation_contracts.py) - `tests/unit/test_documentation_contracts.py::test_documentation_tree_and_site_navigation_are_complete`
 - [`test_all_relative_documentation_links_and_home_routes_resolve`](../../tests/unit/test_documentation_contracts.py) - `tests/unit/test_documentation_contracts.py::test_all_relative_documentation_links_and_home_routes_resolve`
+
+### `CIR-010` - Repository ownership is explicit
+
+**Contract:** `.github/CODEOWNERS` MUST assign every repository path to
+`@kogeler`, so the default-branch ruleset's required code-owner review applies
+to every pull-request change.
+
+**Evidence:**
+
+- [`test_codeowners_assigns_entire_repository_to_maintainer`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_codeowners_assigns_entire_repository_to_maintainer`
