@@ -44,5 +44,5 @@ def on_post_build(*, config: Any, **_kwargs: object) -> None:
 
     docs_dir = Path(config["docs_dir"])
     site_dir = Path(config["site_dir"])
-    for name in ("CNAME", "llms.txt"):
+    for name in ("CNAME", "llms.txt", "robots.txt"):
         shutil.copyfile(docs_dir / "site" / name, site_dir / name)

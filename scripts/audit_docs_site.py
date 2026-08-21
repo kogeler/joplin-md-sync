@@ -136,6 +136,13 @@ def audit_site(site_dir: Path, site_url: str) -> tuple[int, int]:
         raise AuditError(f"CNAME {cname!r} does not match {expected_host!r}")
     if not (site_dir / "llms.txt").read_text(encoding="utf-8").strip():
         raise AuditError("llms.txt is missing or empty")
+    robots = (site_dir / "robots.txt").read_text(encoding="utf-8")
+    robots_lines = {line.strip() for line in robots.splitlines() if line.strip()}
+    sitemap_directive = f"Sitemap: {urljoin(origin, 'sitemap.xml')}"
+    if not {"User-agent: *", "Allow: /"}.issubset(robots_lines):
+        raise AuditError("robots.txt does not explicitly allow crawling")
+    if sitemap_directive not in robots_lines:
+        raise AuditError(f"robots.txt does not advertise {sitemap_directive}")
 
     checked_references = 0
     for route, page in pages.items():

@@ -63,6 +63,7 @@ exclude_docs: |
   site/CNAME
   site/hooks.py
   site/llms.txt
+  site/robots.txt
   site/overrides/**
   site/__pycache__/**
 

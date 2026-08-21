@@ -103,9 +103,9 @@ requests and reusable release invocation MUST not enter this write boundary.
 **Contract:** Documentation, theme, hook, and docs dependency changes MUST
 trigger a strict non-deploying Pages build on pull requests. Direct main pushes
 MUST build the same content, require non-empty sitemap XML and gzip outputs,
-audit generated routes, links, anchors, canonical URLs, and assets, publish the
-canonical domain root files, and grant deployment writes only to the deploy
-job.
+audit generated routes, links, anchors, canonical URLs, assets, and the
+allow-all `robots.txt` sitemap directive, publish the canonical domain root
+files, and grant deployment writes only to the deploy job.
 
 **Evidence:**
 

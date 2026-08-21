@@ -125,6 +125,9 @@ def test_documentation_tree_and_site_navigation_are_complete() -> None:
         "joplin-mcp.romancello.net"
     )
     assert (DOCS / "site" / "llms.txt").is_file()
+    assert (DOCS / "site" / "robots.txt").read_text(encoding="utf-8") == (
+        "User-agent: *\nAllow: /\n\nSitemap: https://joplin-mcp.romancello.net/sitemap.xml\n"
+    )
     assert (DOCS / "site" / "assets" / "stylesheets" / "extra.css").is_file()
     assert (DOCS / "site" / "overrides" / "home.html").is_file()
 
@@ -142,6 +145,7 @@ def test_documentation_tree_and_site_navigation_are_complete() -> None:
     assert "docs/site/overrides" in mkdocs
     excluded = mkdocs.split("exclude_docs:", 1)[1].split("markdown_extensions:", 1)[0]
     assert "site/hooks.py" in excluded
+    assert "site/robots.txt" in excluded
     assert "site/__pycache__/**" in excluded
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
@@ -252,4 +256,7 @@ def test_site_hook_rewrites_repository_links_and_publishes_root_files(
     )
     assert (tmp_path / "llms.txt").read_text(encoding="utf-8") == (
         DOCS / "site" / "llms.txt"
+    ).read_text(encoding="utf-8")
+    assert (tmp_path / "robots.txt").read_text(encoding="utf-8") == (
+        DOCS / "site" / "robots.txt"
     ).read_text(encoding="utf-8")

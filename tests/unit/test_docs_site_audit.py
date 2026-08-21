@@ -36,6 +36,10 @@ def _write_site(root: Path, *, body: str = '<a href="#start">Start</a>') -> None
         stream.write(sitemap.encode())
     (root / "CNAME").write_text("joplin-mcp.romancello.net\n", encoding="utf-8")
     (root / "llms.txt").write_text("# joplin-md-sync\n", encoding="utf-8")
+    (root / "robots.txt").write_text(
+        f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}sitemap.xml\n",
+        encoding="utf-8",
+    )
 
 
 def test_generated_site_audit_accepts_complete_output(tmp_path: Path) -> None:
@@ -58,4 +62,15 @@ def test_generated_site_audit_rejects_invalid_output(
     _write_site(tmp_path, body=body)
 
     with pytest.raises(AuditError, match=message):
+        audit_site(tmp_path, SITE_URL)
+
+
+def test_generated_site_audit_rejects_incorrect_robots_sitemap(tmp_path: Path) -> None:
+    _write_site(tmp_path)
+    (tmp_path / "robots.txt").write_text(
+        "User-agent: *\nAllow: /\nSitemap: https://example.invalid/sitemap.xml\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(AuditError, match="does not advertise"):
         audit_site(tmp_path, SITE_URL)
