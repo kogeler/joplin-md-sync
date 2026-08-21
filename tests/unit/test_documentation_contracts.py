@@ -224,6 +224,16 @@ def test_all_relative_documentation_links_and_home_routes_resolve() -> None:
         assert candidate.is_file(), route
 
 
+def test_homepage_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
+    homepage = (DOCS / "index.md").read_text(encoding="utf-8")
+    assert "<h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>" in homepage
+    chatgpt = homepage.index("Connect ChatGPT")
+    headless = homepage.index("Deploy the complete headless path")
+    markdown = homepage.index("Use ordinary Markdown when the diff matters")
+    assert chatgpt < headless < markdown
+    assert "install_joplin_terminal.py" in homepage
+
+
 def test_site_hook_rewrites_repository_links_and_publishes_root_files(
     tmp_path: Path,
 ) -> None:

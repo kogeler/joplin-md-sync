@@ -1,178 +1,235 @@
-# joplin-md-sync
+# Joplin for ChatGPT and MCP
 
-Safe two-way synchronization between the local [Joplin](https://joplinapp.org/)
-desktop application and an ordinary directory of Markdown files — built
-primarily for **autonomous coding agents** (deterministic JSON output, stable
-exit codes, explicit conflict handling), and perfectly usable by humans.
+`joplin-md-sync` gives AI assistants controlled access to your own
+[Joplin](https://joplinapp.org/) knowledge base. Search, read, create, update,
+move, tag, and trash notes from a private Custom GPT or any Streamable HTTP MCP
+client without moving your notes into another hosted note service.
 
-**Documentation:** [joplin-mcp.romancello.net](https://joplin-mcp.romancello.net/)
+Run it beside Joplin Desktop, or deploy a complete headless Joplin Terminal and
+agent API stack on your own Linux host. A separate Markdown sync workflow is
+available when a coding agent needs reviewable files, three-way diffs, and Git
+history.
 
-> **Safety first.** The tool never overwrites divergent edits, never deletes
-> anything without an explicit flag, never uses permanent deletion in Joplin,
-> verifies every write after applying it, and journals every mutating run so
-> interrupted syncs are recoverable. `diff` never mutates anything.
+**[Website](https://joplin-mcp.romancello.net/)** ·
+**[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
+**[MCP tools](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
+**[Deploy headless](https://joplin-mcp.romancello.net/user/SERVICE/)**
 
-The test-backed definitions of these guarantees live in the
-[contract catalog](https://joplin-mcp.romancello.net/contracts/).
+## What you get
 
-If you are an agent (or configuring one), start with
-**[AGENTS.md](https://github.com/kogeler/joplin-md-sync/blob/main/AGENTS.md)**.
+- **Joplin inside ChatGPT.** A generated OpenAPI contract exposes authenticated
+  Actions for current notes, notebooks, tags, and search to a private Custom
+  GPT.
+- **Typed MCP tools.** One Streamable HTTP endpoint gives compatible clients
+  structured note operations plus attachment upload, download, replacement,
+  and relationship traversal.
+- **A headless Joplin service.** The rootless Linux installer deploys Joplin
+  Terminal, recurrent sync, and the combined MCP/Actions adapter as coordinated
+  systemd user services. Joplin Desktop does not need to remain running.
+- **Your storage and encryption choices.** Use filesystem, Nextcloud, WebDAV,
+  Dropbox, OneDrive, S3, Joplin Server, or Joplin Cloud, with existing Joplin
+  end-to-end encryption where the selected topology supports it.
+- **Reviewable Markdown when you need it.** Pull notebooks to ordinary files,
+  let an agent work with repository context, inspect a three-way diff and
+  dry-run, then push the verified result back to Joplin.
 
-## How it works
+Joplin remains the source of truth. The adapter uses its documented local
+[Data API](https://joplinapp.org/help/api/references/rest_api/) and never edits
+the Joplin database, profile, or sync target directly.
 
-- Notes are plain `.md` files; each carries a one-line metadata header with
-  the Joplin id, title, and tags. Notebooks are directories with a
-  `.joplin-folder.json`.
-- Sync state (base snapshots for true three-way comparison) lives in
-  `.joplin-sync/state.sqlite3` inside the workspace — never committed to Git.
-- All communication uses the documented local
-  [Joplin Data API](https://joplinapp.org/help/api/references/rest_api/)
-  (Web Clipper service); Joplin's own database and sync targets are never
-  touched.
+## Fast path: headless Joplin for ChatGPT
 
-## Installation
+This topology keeps Joplin and the adapter on your own Linux host. Only the
+authenticated Actions routes need to reach ChatGPT over HTTPS; the Joplin Data
+API stays on loopback.
 
-Source, wheel, and zipapp installations require CPython **>= 3.13** on
-Windows or Linux. Native release executables include Python and have no
-external runtime dependencies.
+### 1. Install Joplin and the agent service
 
-```bash
-python -m pip install "joplin-md-sync==1.5.5"
-# or: pipx install "joplin-md-sync==1.5.5"
-# or download joplin-md-sync.pyz from a release and: python joplin-md-sync.pyz --help
-```
-
-Native GitHub Release assets:
-
-| Platform | Architecture | Asset |
-| --- | --- | --- |
-| Linux | AMD64 | `joplin-md-sync-linux-amd64` |
-| Linux | ARM64 | `joplin-md-sync-linux-arm64` |
-| Windows | AMD64 | `joplin-md-sync-windows-amd64.exe` |
-
-On Linux, mark the downloaded executable as executable before running it:
+The host needs Linux with systemd user services, Python 3.13.5 or newer, and
+Node.js/npm. This interactive example connects the new headless profile to an
+existing Nextcloud Joplin sync target:
 
 ```bash
-chmod +x joplin-md-sync-linux-amd64
-./joplin-md-sync-linux-amd64 version
+set -o pipefail
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  'https://raw.githubusercontent.com/kogeler/joplin-md-sync/main/scripts/joplin_terminal_service/install_joplin_terminal.py' \
+  | python3 - \
+      --sync-target nextcloud \
+      --sync-location 'https://cloud.example.com/remote.php/dav/files/user/Joplin' \
+      --sync-username 'user'
 ```
 
-From a checkout, everything is driven by the Makefile:
+The installer asks for secrets through hidden prompts, handles existing Joplin
+E2EE keys, verifies release checksums, and creates:
+
+```text
+joplin-terminal.service    Joplin profile, Data API, and recurrent sync
+joplin-md-sync.service     MCP and ChatGPT Actions on one guarded adapter
+```
+
+It also generates separate protected credentials for Joplin, MCP, and Actions.
+The full guide covers every sync target, a reviewed-download flow, dry-run,
+upgrade, rollback, and removal:
+[Joplin API Service](https://joplin-mcp.romancello.net/user/SERVICE/).
+
+### 2. Publish the narrow HTTPS route
+
+Route `/api/gpt/v1/*` from a trusted HTTPS hostname to the adapter on
+`127.0.0.1:8765`. Do not expose the upstream Joplin Data API. Keep `/mcp`
+private unless a remote MCP client needs it; public MCP requires its own bearer
+token and TLS.
+
+The supported boundaries and deployment choices are documented in
+[Self-hosted deployment](https://joplin-mcp.romancello.net/user/SELF_HOSTED/).
+
+### 3. Connect a private Custom GPT
+
+From a checkout matching the deployed release, run the setup assistant:
 
 ```bash
-make venv        # runtime venv/ with the CLI installed (venv/bin/joplin-md-sync)
-make venv-dev    # Linux quality tools (ruff, mypy, Bandit, pip-audit)
-make venv-test   # cross-platform pytest tools
-make venv-package # cross-platform PyInstaller and build tools
-make check       # lint + typecheck + full test suite
-make freeze-check # verify all generated dependency locks are current
-make test-live   # opt-in real-Joplin MCP + GPT Actions suites; reads ./token
-make test TEST_WORKERS=8  # override automatic parallel test workers
-make package     # wheel, sdist, .pyz, current-platform executable, checksums
-make help        # all targets
+git clone --depth 1 --branch v1.5.6 \
+  https://github.com/kogeler/joplin-md-sync.git
+cd joplin-md-sync
+python3 scripts/prepare_chatgpt_action.py
 ```
 
-The version's single source is the root `.version` file; runtime
-dependencies are declared in `pyproject.toml` (none by design). Direct tools are
-pinned to their latest stable compatible releases in purpose-specific quality,
-test, package, and docs groups. The four committed `pip-compile` locks include
-SHA-256 hashes and are checked for drift in CI; Windows jobs install only the
-cross-platform test or package lock they need.
+Enter the public hostname and the generated Actions token when prompted. The
+assistant validates TLS, authentication, and live read operations, then writes
+the OpenAPI file for the Custom GPT editor. Continue with the exact GPT
+instructions and acceptance test in
+[ChatGPT Actions setup](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/).
 
-## Five-minute quick start
+## Use Joplin from an MCP client
 
-1. In Joplin: *Tools > Options > Web Clipper* — enable the service, copy the
-   authorization token.
-2. ```bash
-   export JOPLIN_TOKEN=<your token>          # Windows: set JOPLIN_TOKEN=...
-   joplin-md-sync init --root ./notes
-   joplin-md-sync pull --root ./notes
-   ```
-   The token is the only required configuration: the default endpoint
-   `http://127.0.0.1:41184` is built in (override with `JOPLIN_BASE_URL`,
-   `JOPLIN_PORT`, `--base-url`, or `--port` when needed).
-3. Edit files under `./notes`, then:
-   ```bash
-   joplin-md-sync diff --root ./notes
-   joplin-md-sync push --root ./notes --dry-run
-   joplin-md-sync push --root ./notes
-   ```
-4. If both sides changed the same note, you get exit code 2 and a conflict
-   bundle: `joplin-md-sync conflicts list` / `conflicts resolve ID --take-local|--take-remote|--merged-file PATH`.
+For a local Joplin Desktop instance, enable **Tools > Options > Web Clipper**,
+install the adapter, and start the MCP listener:
 
-## Agent notes repository template
-
-[`examples/agent-notes-repository/`](https://github.com/kogeler/joplin-md-sync/tree/main/examples/agent-notes-repository) is a
-copyable starter repository for users who want an agent to work on their
-Joplin notes as ordinary Markdown files. It includes:
-
-- a repository-specific `AGENTS.md` with the guarded pull/edit/diff/dry-run/push
-  workflow and an optional MCP setup path;
-- a human runbook that starts with enabling Web Clipper in Joplin Desktop and
-  storing its token outside the sync workspace;
-- a `.gitignore` for credentials, the local standalone binary, and all sync
-  state; and
-- a standard-library installer that downloads the latest compatible native
-  release into `.tools/`, verifies `SHA256SUMS.txt`, and validates the binary
-  before replacing an existing installation.
-
-Start with the template's [README](https://github.com/kogeler/joplin-md-sync/blob/main/examples/agent-notes-repository/README.md),
-not the development instructions for this source checkout.
-
-## MCP and ChatGPT Actions service
-
-One foreground `joplin-md-sync` process exposes MCP and authenticated REST
-Actions from the same tool registry on different URIs. It starts while Joplin
-is offline and recovers on later calls without a restart.
-
-The Actions token is mandatory when Actions are enabled and is reloaded from a
-protected file. MCP bearer authentication remains optional through a separate
-`--auth-token-file`. The headless installer always installs both APIs as one
-`joplin-md-sync.service`; it generates separate mandatory Actions and MCP
-tokens, stores them in protected files, and reports only their paths after a
-successful install. It never creates a separate Actions service.
-
-Use [service installation and operations](https://joplin-mcp.romancello.net/user/SERVICE/) for Linux,
-Windows, credentials, URI isolation, and live tests;
-[MCP API](https://joplin-mcp.romancello.net/user/MCP_API/) for the
-tool contract; and the single [ChatGPT Actions end-to-end
-setup](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/) for endpoint validation, schema export, GPT
-Instructions, editor configuration, and acceptance testing.
-
-## Architecture overview
-
-```
-cli  ->  planner (pure three-way classification: base/local/remote)
-     ->  executor (guard -> apply -> verify -> commit base, journaled)
-api: stdlib urllib client for the Joplin Data API (pagination, retries)
-mcp/actions: two HTTP transports -> shared registry/executor -> Joplin service -> api
-state: SQLite base snapshots, conflicts, tombstones, run journal
-workspace: scanning, atomic writes, backups, quarantine, cross-platform lock
+```bash
+pipx install "joplin-md-sync==1.5.6"
+export JOPLIN_TOKEN=...
+joplin-md-sync mcp serve
 ```
 
-Details in [Architecture](https://joplin-mcp.romancello.net/maintenance/ARCHITECTURE/).
+Then configure a Streamable HTTP MCP connection:
 
-## Supported / not supported (v1)
+```json
+{
+  "type": "streamable-http",
+  "url": "http://127.0.0.1:8765/mcp"
+}
+```
 
-| Supported | Out of scope |
+The service can start while Joplin is offline and recovers on later calls.
+Create operations reject an existing notebook, note, tag, or resource identity
+instead of creating accidental duplicates. Remote MCP deployment requires a
+separate protected bearer token and TLS. See the complete
+[MCP API reference](https://joplin-mcp.romancello.net/user/MCP_API/).
+
+## Use Joplin notes as reviewable files
+
+Choose the Markdown workflow when an agent needs repository context, broad
+transformations, an exact diff before writes, or selected notebooks in Git:
+
+```bash
+export JOPLIN_TOKEN=...
+joplin-md-sync init --root ./notes --mode remote-first
+joplin-md-sync pull --root ./notes --json
+
+# Let an agent edit the managed Markdown files, then review the result.
+joplin-md-sync diff --root ./notes --three-way --unified
+joplin-md-sync push --root ./notes --dry-run --json
+joplin-md-sync push --root ./notes --json
+```
+
+Managed note files carry a one-line Joplin identity header. Base snapshots,
+conflicts, journals, backups, and downloaded resources stay under the ignored
+`.joplin-sync/` directory. Start with the copyable
+[agent notes repository template](https://github.com/kogeler/joplin-md-sync/tree/main/examples/agent-notes-repository)
+or the
+[Markdown quick start](https://joplin-mcp.romancello.net/user/GETTING_STARTED/).
+
+## Control and failure behavior
+
+- The Joplin Data API remains private on loopback in the headless topology.
+- Joplin, MCP, and Actions credentials are distinct and read from protected
+  files or the environment, never accepted as raw token arguments.
+- Direct API writes are sent once. An ambiguous timeout is reported instead of
+  being replayed and possibly duplicated.
+- Creating an occupied notebook, note, tag, or resource identity returns an
+  explicit `*_ALREADY_EXISTS` error with the existing ID and recommended update
+  tool.
+- Note and notebook deletion uses Joplin trash. Resource and tag deletion is
+  explicitly marked destructive because Joplin has no trash endpoint for them.
+- Divergent file edits produce a conflict bundle instead of a silent overwrite.
+- File deletion propagation is off by default; interrupted mutations are
+  journaled and recoverable; `diff` never mutates state.
+
+The exact test-backed guarantees live in the
+[contract catalog](https://joplin-mcp.romancello.net/contracts/). Agents
+operating a Markdown workspace should also follow
+[AGENTS.md](https://github.com/kogeler/joplin-md-sync/blob/main/AGENTS.md).
+
+## Installation options
+
+Python installations require CPython 3.13 or 3.14 on Windows or Linux:
+
+```bash
+python -m pip install "joplin-md-sync==1.5.6"
+# or: pipx install "joplin-md-sync==1.5.6"
+```
+
+GitHub Releases also provide a standalone zipapp and native executables that
+include Python:
+
+| Platform | Asset |
 | --- | --- |
-| notes, notebooks (nested), tags, binary attachments | editing settings, revisions, or encryption state |
-| two-way sync with conflict bundles | Nextcloud/WebDAV or any direct sync target |
-| resource download/upload/edit through MCP | replacing Joplin's own device sync |
-| crash recovery, backups, quarantine | automatic text merging (only explicit `--merged-file`) |
-| Windows + Linux, Python 3.13/3.14; MCP daemon | filesystem watch mode, native mobile CLI, self-update, permanent note/notebook deletion |
+| Linux AMD64 | `joplin-md-sync-linux-amd64` |
+| Linux ARM64 | `joplin-md-sync-linux-arm64` |
+| Windows AMD64 | `joplin-md-sync-windows-amd64.exe` |
+| Python zipapp | `joplin-md-sync.pyz` |
 
-## Versioning
+Download them with `SHA256SUMS.txt` from the
+[latest release](https://github.com/kogeler/joplin-md-sync/releases/latest).
 
-Semantic versioning; Git tags `vX.Y.Z` with GitHub releases carrying the
-wheel, sdist, `.pyz`, native executables, and SHA-256 checksums.
-The same wheel and sdist are published to PyPI through Trusted Publishing.
-`joplin-md-sync update-check --json` compares the installed version against
-the latest stable release
-(exit 8 when outdated). JSON output, exit codes, and the state schema are
-versioned and stable across patch releases. See
-[CHANGELOG.md](https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md).
+## Interface guide
 
-## License
+| Goal | Interface |
+| --- | --- |
+| Work with current Joplin notes in ChatGPT | Authenticated ChatGPT Actions |
+| Give an editor or assistant typed note tools | MCP |
+| Run without a desktop session | Headless Joplin Terminal plus MCP/Actions |
+| Review every broad agent edit before applying it | Markdown workspace |
+| Keep selected notebooks in Git | Markdown workspace |
 
-[MIT](https://github.com/kogeler/joplin-md-sync/blob/main/LICENSE).
+Compare consistency models and deployment choices in
+[Choose an agent interface](https://joplin-mcp.romancello.net/user/AGENT_INTERFACES/).
+
+## Development
+
+```bash
+make venv
+make venv-dev
+make check
+make ci
+make test-live
+make package
+make docs-audit
+make docs-screenshots
+make help
+```
+
+Runtime dependencies are empty by design. Development, test, package, and docs
+tools use purpose-specific hash-verified locks. See
+[Development](https://joplin-mcp.romancello.net/maintenance/DEVELOPMENT/) and
+[Dependency maintenance](https://joplin-mcp.romancello.net/maintenance/DEPENDENCIES/).
+
+## Releases and license
+
+Git tags use `vX.Y.Z`. Release assets include wheel, sdist, zipapp, native
+executables, and checksums; the same wheel and sdist are published to PyPI
+through Trusted Publishing. See the
+[changelog](https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md).
+
+[MIT licensed](https://github.com/kogeler/joplin-md-sync/blob/main/LICENSE).
+This is an independent project and is not affiliated with or endorsed by the
+Joplin project.

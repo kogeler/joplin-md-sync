@@ -6,18 +6,19 @@ This page explains the product and its intended use.
 `joplin-md-sync` is an independent, open-source bridge between Joplin and the
 tools that coding agents and AI assistants already understand.
 
-It provides two complementary ways to work with the same notes:
+It provides three complementary ways to work with the same notes:
 
-1. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
+1. **ChatGPT Actions.** Connect a private Custom GPT to authenticated operations
+   for current notes, notebooks, tags, and search through generated OpenAPI.
+2. **Typed MCP tools.** Give any compatible assistant structured access to
+   notes, notebooks, tags, search, and resources over Streamable HTTP.
+3. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
    edit them with an agent or local tools, inspect a three-way diff, dry-run the
    exact push plan, and only then update Joplin.
-2. **Structured agent APIs.** Run one local service that exposes typed MCP
-   tools and authenticated ChatGPT Actions for notes, notebooks, tags, search,
-   and resources.
 
-These interfaces deliberately remain separate. The file workflow prioritizes
-review and Git history. MCP and Actions prioritize immediate, structured
-operations.
+MCP and Actions share one operation registry and listener while keeping their
+transport and credentials separate. The file workflow uses a distinct
+consistency model that prioritizes review and Git history.
 
 ## Why this exists
 
@@ -47,7 +48,7 @@ yours:
 | --- | --- |
 | Note application | Joplin Desktop or a dedicated Joplin Terminal profile |
 | Joplin synchronization | Filesystem, Nextcloud, WebDAV, S3, Joplin Server, Joplin Cloud, or another supported Joplin target |
-| Agent access | Markdown files, local MCP, remote authenticated MCP, or ChatGPT Actions |
+| Agent access | ChatGPT Actions, local or remote authenticated MCP, or Markdown files |
 | Change review | CLI diff/dry-run, Git review, client-side MCP approval, or a combination |
 | Network boundary | Loopback only, private network, VPN, or a controlled HTTPS publishing layer |
 
@@ -56,30 +57,31 @@ database, profile directory, or sync target directly.
 
 ## Common use cases
 
+### A private Joplin assistant
+
+A private Custom GPT can search the current Joplin index, read selected notes,
+create and update exact objects, and organize notebooks and tags through
+generated Actions. The same service gives MCP clients typed tools, including
+attachment operations.
+
+### A headless knowledge service
+
+On Linux, the included installer can run a dedicated Joplin Terminal profile,
+recurrent sync, and the combined MCP/Actions adapter as coordinated systemd
+user services. Joplin syncs to the target you select; its Data API remains
+private on loopback, and Joplin Desktop does not need to stay running.
+
 ### Project-aware note maintenance
 
 A coding agent can pull a deployment notebook, compare it to the current
 repository, update stale commands, show the precise diff, and synchronize the
 approved result back to Joplin.
 
-### A private Joplin assistant
-
-An MCP client can search the current Joplin index, read selected notes, update
-tags, create structured notes, and work with attachments. A private Custom GPT
-can use the same service through generated Actions.
-
 ### Git-reviewed knowledge
 
 Selected notebooks can live as Markdown in a Git repository. Joplin identity
 is kept in a one-line metadata header, while state databases, credentials,
 backups, downloaded resources, and conflict bundles stay outside Git.
-
-### A headless knowledge service
-
-On Linux, the included installer can run a dedicated Joplin Terminal profile
-and the combined MCP/Actions adapter as coordinated systemd user services.
-Joplin syncs to the target you select; its Data API remains private on
-loopback.
 
 ### Markdown migration
 
@@ -98,5 +100,8 @@ proposed creations.
 - a direct Joplin database editor; or
 - a reason to publish the Joplin Data API to a network.
 
-Start with [Installation and quick start](GETTING_STARTED.md), or compare the
-available integration modes in [Choose an agent interface](AGENT_INTERFACES.md).
+Start by comparing the integration modes in
+[Choose an agent interface](AGENT_INTERFACES.md). Continue with
+[ChatGPT Actions](CHATGPT_ACTIONS.md), the [MCP API](MCP_API.md), the
+[headless service](SERVICE.md#headless-linux-installation), or the
+[Markdown quick start](GETTING_STARTED.md) for the interface you need.

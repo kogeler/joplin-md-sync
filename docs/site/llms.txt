@@ -1,7 +1,7 @@
-# joplin-md-sync
+# Joplin for ChatGPT and MCP
 
-> Safe two-way synchronization between Joplin and a Markdown workspace, plus
-> MCP and ChatGPT Actions interfaces for coding agents and AI assistants.
+> Authenticated ChatGPT Actions and Streamable HTTP MCP access to self-hosted
+> Joplin, plus automated headless deployment and reviewable Markdown sync.
 
 Canonical documentation: https://joplin-mcp.romancello.net/
 Source: https://github.com/kogeler/joplin-md-sync
@@ -9,19 +9,19 @@ Source: https://github.com/kogeler/joplin-md-sync
 ## Start here
 
 - Overview: https://joplin-mcp.romancello.net/user/OVERVIEW/
-- Installation: https://joplin-mcp.romancello.net/user/GETTING_STARTED/
-- Agent workflows: https://joplin-mcp.romancello.net/user/AGENT_WORKFLOWS/
 - Interface guide: https://joplin-mcp.romancello.net/user/AGENT_INTERFACES/
+- ChatGPT Actions: https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/
+- MCP API: https://joplin-mcp.romancello.net/user/MCP_API/
+- Self-hosting: https://joplin-mcp.romancello.net/user/SELF_HOSTED/
+- Service operations: https://joplin-mcp.romancello.net/user/SERVICE/
 
 ## Reference
 
+- Markdown quick start: https://joplin-mcp.romancello.net/user/GETTING_STARTED/
+- Agent workflows: https://joplin-mcp.romancello.net/user/AGENT_WORKFLOWS/
 - CLI: https://joplin-mcp.romancello.net/user/CLI/
 - Workspace format: https://joplin-mcp.romancello.net/user/WORKSPACE_FORMAT/
 - Conflicts: https://joplin-mcp.romancello.net/user/CONFLICTS/
-- MCP API: https://joplin-mcp.romancello.net/user/MCP_API/
-- ChatGPT Actions: https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/
-- Self-hosting: https://joplin-mcp.romancello.net/user/SELF_HOSTED/
-- Service operations: https://joplin-mcp.romancello.net/user/SERVICE/
 
 ## Contracts
 
