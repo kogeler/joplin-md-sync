@@ -65,17 +65,21 @@ class PushTest(WorkspaceTestCase):
         created = [n for n in self.server.store.notes.values() if n["title"] == "scratch pad"]
         self.assertEqual(len(created), 1)
         self.assertEqual(created[0]["body"], "plain markdown body\n")
+        managed = self.find_note_file("scratch pad")
+        self.assertIn(f'"id":"{created[0]["id"]}"', managed.read_text(encoding="utf-8"))
 
     def test_tag_add_and_remove(self):
         self.init_and_pull()
         self.cli(
-            "note", "set-tags", str(self.find_note_file("Kubernetes")),
-            "kubernetes", "ops", expect=0,
+            "note",
+            "set-tags",
+            str(self.find_note_file("Kubernetes")),
+            "kubernetes",
+            "ops",
+            expect=0,
         )
         self.cli("push", "--root", str(self.root), "--json", expect=0)
-        self.assertEqual(
-            self.server.store.note_tag_titles(self.note_k8s), ["kubernetes", "ops"]
-        )
+        self.assertEqual(self.server.store.note_tag_titles(self.note_k8s), ["kubernetes", "ops"])
         # Removing all tags must also propagate ("homelab" was removed above).
         self.cli("note", "set-tags", str(self.find_note_file("Kubernetes")), expect=0)
         self.cli("push", "--root", str(self.root), "--json", expect=0)
@@ -99,9 +103,7 @@ class PushTest(WorkspaceTestCase):
         statuses = {i["status"] for i in result.json["items"]}
         self.assertIn("MOVED_LOCAL", statuses)
         self.cli("push", "--root", str(self.root), "--json", expect=0)
-        self.assertEqual(
-            self.server.store.notes[self.note_k8s]["parent_id"], self.folder_personal
-        )
+        self.assertEqual(self.server.store.notes[self.note_k8s]["parent_id"], self.folder_personal)
 
     def test_new_local_notebook_pushed(self):
         self.init_and_pull()
@@ -144,7 +146,9 @@ class PullChangesTest(WorkspaceTestCase):
         self.server.store.notes[self.note_k8s]["updated_time"] = self.server.store.tick()
         result = self.cli("pull", "--root", str(self.root), "--json", expect=0)
         self.assertEqual(result.json["execution"]["applied"], 1)
-        self.assertIn("remote update", self.find_note_file("Kubernetes").read_text(encoding="utf-8"))
+        self.assertIn(
+            "remote update", self.find_note_file("Kubernetes").read_text(encoding="utf-8")
+        )
 
     def test_remote_new_note_pulled(self):
         self.init_and_pull()
@@ -185,9 +189,7 @@ class PullChangesTest(WorkspaceTestCase):
             "pull", "--root", str(self.root), "--propagate-deletes", "--json", expect=0
         )
         self.assertEqual(result.json["execution"]["applied"], 1)
-        remaining = [
-            p for p in self.root.rglob("Plans--*.md") if ".joplin-sync" not in p.parts
-        ]
+        remaining = [p for p in self.root.rglob("Plans--*.md") if ".joplin-sync" not in p.parts]
         self.assertEqual(remaining, [])
         quarantined = list((self.root / ".joplin-sync" / "quarantine").rglob("*.md"))
         self.assertEqual(len(quarantined), 1)

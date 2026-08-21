@@ -2,23 +2,27 @@
 
 ## Ground rules
 
-- Correctness over features: no silent overwrites, no unverified writes,
-  deterministic output. Read `docs/STATE_MODEL.md` before touching the
-  planner or executor.
-- Zero third-party **runtime** dependencies. A new runtime dependency needs
-  an ADR in `docs/` justifying it against the criteria in the README.
-- Public contracts (exit codes, JSON envelope fields, the metadata header,
-  the state schema) are versioned; breaking them requires a major release.
+- Read the affected assertion and evidence in `docs/contracts/` before changing
+  behavior. Planner and executor changes also require
+  `docs/maintenance/SYNCHRONIZATION.md`.
+- A runtime dependency first requires the policy described by `DEP-001` in
+  `docs/contracts/DEPENDENCIES.md`.
+- Every observable contract change updates the stable assertion, its evidence,
+  and the appropriate version and changelog entry.
 
 ## Development setup
 
-Two separate local virtual environments, both managed by the Makefile
-(CI runs the exact same targets):
+Purpose-specific virtual environments are managed by the Makefile (CI runs the
+exact same targets):
 
 ```bash
 make venv        # venv/      — runtime: the package installed editable
-make venv-dev    # venv-dev/  — tooling: ruff, mypy, build (pinned lock)
+make venv-dev    # venv-dev/  - Linux quality tools: ruff, mypy, audits
+make venv-test   # venv-test/ - cross-platform test tools
+make venv-package # venv-package/ - cross-platform packaging tools
 make check       # lint + typecheck + full test suite
+make freeze-check # verify all generated locks are reproducible
+make ci          # complete Linux CI contract, including docs and security
 make package     # dist/: wheel, sdist, joplin-md-sync.pyz, SHA256SUMS.txt
 make smoke       # clean-venv install of the built wheel + CLI smoke tests
 make help        # list all targets
@@ -29,12 +33,10 @@ Data API.
 
 ## Dependency policy
 
-- Runtime dependencies are declared in `pyproject.toml` (`dependencies`) —
-  currently empty **by design**; adding one needs an ADR (see README).
-- Development tools are declared unpinned in `[dependency-groups]` in
-  `pyproject.toml`; the committed `requirements-dev.txt` is a full
-  `pip freeze` lock of `venv-dev/`. To upgrade tools, run `make freeze`
-  and commit the refreshed lock.
+The normative policy is the
+[dependency contract](docs/contracts/DEPENDENCIES.md). Follow
+[Dependency maintenance](docs/maintenance/DEPENDENCIES.md) for the update
+procedure and commit all generated lock changes together.
 
 ## Versioning
 
@@ -51,8 +53,9 @@ package/checkout/metadata, and `make verify-release` enforces that
 - `make test-live` is an explicit local acceptance target for MCP and GPT
   Actions changes. It reads the ignored `./token` file and is intentionally
   excluded from CI.
-- Update `CHANGELOG.md` under an "Unreleased" heading.
+- Increment `.version`, synchronize version mirrors and examples, and add the
+  matching dated `CHANGELOG.md` section.
 
 ## Release process
 
-See `docs/RELEASE_PROCESS.md`.
+See [Releases](docs/maintenance/RELEASES.md).

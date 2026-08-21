@@ -5,9 +5,11 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import threading
 import time
+import unicodedata
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, NoReturn
 
 from joplin_md_sync.api import JoplinClient
 from joplin_md_sync.canonical import canonicalize_tags
@@ -85,6 +87,7 @@ class JoplinMcpService:
         self._client_factory = client_factory
         self._availability_timeout = availability_timeout
         self._retry_delay = retry_delay
+        self._create_lock = threading.RLock()
 
     def _client_when_available(self) -> JoplinClient:
         deadline = time.monotonic() + self._availability_timeout
@@ -134,6 +137,77 @@ class JoplinMcpService:
         return value.strip()
 
     @staticmethod
+    def _name_key(value: object) -> str:
+        """Canonical key for user-visible Joplin object names."""
+
+        return unicodedata.normalize("NFC", str(value or "").strip().casefold())
+
+    @classmethod
+    def _named_notebooks(
+        cls, client: JoplinClient, *, title: str, parent_id: str
+    ) -> list[dict[str, Any]]:
+        title_key = cls._name_key(title)
+        return [
+            folder
+            for folder in client.list_folders(include_deleted=True)
+            if str(folder.get("parent_id") or "") == parent_id
+            and cls._name_key(folder.get("title")) == title_key
+        ]
+
+    @classmethod
+    def _named_notes(
+        cls, client: JoplinClient, *, title: str, parent_id: str
+    ) -> list[dict[str, Any]]:
+        title_key = cls._name_key(title)
+        return [
+            note
+            for note in client.list_folder_notes(
+                parent_id,
+                include_deleted=True,
+                include_conflicts=True,
+            )
+            if cls._name_key(note.get("title")) == title_key
+        ]
+
+    @staticmethod
+    def _raise_already_exists(
+        object_type: str,
+        matches: list[dict[str, Any]],
+        *,
+        identity: dict[str, object],
+        update_tool: str,
+    ) -> NoReturn:
+        existing_ids = sorted(
+            str(item.get("id") or "") for item in matches if str(item.get("id") or "")
+        )
+        identifier_label = "id" if len(existing_ids) == 1 else "ids"
+        identifier = existing_ids[0] if len(existing_ids) == 1 else ", ".join(existing_ids)
+        message = (
+            f"{object_type} already exists for the requested identity"
+            f" ({identifier_label}: {identifier}); use {update_tool} instead"
+        )
+        details: dict[str, object] = {
+            "object_type": object_type,
+            "identity": identity,
+            "existing_ids": existing_ids,
+            "recommended_tool": update_tool,
+        }
+        if len(existing_ids) == 1:
+            details["existing_id"] = existing_ids[0]
+        deleted_ids = sorted(
+            str(item.get("id") or "")
+            for item in matches
+            if item.get("deleted_time") and str(item.get("id") or "")
+        )
+        if deleted_ids:
+            details["deleted_ids"] = deleted_ids
+        raise ToolServiceError(
+            message,
+            code=f"{object_type.upper()}_ALREADY_EXISTS",
+            details=details,
+        )
+
+    @staticmethod
     def _folder_icon(value: object) -> str:
         if not isinstance(value, str):
             raise ToolServiceError("icon must be a string", code="INVALID_ARGUMENT")
@@ -147,9 +221,7 @@ class JoplinMcpService:
                 code="INVALID_ARGUMENT",
             ) from None
         if not isinstance(parsed, dict) or any(not isinstance(key, str) for key in parsed):
-            raise ToolServiceError(
-                "icon must encode one JSON object", code="INVALID_ARGUMENT"
-            )
+            raise ToolServiceError("icon must encode one JSON object", code="INVALID_ARGUMENT")
         allowed = {"type", "emoji", "name", "dataUrl"}
         unknown = set(parsed) - allowed
         if unknown:
@@ -158,7 +230,11 @@ class JoplinMcpService:
                 code="INVALID_ARGUMENT",
             )
         icon_type = parsed.get("type")
-        if isinstance(icon_type, bool) or not isinstance(icon_type, int) or icon_type not in {1, 2, 3}:
+        if (
+            isinstance(icon_type, bool)
+            or not isinstance(icon_type, int)
+            or icon_type not in {1, 2, 3}
+        ):
             raise ToolServiceError(
                 "icon.type must be 1 (emoji), 2 (data URL), or 3 (Font Awesome)",
                 code="INVALID_ARGUMENT",
@@ -167,9 +243,7 @@ class JoplinMcpService:
         for field in ("emoji", "name", "dataUrl"):
             field_value = parsed.get(field, "")
             if not isinstance(field_value, str):
-                raise ToolServiceError(
-                    f"icon.{field} must be a string", code="INVALID_ARGUMENT"
-                )
+                raise ToolServiceError(f"icon.{field} must be a string", code="INVALID_ARGUMENT")
             normalized[field] = field_value
         required_field = {1: "emoji", 2: "dataUrl", 3: "name"}[icon_type]
         if not str(normalized[required_field]).strip():
@@ -324,7 +398,9 @@ class JoplinMcpService:
                     f"attachments[{index}] unsupported field(s): {', '.join(sorted(unknown))}",
                     code="INVALID_ARGUMENT",
                 )
-            filename = cls._nonempty_text(item.get("filename"), name=f"attachments[{index}].filename")
+            filename = cls._nonempty_text(
+                item.get("filename"), name=f"attachments[{index}].filename"
+            )
             mime = cls._nonempty_text(item.get("mime"), name=f"attachments[{index}].mime")
             if any(character in filename for character in "\r\n") or any(
                 character in mime for character in "\r\n"
@@ -364,9 +440,7 @@ class JoplinMcpService:
             if tag.get("title")
         )
         notebook = client.get_folder(parent_id) if parent_id else None
-        metadata = {
-            key: value for key, value in note.items() if key not in {"id", "title", "body"}
-        }
+        metadata = {key: value for key, value in note.items() if key not in {"id", "title", "body"}}
         metadata["tags"] = tags
         metadata["notebook"] = notebook
         metadata["resources"] = client.list_note_resources(note_id)
@@ -410,13 +484,9 @@ class JoplinMcpService:
                 f"unsupported argument(s): {', '.join(sorted(unknown))}", code="INVALID_ARGUMENT"
             )
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         client = self._client_when_available()
-        notebooks = client.list_folders(
-            include_deleted=include_deleted, max_results=limit
-        )
+        notebooks = client.list_folders(include_deleted=include_deleted, max_results=limit)
         return {"notebooks": notebooks, "count": len(notebooks), "limit": limit}
 
     def get_notebook(self, notebook_id_value: object) -> dict[str, Any]:
@@ -446,19 +516,34 @@ class JoplinMcpService:
                         f"{name} must be a non-negative integer", code="INVALID_ARGUMENT"
                     )
                 fields[name] = value
-        client = self._client_when_available()
-        if parent_id:
-            self._require_notebook(client, parent_id)
-        created = client.create_folder(title=title, parent_id=parent_id)
-        notebook_id = str(created.get("id") or "")
-        if not notebook_id:
-            raise ToolServiceError(
-                "Joplin did not return an id for the new notebook",
-                code="INVALID_API_RESPONSE",
-            )
-        if fields:
-            client.update_folder(notebook_id, fields)
-        return {"notebook": self._require_notebook(client, notebook_id)}
+        with self._create_lock:
+            client = self._client_when_available()
+            if parent_id:
+                parent = self._require_notebook(client, parent_id)
+                if parent.get("deleted_time"):
+                    raise ToolServiceError(
+                        f"notebook is in trash: {parent_id}",
+                        code="NOTEBOOK_NOT_ACTIVE",
+                        details={"notebook_id": parent_id},
+                    )
+            matching = self._named_notebooks(client, title=title, parent_id=parent_id)
+            if matching:
+                self._raise_already_exists(
+                    "notebook",
+                    matching,
+                    identity={"parent_id": parent_id, "title": title},
+                    update_tool="joplin_update_notebook",
+                )
+            created = client.create_folder(title=title, parent_id=parent_id)
+            notebook_id = str(created.get("id") or "")
+            if not notebook_id:
+                raise ToolServiceError(
+                    "Joplin did not return an id for the new notebook",
+                    code="INVALID_API_RESPONSE",
+                )
+            if fields:
+                client.update_folder(notebook_id, fields)
+            return {"notebook": self._require_notebook(client, notebook_id)}
 
     def update_notebook(self, arguments: Mapping[str, object]) -> dict[str, Any]:
         unknown = set(arguments) - _NOTEBOOK_EDITABLE_FIELDS - {"notebook_id"}
@@ -474,7 +559,9 @@ class JoplinMcpService:
                 if not isinstance(value, str):
                     raise ToolServiceError(f"{name} must be a string", code="INVALID_ARGUMENT")
                 if name == "title" and not value.strip():
-                    raise ToolServiceError("title must be a non-empty string", code="INVALID_ARGUMENT")
+                    raise ToolServiceError(
+                        "title must be a non-empty string", code="INVALID_ARGUMENT"
+                    )
                 fields[name] = value.strip() if name in {"title", "parent_id"} else value
         if "icon" in arguments:
             fields["icon"] = self._folder_icon(arguments["icon"])
@@ -537,9 +624,7 @@ class JoplinMcpService:
             )
         notebook_id = self._notebook_id(arguments.get("notebook_id"))
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         include_conflicts = self._boolean(
             arguments.get("include_conflicts"), name="include_conflicts"
         )
@@ -555,9 +640,7 @@ class JoplinMcpService:
 
     def list_notes(self, arguments: Mapping[str, object]) -> dict[str, Any]:
         limit = self._limit(arguments.get("limit"))
-        include_deleted = self._boolean(
-            arguments.get("include_deleted"), name="include_deleted"
-        )
+        include_deleted = self._boolean(arguments.get("include_deleted"), name="include_deleted")
         include_conflicts = self._boolean(
             arguments.get("include_conflicts"), name="include_conflicts"
         )
@@ -594,6 +677,7 @@ class JoplinMcpService:
         title = fields.pop("title", None)
         if not isinstance(title, str) or not title.strip():
             raise ToolServiceError("title must be a non-empty string", code="INVALID_ARGUMENT")
+        title = title.strip()
         has_body = "body" in fields
         body = fields.pop("body", None)
         if has_body and "body_html" in fields:
@@ -602,7 +686,7 @@ class JoplinMcpService:
             )
         if body is None and "body_html" not in fields:
             body = ""
-        parent_id = fields.pop("parent_id", "")
+        parent_id = str(fields.pop("parent_id", "")).strip()
         tags = self._tags(arguments.get("tags"))
         attachments = self._attachment_specs(arguments.get("attachments"))
         notebook_title = arguments.get("notebook_title")
@@ -616,41 +700,69 @@ class JoplinMcpService:
             raise ToolServiceError(
                 "parent_id and notebook_title are mutually exclusive", code="INVALID_ARGUMENT"
             )
-        client = self._client_when_available()
-        if parent_id:
-            if client.get_folder(parent_id) is None:
-                raise ToolServiceError(
-                    f"notebook not found: {parent_id}",
-                    code="NOTEBOOK_NOT_FOUND",
-                    details={"parent_id": parent_id},
+        with self._create_lock:
+            client = self._client_when_available()
+            if parent_id:
+                parent = self._require_notebook(client, parent_id)
+                if parent.get("deleted_time"):
+                    raise ToolServiceError(
+                        f"notebook is in trash: {parent_id}",
+                        code="NOTEBOOK_NOT_ACTIVE",
+                        details={"notebook_id": parent_id},
+                    )
+            else:
+                requested_title = (
+                    notebook_title.strip() if isinstance(notebook_title, str) else "MCP Notes"
                 )
-        else:
-            requested_title = (
-                notebook_title.strip() if isinstance(notebook_title, str) else "MCP Notes"
-            )
-            matching = next(
-                (
-                    folder
-                    for folder in client.list_folders()
-                    if folder.get("title") == requested_title
-                ),
-                None,
-            )
-            folder = matching or client.create_folder(title=requested_title)
-            parent_id = str(folder.get("id") or "")
-            if not parent_id:
-                raise ToolServiceError(
-                    "Joplin did not return an id for the note notebook",
-                    code="INVALID_API_RESPONSE",
+                matching_notebooks = self._named_notebooks(
+                    client, title=requested_title, parent_id=""
                 )
-        created = client.create_note(
-            title=title, body=body, parent_id=parent_id, extra_fields=fields
-        )
-        note_id = str(created.get("id") or "")
-        if not note_id:
-            raise ToolServiceError(
-                "Joplin did not return an id for the new note", code="INVALID_API_RESPONSE"
+                if len(matching_notebooks) > 1:
+                    raise ToolServiceError(
+                        "multiple root notebooks match notebook_title; pass an exact parent_id",
+                        code="NOTEBOOK_PATH_AMBIGUOUS",
+                        details={
+                            "title": requested_title,
+                            "existing_ids": sorted(
+                                str(folder.get("id") or "")
+                                for folder in matching_notebooks
+                                if folder.get("id")
+                            ),
+                        },
+                    )
+                if matching_notebooks:
+                    folder = matching_notebooks[0]
+                    if folder.get("deleted_time"):
+                        notebook_id = str(folder.get("id") or "")
+                        raise ToolServiceError(
+                            f"matching notebook is in trash: {notebook_id}",
+                            code="NOTEBOOK_NOT_ACTIVE",
+                            details={"notebook_id": notebook_id, "title": requested_title},
+                        )
+                else:
+                    folder = client.create_folder(title=requested_title)
+                parent_id = str(folder.get("id") or "")
+                if not parent_id:
+                    raise ToolServiceError(
+                        "Joplin did not return an id for the note notebook",
+                        code="INVALID_API_RESPONSE",
+                    )
+            matching_notes = self._named_notes(client, title=title, parent_id=parent_id)
+            if matching_notes:
+                self._raise_already_exists(
+                    "note",
+                    matching_notes,
+                    identity={"parent_id": parent_id, "title": title},
+                    update_tool="joplin_update_note",
+                )
+            created = client.create_note(
+                title=title, body=body, parent_id=parent_id, extra_fields=fields
             )
+            note_id = str(created.get("id") or "")
+            if not note_id:
+                raise ToolServiceError(
+                    "Joplin did not return an id for the new note", code="INVALID_API_RESPONSE"
+                )
         if tags:
             self._set_tags(client, note_id, tags)
         attached_resources: list[dict[str, Any]] = []
@@ -777,24 +889,27 @@ class JoplinMcpService:
 
     def create_tag(self, title_value: object) -> dict[str, Any]:
         title = self._nonempty_text(title_value, name="title")
-        client = self._client_when_available()
-        existing = next(
-            (
+        with self._create_lock:
+            client = self._client_when_available()
+            matching = [
                 tag
                 for tag in client.list_tags()
-                if str(tag.get("title") or "").strip().casefold() == title.casefold()
-            ),
-            None,
-        )
-        if existing is not None:
-            return {"tag": existing, "created": False}
-        created = client.create_tag(title)
-        tag_id = str(created.get("id") or "")
-        if not tag_id:
-            raise ToolServiceError(
-                "Joplin did not return an id for the new tag", code="INVALID_API_RESPONSE"
-            )
-        return {"tag": self._require_tag(client, tag_id), "created": True}
+                if self._name_key(tag.get("title")) == self._name_key(title)
+            ]
+            if matching:
+                self._raise_already_exists(
+                    "tag",
+                    matching,
+                    identity={"title": title},
+                    update_tool="joplin_update_tag",
+                )
+            created = client.create_tag(title)
+            tag_id = str(created.get("id") or "")
+            if not tag_id:
+                raise ToolServiceError(
+                    "Joplin did not return an id for the new tag", code="INVALID_API_RESPONSE"
+                )
+            return {"tag": self._require_tag(client, tag_id), "created": True}
 
     def update_tag(self, arguments: Mapping[str, object]) -> dict[str, Any]:
         unknown = set(arguments) - {"tag_id", "title"}
@@ -917,19 +1032,34 @@ class JoplinMcpService:
         if title_value is not None and not isinstance(title_value, str):
             raise ToolServiceError("title must be a string", code="INVALID_ARGUMENT")
         data = self._resource_data(arguments.get("content_base64"))
-        client = self._client_when_available()
-        created = client.create_resource(
-            data,
-            filename=filename,
-            mime=mime,
-            title=title_value if isinstance(title_value, str) else None,
-        )
-        resource_id = str(created.get("id") or "")
-        if not resource_id:
-            raise ToolServiceError(
-                "Joplin did not return an id for the new resource", code="INVALID_API_RESPONSE"
+        title = title_value if isinstance(title_value, str) else filename
+        with self._create_lock:
+            client = self._client_when_available()
+            matching = [
+                resource
+                for resource in client.list_resources()
+                if self._name_key(resource.get("title")) == self._name_key(title)
+            ]
+            if matching:
+                self._raise_already_exists(
+                    "resource",
+                    matching,
+                    identity={"title": title},
+                    update_tool="joplin_update_resource",
+                )
+            created = client.create_resource(
+                data,
+                filename=filename,
+                mime=mime,
+                title=title_value if isinstance(title_value, str) else None,
             )
-        return {"resource": self._require_resource(client, resource_id)}
+            resource_id = str(created.get("id") or "")
+            if not resource_id:
+                raise ToolServiceError(
+                    "Joplin did not return an id for the new resource",
+                    code="INVALID_API_RESPONSE",
+                )
+            return {"resource": self._require_resource(client, resource_id)}
 
     def update_resource(self, arguments: Mapping[str, object]) -> dict[str, Any]:
         unknown = set(arguments) - {
@@ -962,7 +1092,9 @@ class JoplinMcpService:
         client = self._client_when_available()
         current = self._require_resource(client, resource_id)
         data = self._resource_data(arguments.get("content_base64")) if has_content else None
-        filename = str(fields.get("filename") or current.get("filename") or current.get("title") or resource_id)
+        filename = str(
+            fields.get("filename") or current.get("filename") or current.get("title") or resource_id
+        )
         mime = str(fields.get("mime") or current.get("mime") or "application/octet-stream")
         client.update_resource(
             resource_id,

@@ -17,7 +17,7 @@ hide:
       Actions through one safety-focused tool.
     </p>
     <div class="home-actions" data-reveal>
-      <a class="home-button home-button--primary" href="GETTING_STARTED/">
+      <a class="home-button home-button--primary" href="user/GETTING_STARTED/">
         Start in five minutes
       </a>
       <a class="home-button home-button--secondary" href="https://github.com/kogeler/joplin-md-sync">
@@ -37,7 +37,7 @@ hide:
       <div class="hero-console__flow" aria-label="Joplin to agent data flow">
         <div class="flow-node flow-node--joplin">
           <!-- Official brandmark from https://joplinapp.org/brand/, used for identification only. -->
-          <img src="assets/images/joplin-brandmark.png" alt="" width="44" height="42">
+          <img src="site/assets/images/joplin-brandmark.png" alt="" width="44" height="42">
           <div><strong>Joplin</strong><small>Your private source</small></div>
         </div>
         <div class="flow-link">
@@ -89,7 +89,7 @@ hide:
           Pull notes into ordinary Markdown, let an agent make a focused change,
           inspect a true three-way diff, then dry-run the exact push plan.
         </p>
-        <a href="AGENT_WORKFLOWS/">Use the file workflow &rarr;</a>
+        <a href="user/AGENT_WORKFLOWS/">Use the file workflow &rarr;</a>
       </article>
       <article data-reveal>
         <span class="value-number">02</span>
@@ -98,7 +98,7 @@ hide:
           Search, read, create, tag, move, and trash notes through typed MCP tools
           when an immediate structured operation is the better fit.
         </p>
-        <a href="MCP_API/">Explore the MCP API &rarr;</a>
+        <a href="user/MCP_API/">Explore the MCP API &rarr;</a>
       </article>
       <article data-reveal>
         <span class="value-number">03</span>
@@ -107,7 +107,7 @@ hide:
           Run Joplin Terminal and the authenticated bridge on your own Linux host,
           while keeping the upstream Data API private on loopback.
         </p>
-        <a href="SELF_HOSTED/">Plan a self-hosted setup &rarr;</a>
+        <a href="user/SELF_HOSTED/">Plan a self-hosted setup &rarr;</a>
       </article>
     </div>
   </div>
@@ -170,7 +170,7 @@ hide:
         choose. joplin-md-sync works through the documented Data API, never the
         Joplin database or profile internals.
       </p>
-      <a class="text-link" href="SECURITY/">Read the security model &rarr;</a>
+      <a class="text-link" href="contracts/SECURITY/">Read the security contract &rarr;</a>
     </div>
     <div class="control-stack" data-reveal>
       <div class="control-layer">
@@ -268,8 +268,8 @@ hide:
       <h2>Make your private notes useful to agents.</h2>
     </div>
     <div class="cta-actions">
-      <a class="home-button home-button--light" href="GETTING_STARTED/">Install and connect</a>
-      <a class="home-button home-button--outline" href="AGENT_INTERFACES/">Choose an interface</a>
+      <a class="home-button home-button--light" href="user/GETTING_STARTED/">Install and connect</a>
+      <a class="home-button home-button--outline" href="user/AGENT_INTERFACES/">Choose an interface</a>
     </div>
   </div>
 </section>

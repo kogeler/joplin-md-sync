@@ -40,9 +40,7 @@ def validate_bearer_token(token: str, *, label: str) -> str:
     except (UnicodeEncodeError, ValueError, binascii.Error):
         raise BearerTokenError(f"{label} token must use URL-safe Base64 encoding") from None
     if len(decoded) < MIN_BEARER_TOKEN_BYTES:
-        raise BearerTokenError(
-            f"{label} token must encode at least {MIN_BEARER_TOKEN_BYTES} bytes"
-        )
+        raise BearerTokenError(f"{label} token must encode at least {MIN_BEARER_TOKEN_BYTES} bytes")
     return token
 
 

@@ -26,22 +26,36 @@ NID = "a" * 32
 
 def base_note(nid=NID, title="T", body="b\n", tags=("x",), parent=FID, path=None):
     return BaseNote(
-        id=nid, rel_path=path or f"Work/T--{nid[:8]}.md", title=title, body=body,
-        tags=tuple(tags), parent_id=parent, updated_time=1000,
+        id=nid,
+        rel_path=path or f"Work/T--{nid[:8]}.md",
+        title=title,
+        body=body,
+        tags=tuple(tags),
+        parent_id=parent,
+        updated_time=1000,
         hashes=note_hashes(title, body, tags, parent),
     )
 
 
 def local_note(nid=NID, title="T", body="b\n", tags=("x",), parent=FID, path=None, header=True):
     return LocalNoteFile(
-        rel_path=path or f"Work/T--{nid[:8] if nid else 'new'}.md", note_id=nid,
-        title=title, body=body, tags=tuple(tags), parent_id=parent, has_header=header,
+        rel_path=path or f"Work/T--{nid[:8] if nid else 'new'}.md",
+        note_id=nid,
+        title=title,
+        body=body,
+        tags=tuple(tags),
+        parent_id=parent,
+        has_header=header,
     )
 
 
 def remote_note(nid=NID, title="T", body="b\n", tags=("x",), parent=FID, updated=1000):
     return RemoteNote(
-        id=nid, parent_id=parent, title=title, body=body, updated_time=updated,
+        id=nid,
+        parent_id=parent,
+        title=title,
+        body=body,
+        updated_time=updated,
         tags=tuple(tags),
     )
 
@@ -101,18 +115,19 @@ class StateMatrixTest(unittest.TestCase):
         self.assertEqual(build_plan(c, direction="pull"), [])
 
     def test_local_metadata_only_change(self):
-        c = self.classify(base=base_note(), local=local_note(tags=("x", "new")), remote=remote_note())
+        c = self.classify(
+            base=base_note(), local=local_note(tags=("x", "new")), remote=remote_note()
+        )
         self.assertEqual(one_status(c).status, models.METADATA_MODIFIED)
 
     def test_local_move_only(self):
-        c = self.classify(
-            base=base_note(), local=local_note(parent="e" * 32), remote=remote_note()
-        )
+        c = self.classify(base=base_note(), local=local_note(parent="e" * 32), remote=remote_note())
         self.assertEqual(one_status(c).status, models.MOVED_LOCAL)
 
     def test_remote_only_change(self):
         c = self.classify(
-            base=base_note(), local=local_note(),
+            base=base_note(),
+            local=local_note(),
             remote=remote_note(body="remote edit\n", updated=2000),
         )
         item = one_status(c)
@@ -182,6 +197,20 @@ class StateMatrixTest(unittest.TestCase):
         self.assertEqual([op.kind for op in ops], [models.OP_PULL_CREATE_LOCAL])
         self.assertEqual(ops[0].new_rel_path, f"Work/T--{NID[:8]}.md")
 
+    def test_local_new_does_not_adopt_remote_note_with_same_title(self):
+        c = self.classify(
+            local=local_note(nid=None, title="same title", path="Work/same title.md"),
+            remote=remote_note(title="same title"),
+        )
+        self.assertEqual(
+            sorted(item.status for item in c.items),
+            [models.LOCAL_NEW, models.REMOTE_NEW],
+        )
+        self.assertEqual(
+            sorted(operation.kind for operation in build_plan(c, direction="sync")),
+            [models.OP_PULL_CREATE_LOCAL, models.OP_PUSH_CREATE_REMOTE],
+        )
+
     # --- deletions ---------------------------------------------------------
 
     def test_local_deleted_remote_unchanged(self):
@@ -234,7 +263,8 @@ class StateMatrixTest(unittest.TestCase):
 
     def test_duplicate_local_ids_invalid(self):
         c = classify(
-            {}, {FID: BaseFolder(id=FID, rel_path="Work", title="Work", parent_id="")},
+            {},
+            {FID: BaseFolder(id=FID, rel_path="Work", title="Work", parent_id="")},
             make_scan(notes=[local_note(path="Work/a.md"), local_note(path="Work/b.md")]),
             make_snapshot(notes=[remote_note()]),
         )
@@ -250,7 +280,9 @@ class StateMatrixTest(unittest.TestCase):
 class FolderMatrixTest(unittest.TestCase):
     def test_remote_new_folder(self):
         c = classify(
-            {}, {}, make_scan(folders=[]),
+            {},
+            {},
+            make_scan(folders=[]),
             make_snapshot(folders=[RemoteFolder(id=FID, parent_id="", title="Work")]),
         )
         f = [x for x in c.folder_items if x.status == models.FOLDER_REMOTE_NEW]
@@ -260,8 +292,13 @@ class FolderMatrixTest(unittest.TestCase):
 
     def test_local_new_folder(self):
         c = classify(
-            {}, {},
-            make_scan(folders=[LocalFolderDir(rel_path="Fresh", folder_id=None, title="Fresh", parent_id="")]),
+            {},
+            {},
+            make_scan(
+                folders=[
+                    LocalFolderDir(rel_path="Fresh", folder_id=None, title="Fresh", parent_id="")
+                ]
+            ),
             make_snapshot(folders=[]),
         )
         ops = build_plan(c, direction="push")
@@ -270,8 +307,13 @@ class FolderMatrixTest(unittest.TestCase):
     def test_folder_conflict_reported_not_planned(self):
         base = {FID: BaseFolder(id=FID, rel_path="Work", title="Work", parent_id="")}
         c = classify(
-            {}, base,
-            make_scan(folders=[LocalFolderDir(rel_path="Work", folder_id=FID, title="LocalName", parent_id="")]),
+            {},
+            base,
+            make_scan(
+                folders=[
+                    LocalFolderDir(rel_path="Work", folder_id=FID, title="LocalName", parent_id="")
+                ]
+            ),
             make_snapshot(folders=[RemoteFolder(id=FID, parent_id="", title="RemoteName")]),
         )
         f = [x for x in c.folder_items if x.status == models.FOLDER_CONFLICT]
@@ -281,11 +323,15 @@ class FolderMatrixTest(unittest.TestCase):
     def test_nested_remote_paths(self):
         child = "c" * 32
         c = classify(
-            {}, {}, make_scan(folders=[]),
-            make_snapshot(folders=[
-                RemoteFolder(id=FID, parent_id="", title="Parent"),
-                RemoteFolder(id=child, parent_id=FID, title="Child"),
-            ]),
+            {},
+            {},
+            make_scan(folders=[]),
+            make_snapshot(
+                folders=[
+                    RemoteFolder(id=FID, parent_id="", title="Parent"),
+                    RemoteFolder(id=child, parent_id=FID, title="Child"),
+                ]
+            ),
         )
         self.assertEqual(c.remote_folder_paths[child], "Parent/Child")
         ops = build_plan(c, direction="pull")
@@ -294,11 +340,15 @@ class FolderMatrixTest(unittest.TestCase):
     def test_sibling_title_collision_disambiguated(self):
         other = "d" * 32
         c = classify(
-            {}, {}, make_scan(folders=[]),
-            make_snapshot(folders=[
-                RemoteFolder(id=FID, parent_id="", title="Same"),
-                RemoteFolder(id=other, parent_id="", title="same"),
-            ]),
+            {},
+            {},
+            make_scan(folders=[]),
+            make_snapshot(
+                folders=[
+                    RemoteFolder(id=FID, parent_id="", title="Same"),
+                    RemoteFolder(id=other, parent_id="", title="same"),
+                ]
+            ),
         )
         paths = set(c.remote_folder_paths.values())
         self.assertEqual(len(paths), 2)

@@ -3,6 +3,7 @@
 import json
 import sys
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -13,8 +14,15 @@ class JsonContractTest(WorkspaceTestCase):
     def test_json_envelope_fields(self):
         self.init_and_pull()
         result = self.cli("status", "--root", str(self.root), "--json", expect=0)
-        for key in ("schema_version", "command", "success", "exit_code", "code",
-                    "tool_version", "workspace"):
+        for key in (
+            "schema_version",
+            "command",
+            "success",
+            "exit_code",
+            "code",
+            "tool_version",
+            "workspace",
+        ):
             self.assertIn(key, result.json, key)
         self.assertEqual(result.json["schema_version"], 1)
 
@@ -27,12 +35,67 @@ class JsonContractTest(WorkspaceTestCase):
     def test_json_has_no_ansi_codes(self):
         self.init_and_pull()
         note = self.find_note_file("Kubernetes")
-        note.write_text(
-            note.read_text(encoding="utf-8") + "\nchange\n", encoding="utf-8"
-        )
+        note.write_text(note.read_text(encoding="utf-8") + "\nchange\n", encoding="utf-8")
         out = self.cli("diff", "--root", str(self.root), "--json", "--unified", expect=0).stdout
         self.assertNotRegex(out, r"\x1b\[")
         json.loads(out)  # valid JSON
+
+    def test_capabilities_report_exact_public_surface(self):
+        result = self.cli("capabilities", "--json", expect=0)
+        self.assertEqual(
+            result.json["commands"],
+            [
+                "version",
+                "capabilities",
+                "update-check",
+                "init",
+                "doctor",
+                "status",
+                "pull",
+                "push",
+                "sync",
+                "diff",
+                "recover",
+                "conflicts list",
+                "conflicts show",
+                "conflicts resolve",
+                "conflicts discard",
+                "note set-title",
+                "note set-tags",
+                "note validate",
+                "resources pull",
+                "mcp serve",
+                "gpt-actions export-openapi",
+            ],
+        )
+        self.assertEqual(result.json["output_schema_version"], 1)
+        self.assertEqual(
+            result.json["exit_codes"],
+            {
+                "0": "ok / no differences",
+                "1": "differences or pending actions",
+                "2": "unresolved conflicts",
+                "3": "invalid workspace or managed file",
+                "4": "API unavailable or auth failed",
+                "5": "concurrent modification / lock busy",
+                "6": "partial operation / recovery required",
+                "7": "unsafe operation blocked",
+                "8": "tool version outdated",
+                "9": "internal failure",
+            },
+        )
+
+    def test_internal_failure_is_stable(self):
+        from joplin_md_sync import cli
+
+        def fail(_args: object) -> object:
+            raise RuntimeError("unexpected failure")
+
+        with mock.patch.dict(cli._HANDLERS, {"version": fail}):
+            result = run_cli("version", "--json")
+        self.assertEqual(result.exit_code, 9)
+        self.assertEqual(result.json["code"], "INTERNAL_ERROR")
+        self.assertFalse(result.json["success"])
 
     def test_diff_never_mutates(self):
         self.init_and_pull()
@@ -84,7 +147,11 @@ class JsonContractTest(WorkspaceTestCase):
         note.write_text(note.read_text(encoding="utf-8") + "\nx\n", encoding="utf-8")
         self.server.stop()  # no network available at all
         result = run_cli(
-            "diff", "--root", str(self.root), "--json", "--offline",
+            "diff",
+            "--root",
+            str(self.root),
+            "--json",
+            "--offline",
             env={"JOPLIN_TOKEN": TOKEN, "JOPLIN_BASE_URL": "http://127.0.0.1:1"},
         )
         self.assertEqual(result.exit_code, 0, result.stdout)
@@ -98,7 +165,10 @@ class ExitCodeTest(WorkspaceTestCase):
     def test_invalid_token_is_auth_failure(self):
         self.cli("init", "--root", str(self.root), expect=0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json",
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
             env={"JOPLIN_TOKEN": "wrong-token", "JOPLIN_BASE_URL": self.server.base_url},
         )
         self.assertEqual(result.exit_code, 4, result.stdout)
@@ -107,7 +177,10 @@ class ExitCodeTest(WorkspaceTestCase):
     def test_missing_token_reported(self):
         self.cli("init", "--root", str(self.root), expect=0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json",
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
             env={"JOPLIN_BASE_URL": self.server.base_url},
         )
         self.assertEqual(result.exit_code, 4)
@@ -115,7 +188,10 @@ class ExitCodeTest(WorkspaceTestCase):
     def test_api_unreachable(self):
         self.cli("init", "--root", str(self.root), expect=0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json",
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
             env={"JOPLIN_TOKEN": TOKEN, "JOPLIN_BASE_URL": "http://127.0.0.1:1"},
         )
         self.assertEqual(result.exit_code, 4)
@@ -139,7 +215,10 @@ class ExitCodeTest(WorkspaceTestCase):
     def test_non_loopback_requires_flag(self):
         self.cli("init", "--root", str(self.root), expect=0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json",
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
             env={"JOPLIN_TOKEN": TOKEN, "JOPLIN_BASE_URL": "http://192.0.2.10:41184"},
         )
         self.assertEqual(result.exit_code, 7, result.stdout)
@@ -154,7 +233,11 @@ class TokenSafetyTest(WorkspaceTestCase):
     def test_token_never_in_output_on_auth_error(self):
         self.cli("init", "--root", str(self.root), expect=0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json", "--verbose",
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
+            "--verbose",
             env={"JOPLIN_TOKEN": TOKEN, "JOPLIN_BASE_URL": "http://127.0.0.1:1"},
         )
         self._assert_no_token(result.stdout, result.stderr)
@@ -163,8 +246,14 @@ class TokenSafetyTest(WorkspaceTestCase):
         self.init_and_pull()
         log_file = self.root.parent / "debug.log"
         self.cli(
-            "doctor", "--root", str(self.root), "--json", "--verbose",
-            "--log-file", str(log_file), expect=0,
+            "doctor",
+            "--root",
+            str(self.root),
+            "--json",
+            "--verbose",
+            "--log-file",
+            str(log_file),
+            expect=0,
         )
         if log_file.exists():
             self._assert_no_token(log_file.read_text(encoding="utf-8"))
@@ -188,7 +277,12 @@ class TokenSafetyTest(WorkspaceTestCase):
         )
         self.assertEqual(result.exit_code, 0)
         result = run_cli(
-            "pull", "--root", str(self.root), "--json", "--token-file", str(token_file),
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
+            "--token-file",
+            str(token_file),
             env={"JOPLIN_BASE_URL": self.server.base_url},
         )
         self.assertEqual(result.exit_code, 0, result.stdout)
@@ -205,7 +299,8 @@ class SecurityScanTest(WorkspaceTestCase):
         (self.root / "Work" / "link").symlink_to(outside)
         result = self.cli("diff", "--root", str(self.root), "--json", expect=0)
         invalid = [
-            i for i in result.json["items"]
+            i
+            for i in result.json["items"]
             if i["status"] == "INVALID_LOCAL_FILE" and "symlink" in (i.get("detail") or "")
         ]
         self.assertEqual(len(invalid), 1)

@@ -57,9 +57,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
             ActionsTokenSource(self.token_file),
             config=ActionsConfig(rate_limit_per_minute=1_000),
         )
-        self.httpd = McpHttpServer(
-            ("127.0.0.1", 0), dispatcher, actions_transport=transport
-        )
+        self.httpd = McpHttpServer(("127.0.0.1", 0), dispatcher, actions_transport=transport)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_actions)
@@ -108,9 +106,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
         return f"/api/gpt/v1/tools/{name}"
 
     def test_read_action_uses_real_service_chain(self) -> None:
-        status, body, headers = self.request(
-            self.tool_path("joplin_list_notes"), {"limit": 10}
-        )
+        status, body, headers = self.request(self.tool_path("joplin_list_notes"), {"limit": 10})
         self.assertEqual(status, 200)
         self.assertTrue(body["success"])
         self.assertEqual(body["result"]["count"], 2)
@@ -177,16 +173,50 @@ class GptActionsHttpTest(WorkspaceTestCase):
         before = len(self.server.store.tags)
         self.assertEqual(self.request(path, raw=b"{", token=ACTIONS_TOKEN)[0], 400)
         deeply_nested = b"[" * 10_000 + b"]" * 10_000
-        self.assertEqual(
-            self.request(path, raw=deeply_nested, token=ACTIONS_TOKEN)[0], 400
-        )
-        self.assertEqual(
-            self.request(path, {}, content_type="text/plain")[0], 415
-        )
+        self.assertEqual(self.request(path, raw=deeply_nested, token=ACTIONS_TOKEN)[0], 400)
+        self.assertEqual(self.request(path, {}, content_type="text/plain")[0], 415)
         status, body, _ = self.request(path, {})
         self.assertEqual(status, 422)
         self.assertEqual(body["error"]["code"], "INVALID_ARGUMENT")
         self.assertEqual(len(self.server.store.tags), before)
+
+    def test_existing_note_create_returns_conflict_with_update_target(self) -> None:
+        before = len(self.server.store.notes)
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_note"),
+            {"title": " kubernetes ", "parent_id": self.folder_work},
+        )
+
+        self.assertEqual(status, 409)
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "NOTE_ALREADY_EXISTS")
+        self.assertFalse(body["error"]["retryable"])
+        self.assertEqual(body["error"]["details"]["existing_id"], self.note_k8s)
+        self.assertEqual(body["error"]["details"]["recommended_tool"], "joplin_update_note")
+        self.assertEqual(len(self.server.store.notes), before)
+
+        notebook_before = len(self.server.store.folders)
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_notebook"),
+            {"title": "WORK"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(body["error"]["code"], "NOTEBOOK_ALREADY_EXISTS")
+        self.assertEqual(body["error"]["details"]["existing_id"], self.folder_work)
+        self.assertEqual(body["error"]["details"]["recommended_tool"], "joplin_update_notebook")
+        self.assertEqual(len(self.server.store.folders), notebook_before)
+
+    def test_ambiguous_notebook_title_returns_candidate_ids(self) -> None:
+        first = self.server.store.add_folder("Ambiguous")
+        second = self.server.store.add_folder(" ambiguous ")
+        status, body, _ = self.request(
+            self.tool_path("joplin_create_note"),
+            {"title": "Blocked", "notebook_title": "AMBIGUOUS"},
+        )
+
+        self.assertEqual(status, 422)
+        self.assertEqual(body["error"]["code"], "NOTEBOOK_PATH_AMBIGUOUS")
+        self.assertEqual(body["error"]["details"]["existing_ids"], sorted((first, second)))
 
     def test_known_route_methods_and_local_health(self) -> None:
         path = self.tool_path("joplin_list_notes")
@@ -253,21 +283,15 @@ class GptActionsHttpTest(WorkspaceTestCase):
         self.httpd.actions_transport = limited
         self.assertTrue(limited._capacity.acquire(blocking=False))
         try:
-            status, body, headers = self.request(
-                self.tool_path("joplin_list_notes"), {}
-            )
+            status, body, headers = self.request(self.tool_path("joplin_list_notes"), {})
             self.assertEqual(status, 503)
             self.assertTrue(body["error"]["retryable"])
             self.assertEqual(headers["Retry-After"], "1")
         finally:
             limited._capacity.release()
 
-        self.assertEqual(
-            self.request(self.tool_path("definitely_absent"), {})[0], 404
-        )
-        status, body, headers = self.request(
-            self.tool_path("joplin_list_notes"), {}
-        )
+        self.assertEqual(self.request(self.tool_path("definitely_absent"), {})[0], 404)
+        status, body, headers = self.request(self.tool_path("joplin_list_notes"), {})
         self.assertEqual(status, 429)
         self.assertEqual(body["error"]["code"], "RATE_LIMITED")
         self.assertIn("Retry-After", headers)
@@ -279,9 +303,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
         if os.name == "posix":
             mcp_file.chmod(0o600)
         self.httpd.token_source = BearerTokenSource(mcp_file)
-        payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "method": "ping"}
-        ).encode("utf-8")
+        payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode("utf-8")
 
         def mcp_request(token: str) -> int:
             request = urllib.request.Request(
@@ -305,9 +327,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
         self.assertEqual(mcp_request(ACTIONS_TOKEN), 401)
         self.assertEqual(mcp_request(mcp_token), 200)
         self.assertEqual(
-            self.request(
-                self.tool_path("joplin_list_notes"), {}, token=mcp_token
-            )[0],
+            self.request(self.tool_path("joplin_list_notes"), {}, token=mcp_token)[0],
             401,
         )
 

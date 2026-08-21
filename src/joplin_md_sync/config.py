@@ -98,7 +98,9 @@ def resolve_base_url(
 
     base_url = base_url.rstrip("/")
     if not base_url.startswith(("http://", "https://")):
-        raise ApiError(f"invalid Joplin base URL: {base_url!r} (must start with http:// or https://)")
+        raise ApiError(
+            f"invalid Joplin base URL: {base_url!r} (must start with http:// or https://)"
+        )
     if not is_loopback_url(base_url) and not allow_remote:
         raise UnsafeOperationError(
             f"refusing non-loopback Joplin API address {base_url}; "

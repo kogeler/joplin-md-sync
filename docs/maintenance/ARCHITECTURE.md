@@ -1,0 +1,129 @@
+# Architecture
+
+This page explains the implementation layout and the reasons behind its
+boundaries. Normative behavior is owned by the
+[contract catalog](../contracts/README.md), especially the
+[synchronization](../contracts/SYNCHRONIZATION.md),
+[agent-interface](../contracts/AGENT_INTERFACES.md),
+[workspace](../contracts/WORKSPACE.md), and
+[security](../contracts/SECURITY.md) contracts.
+
+## Module map
+
+```
+cli.py          argparse tree, JSON envelope, exit-code mapping, logging
+config.py       connection resolution: CLI > env > workspace > discovery
+api.py          Joplin Data API client (urllib): pagination, GET retries,
+                ambiguous-write surfacing, token redaction, port discovery
+mcp_service.py  validated note/notebook/tag/resource operations, relationship
+                traversal, base64 limits, bounded Joplin availability waits
+mcp_server.py   combined HTTP listener and MCP JSON-RPC protocol adapter
+tool_registry.py shared immutable definitions, Actions exposure, effect mapping
+tool_schema.py  dependency-free JSON Schema subset validation
+tool_executor.py shared handler invocation and failure classification
+gpt_actions.py  authenticated Actions routing, limits, envelopes, audit metadata
+gpt_openapi.py  deterministic OpenAPI 3.1 generation and registry hash
+canonical.py    body/tag canonicalization + SHA-256 component hashing
+metadata.py     managed Markdown header parse/emit (single-line JSON comment)
+paths.py        cross-platform filename sanitization, traversal guards
+workspace.py    layout, recursive scan, atomic writes, backups, quarantine
+state.py        SQLite: base snapshots, tombstones, conflicts, run records,
+                integrity check, migration framework
+locking.py      exclusive cross-platform lock (fcntl / msvcrt)
+journal.py      crash-safe run journal + recovery
+planner.py      PURE three-way classification and plan building
+sync.py         remote snapshot + executor (guard/apply/verify/commit)
+diff.py         summary / name-status / unified / three-way rendering
+conflicts.py    bundles, staleness-checked resolution
+resources.py    resource download
+update_check.py GitHub releases freshness check
+errors.py       exception hierarchy = exit codes + result codes
+models.py       shared dataclasses and status constants
+```
+
+The intended separation is transport (`api`), state (`state` and `workspace`),
+decision (`planner`, which is pure), execution (`sync`), and rendering (`cli`
+and `diff`). The planner stays easy to exercise because it takes plain data
+structures and performs no I/O.
+
+The direct Joplin adapters are deliberately separate from the workspace sync
+engine:
+
+```
+MCP client --------> MCP protocol adapter --+
+                                             +-> tool registry/executor -> mcp_service -> api -> Joplin
+Custom GPT Action -> Actions HTTP adapter ---+
+```
+
+It directly manages Joplin notes, notebooks, tags, and resources and does not
+mutate workspace state. The service layer is transport-independent, so future
+transports can reuse its validation, metadata shaping, relationship handling,
+multipart uploads, and outage behavior.
+
+The two transports share the same in-process executor. The Actions adapter
+never calls `/mcp`, and HTTP controllers never bypass the registry to call the
+Joplin client directly. Binary resource read/create/update stays available to
+MCP but is explicitly disabled in Actions exposure metadata because its 10 MiB
+contract cannot fit the Actions text/payload limit.
+
+## Data flow of a mutating command
+
+```
+lock workspace (exclusive)
+check for incomplete journals            -> exit 6 if any
+scan local files                         (workspace.py)
+snapshot remote                          (sync.build_remote_snapshot)
+classify base/local/remote               (planner.classify — pure)
+build ordered operation plan             (planner.build_plan — pure)
+[--dry-run stops here]
+persist plan to journal                  (journal.begin)
+for each op:  guard -> apply -> verify -> commit base -> journal.mark
+finalize: cursor, journal complete, prune backups
+```
+
+## Key design decisions
+
+1. **Zero runtime dependencies.** Everything is stdlib; tests use
+   `unittest`; the fake Joplin server is `http.server`. This keeps the
+   wheel/pyz trivially portable and the supply-chain surface nil.
+2. **Base snapshots are full copies**, not hashes only. A true three-way
+   comparison and offline `status`/`diff --offline` need base content, and
+   it lets `build_remote_snapshot` skip body fetches for notes whose
+   `updated_time` is unchanged.
+3. **Tags are reconciled via the tag map** (`GET /tags` +
+   `GET /tags/:id/notes`), because tag attachment does not bump a note's
+   `updated_time`. Cost scales with number of tags, not notes.
+4. **Optimistic concurrency, no fake locks.** The Joplin API has no
+   conditional writes; instead every op re-reads its inputs immediately
+   before applying and re-reads the result after, aborting that single op
+   (exit 5) on drift. Joplin revisions are never used as versions/ETags.
+5. **The journal marks an op applied only after the base commit**, so
+   recovery can decide "applied or not" purely from current state, without
+   re-running network operations.
+6. **Ambiguous writes** (timeout after a PUT) are settled by re-reading:
+   result == intended → applied; result == pre-state → reported as failed
+   (safe rerun); anything else → concurrent modification.
+7. **`/events` is not used in v1** (full reconciliation is cheap at the
+   target scale and events cover only notes anyway); the cursor is stored
+   for a future optimization.
+8. **Filenames are cosmetic.** Identity lives in the header id + state DB;
+   pull normalizes names; a rename alone is never a content change.
+
+## State database
+
+The current schema groups persistent information by responsibility:
+
+```
+meta          key/value: state_schema_version, event_cursor, ...
+notes         id, rel_path, title, body, tags(json), parent_id,
+              updated_time, component hashes, combined hash
+folders       id, rel_path, title, parent_id
+tombstones    note_id, side (local/remote/both), rel_path, title, time
+conflicts     id, note_id, rel_path, category, created_time, status
+journal_runs  run_id, command, started_time, status, journal_path
+```
+
+Schema compatibility and migration behavior are specified by
+[`SYN-009`](../contracts/SYNCHRONIZATION.md#syn-009-state-corruption-and-schema-drift-fail-closed).
+Implementation changes start in `state.MIGRATIONS` and must update the linked
+evidence before this explanatory inventory is changed.

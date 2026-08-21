@@ -58,9 +58,7 @@ def test_https_request_uses_observed_chatgpt_action_profile(
             return b"{}"
 
     class Opener:
-        def open(
-            self, request: urllib.request.Request, *, timeout: float
-        ) -> Response:
+        def open(self, request: urllib.request.Request, *, timeout: float) -> Response:
             captured["headers"] = dict(request.header_items())
             captured["timeout"] = timeout
             return Response()
@@ -138,8 +136,7 @@ def test_run_setup_checks_public_actions_endpoint_and_writes_token_free_contract
     assert document["servers"] == [{"url": origin}]
     assert assistant.ACTION_PATH in document["paths"]
     assert all(
-        item["post"]["x-openai-isConsequential"] is False
-        for item in document["paths"].values()
+        item["post"]["x-openai-isConsequential"] is False for item in document["paths"].values()
     )
     assert TOKEN not in output.read_text(encoding="utf-8")
     assert messages[-1] == "[6/6] Generating the OpenAPI contract..."

@@ -55,10 +55,18 @@ class ConflictFlowTest(WorkspaceTestCase):
         self.cli("sync", "--root", str(self.root), "--json", expect=2)
         cid = self._conflict_id()
         self.cli(
-            "conflicts", "resolve", cid, "--take-local", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-local",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
-        self.assertEqual(self.server.store.notes[self.note_k8s]["body"], "# Cluster\n\nlocal version\n")
+        self.assertEqual(
+            self.server.store.notes[self.note_k8s]["body"], "# Cluster\n\nlocal version\n"
+        )
         self.cli("diff", "--root", str(self.root), "--json", "--exit-code", expect=0)
         self.assertFalse((self.root / ".joplin-sync" / "conflicts" / cid).exists())
 
@@ -67,7 +75,13 @@ class ConflictFlowTest(WorkspaceTestCase):
         self.cli("sync", "--root", str(self.root), "--json", expect=2)
         cid = self._conflict_id()
         self.cli(
-            "conflicts", "resolve", cid, "--take-remote", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-remote",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
         self.assertIn("remote version", note.read_text(encoding="utf-8"))
@@ -84,11 +98,22 @@ class ConflictFlowTest(WorkspaceTestCase):
             encoding="utf-8",
         )
         self.cli(
-            "conflicts", "resolve", cid, "--merged-file", str(merged),
-            "--root", str(self.root), "--json", expect=0,
+            "conflicts",
+            "resolve",
+            cid,
+            "--merged-file",
+            str(merged),
+            "--root",
+            str(self.root),
+            "--json",
+            expect=0,
         )
-        self.assertEqual(self.server.store.notes[self.note_k8s]["body"], "# Cluster\n\nmerged of both\n")
-        self.assertIn("merged of both", self.find_note_file("Kubernetes").read_text(encoding="utf-8"))
+        self.assertEqual(
+            self.server.store.notes[self.note_k8s]["body"], "# Cluster\n\nmerged of both\n"
+        )
+        self.assertIn(
+            "merged of both", self.find_note_file("Kubernetes").read_text(encoding="utf-8")
+        )
         self.cli("diff", "--root", str(self.root), "--json", "--exit-code", expect=0)
 
     def test_stale_resolution_refused_after_remote_change(self):
@@ -99,7 +124,13 @@ class ConflictFlowTest(WorkspaceTestCase):
         self.server.store.notes[self.note_k8s]["body"] = "# Cluster\n\neven newer remote\n"
         self.server.store.notes[self.note_k8s]["updated_time"] = self.server.store.tick()
         result = self.cli(
-            "conflicts", "resolve", cid, "--take-local", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-local",
+            "--root",
+            str(self.root),
+            "--json",
             expect=5,
         )
         self.assertEqual(result.json["code"], "CONCURRENT_MODIFICATION")
@@ -117,7 +148,14 @@ class ConflictFlowTest(WorkspaceTestCase):
         self.assertEqual(listing.json["conflicts"], [])
         # Sides still diverge, so the next sync re-detects the conflict.
         self.cli("sync", "--root", str(self.root), "--json", expect=2)
-        self.assertEqual(len(self.cli("conflicts", "list", "--root", str(self.root), "--json", expect=2).json["conflicts"]), 1)
+        self.assertEqual(
+            len(
+                self.cli("conflicts", "list", "--root", str(self.root), "--json", expect=2).json[
+                    "conflicts"
+                ]
+            ),
+            1,
+        )
 
 
 class DeleteConflictTest(WorkspaceTestCase):
@@ -136,7 +174,13 @@ class DeleteConflictTest(WorkspaceTestCase):
         # take-local recreates the note in Joplin under the same id.
         cid = listing.json["conflicts"][0]["conflict_id"]
         self.cli(
-            "conflicts", "resolve", cid, "--take-local", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-local",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
         remote = self.server.store.notes[self.note_plans]
@@ -160,7 +204,13 @@ class DeleteConflictTest(WorkspaceTestCase):
             "conflicts"
         ][0]["conflict_id"]
         self.cli(
-            "conflicts", "resolve", cid, "--take-local", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-local",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
         remote = self.server.store.notes[self.note_plans]
@@ -179,7 +229,13 @@ class DeleteConflictTest(WorkspaceTestCase):
             "conflicts"
         ][0]["conflict_id"]
         self.cli(
-            "conflicts", "resolve", cid, "--take-local", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-local",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
         remote = self.server.store.notes[self.note_plans]
@@ -199,7 +255,13 @@ class DeleteConflictTest(WorkspaceTestCase):
         # take-remote restores the file locally.
         cid = listing.json["conflicts"][0]["conflict_id"]
         self.cli(
-            "conflicts", "resolve", cid, "--take-remote", "--root", str(self.root), "--json",
+            "conflicts",
+            "resolve",
+            cid,
+            "--take-remote",
+            "--root",
+            str(self.root),
+            "--json",
             expect=0,
         )
         self.assertIn(
@@ -216,7 +278,8 @@ class JoplinConflictNoteTest(WorkspaceTestCase):
         self.init_and_pull()
         # The conflict note is not pulled as a file.
         conflict_files = [
-            p for p in self.root.rglob("*.md")
+            p
+            for p in self.root.rglob("*.md")
             if "Conflicted" in p.name and ".joplin-sync" not in p.parts
         ]
         self.assertEqual(conflict_files, [])

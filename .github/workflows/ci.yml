@@ -1,49 +1,82 @@
+# Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT.
+
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base branch or commit for the version comparison
+        required: true
+        default: main
+        type: string
 
 permissions:
   contents: read
 
-jobs:
-  version:
-    name: version increment
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
-      - uses: actions/setup-python@v6
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  quality:
+    name: Quality, offline tests, docs, and dependency locks
+    runs-on: ubuntu-26.04
+    timeout-minutes: 50
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-test.txt
+            requirements-package.txt
+            requirements-docs.txt
 
-      - name: Verify .version was incremented
-        run: >-
-          python scripts/check_version_increment.py
-          --base-ref "${{ github.event.pull_request.base.sha }}"
+      - name: Run the Make CI contract
+        env:
+          RUFF_OUTPUT_FORMAT: github
+        run: make ci PY=python
 
-  test:
-    name: test (${{ matrix.platform }}-${{ matrix.arch }}, py${{ matrix.python }})
+      - name: Publish coverage summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [[ -s .artifacts/coverage-report.md ]]; then
+            cat .artifacts/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Coverage data was not produced by this run.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  compatibility:
+    name: Compatibility (${{ matrix.platform }}-${{ matrix.arch }}, Python ${{ matrix.python }})
+    needs: quality
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-26.04
             platform: linux
             arch: amd64
             python: "3.13"
-            python_arch: x64
-          - runner: ubuntu-latest
-            platform: linux
-            arch: amd64
-            python: "3.14"
             python_arch: x64
           - runner: ubuntu-24.04-arm
             platform: linux
@@ -66,51 +99,212 @@ jobs:
             python: "3.14"
             python_arch: x64
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.python_arch }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
 
-      # All logic lives in the Makefile so local runs and CI stay identical.
-      - name: Lint (ruff)
+      - name: Run package tests and metadata checks
         shell: bash
-        run: make lint PY=python
+        run: make test verify-release PY=python
 
-      - name: Type check (mypy)
-        shell: bash
-        run: make typecheck PY=python
-
-      - name: Unit and integration tests (fake Joplin server)
-        shell: bash
-        run: make test PY=python
-
-      - name: Headless service installer tests
+      - name: Run headless service installer tests
         if: matrix.platform == 'linux'
-        shell: bash
         run: make test-service-installer PY=python
 
-      - name: Verify version/manifest consistency
-        shell: bash
-        run: make verify-release PY=python
+  distribution:
+    name: Distribution (${{ matrix.platform }}-${{ matrix.arch }})
+    needs: quality
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            platform: linux
+            arch: amd64
+            python_arch: x64
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            python_arch: arm64
+          - runner: windows-latest
+            platform: windows
+            arch: amd64
+            python_arch: x64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Build wheel, sdist, zipapp, native executable + checksums
-        shell: bash
-        run: make package PY=python
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          architecture: ${{ matrix.python_arch }}
+          cache: pip
+          cache-dependency-path: requirements-package.txt
 
-      - name: Run standalone zipapp
+      - name: Build and smoke-test native executable
         shell: bash
-        run: make smoke-zipapp PY=python
+        run: make standalone checksums smoke-standalone verify-release PY=python
 
-      - name: Install wheel in a clean environment and run CLI
-        shell: bash
-        run: make smoke-wheel PY=python
+      - name: Upload smoke-tested native executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: standalone-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/joplin-md-sync-*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
-      - name: Run native executable
-        shell: bash
-        run: make smoke-standalone PY=python
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Verify artifacts carry no secrets
-        shell: bash
-        run: make verify-release PY=python
+      - name: Review dependency changes
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development, unknown
+
+      - name: Set up Python for fork fallback
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            requirements-test.txt
+            requirements-package.txt
+            requirements-docs.txt
+
+      - name: Audit exact locks for fork fallback
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: make audit PY=python
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - actions
+          - python
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: .github/workflows/codeql.yml:analyze/language:${{ matrix.language }}
+
+  version:
+    name: Version increment
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out base version
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: >-
+            ${{
+              github.event.pull_request.base.sha ||
+              github.event.before ||
+              inputs.base_ref
+            }}
+          path: base
+          persist-credentials: false
+
+      - name: Check out proposed version
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Resolve unpublished same-version recovery baseline
+        id: release-baseline
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VERSION_PATH: source/.version
+        with:
+          script: |
+            const fs = await import("node:fs/promises");
+            const version = (await fs.readFile(process.env.VERSION_PATH, "utf8")).trim();
+            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
+              throw new Error(".version is not a stable semantic version");
+            }
+            try {
+              await github.rest.repos.getReleaseByTag({
+                ...context.repo,
+                tag: `v${version}`,
+              });
+              core.setOutput("unpublished_base_version", "");
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            let latestVersion = "0.0.0";
+            try {
+              const latest = await github.rest.repos.getLatestRelease({ ...context.repo });
+              latestVersion = latest.data.tag_name.replace(/^v/, "");
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(latestVersion)) {
+              throw new Error("latest published release is not a stable vX.Y.Z tag");
+            }
+            core.setOutput("unpublished_base_version", latestVersion);
+
+      - name: Require synchronized version increase
+        working-directory: source
+        env:
+          UNPUBLISHED_BASE_VERSION: ${{ steps.release-baseline.outputs.unpublished_base_version }}
+        run: |
+          base_version="$(tr -d '\r\n' < ../base/.version)"
+          current_version="$(tr -d '\r\n' < .version)"
+          if [[ "$current_version" == "$base_version" && -n "$UNPUBLISHED_BASE_VERSION" ]]; then
+            base_version="$UNPUBLISHED_BASE_VERSION"
+          fi
+          python scripts/check_version_increment.py --base-version "$base_version"

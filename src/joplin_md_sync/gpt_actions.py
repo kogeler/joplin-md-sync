@@ -107,8 +107,7 @@ class ActionsConfig:
             )
         if not 256 <= self.max_response_chars <= HARD_MAX_PAYLOAD_CHARS:
             raise ValueError(
-                "GPT Actions response limit must be between 256 and "
-                f"{HARD_MAX_PAYLOAD_CHARS}"
+                f"GPT Actions response limit must be between 256 and {HARD_MAX_PAYLOAD_CHARS}"
             )
         if self.max_concurrency <= 0:
             raise ValueError("GPT Actions max concurrency must be positive")
@@ -206,9 +205,7 @@ class GptActionsTransport:
                     return True
 
             authorization_values = handler.headers.get_all("Authorization", [])
-            authorization = (
-                authorization_values[0] if len(authorization_values) == 1 else None
-            )
+            authorization = authorization_values[0] if len(authorization_values) == 1 else None
             if not self.token_source.accepts(authorization):
                 handler.close_connection = True
                 allowed, retry_after = self._auth_failure_limit.consume()
@@ -265,17 +262,16 @@ class GptActionsTransport:
             clean_path = urllib.parse.urlsplit(handler.path).path
             prefix = f"{ACTION_PATH_PREFIX}/"
             route = clean_path.removeprefix(prefix) if clean_path.startswith(prefix) else ""
-            tool = (
-                self.registry.get_by_action_route(route)
-                if route and "/" not in route
-                else None
-            )
+            tool = self.registry.get_by_action_route(route) if route and "/" not in route else None
             if tool is None:
                 self._complete(
                     handler,
                     HTTPStatus.NOT_FOUND,
                     self._error(
-                        "ACTION_NOT_FOUND", "The requested Action does not exist.", False, request_id
+                        "ACTION_NOT_FOUND",
+                        "The requested Action does not exist.",
+                        False,
+                        request_id,
                     ),
                     request_id,
                     started,
@@ -287,9 +283,7 @@ class GptActionsTransport:
                 self._complete(
                     handler,
                     HTTPStatus.METHOD_NOT_ALLOWED,
-                    self._error(
-                        "METHOD_NOT_ALLOWED", "Only POST is supported.", False, request_id
-                    ),
+                    self._error("METHOD_NOT_ALLOWED", "Only POST is supported.", False, request_id),
                     request_id,
                     started,
                     request_size,
@@ -330,7 +324,9 @@ class GptActionsTransport:
                 self._complete(
                     handler,
                     HTTPStatus.BAD_REQUEST,
-                    self._error("INVALID_JSON", "The request body is invalid JSON.", False, request_id),
+                    self._error(
+                        "INVALID_JSON", "The request body is invalid JSON.", False, request_id
+                    ),
                     request_id,
                     started,
                     request_size,
@@ -344,7 +340,12 @@ class GptActionsTransport:
                 self._complete(
                     handler,
                     HTTPStatus.BAD_REQUEST,
-                    self._error("INVALID_JSON", "The request body must be one JSON object.", False, request_id),
+                    self._error(
+                        "INVALID_JSON",
+                        "The request body must be one JSON object.",
+                        False,
+                        request_id,
+                    ),
                     request_id,
                     started,
                     request_size,
@@ -358,7 +359,10 @@ class GptActionsTransport:
             handler_duration = time.monotonic() - handler_started
             status, payload, result_class = self._execution_response(execution, request_id)
             rendered = self._render(payload)
-            if len(rendered) > self.config.max_response_chars or len(rendered) > HARD_MAX_PAYLOAD_CHARS:
+            if (
+                len(rendered) > self.config.max_response_chars
+                or len(rendered) > HARD_MAX_PAYLOAD_CHARS
+            ):
                 if execution.success and tool_effect(tool) != "read":
                     status = HTTPStatus.OK
                     result_class = "success_result_omitted"
@@ -396,11 +400,18 @@ class GptActionsTransport:
 
     @staticmethod
     def _error(
-        code: str, message: str, retryable: bool, request_id: str
+        code: str,
+        message: str,
+        retryable: bool,
+        request_id: str,
+        details: object = None,
     ) -> JsonObject:
+        error: JsonObject = {"code": code, "message": message, "retryable": retryable}
+        if details is not None:
+            error["details"] = details
         return {
             "success": False,
-            "error": {"code": code, "message": message, "retryable": retryable},
+            "error": error,
             "request_id": request_id,
         }
 
@@ -416,10 +427,28 @@ class GptActionsTransport:
             )
         failure = execution.failure
         assert failure is not None
+        if failure.category == "conflict_error":
+            return (
+                HTTPStatus.CONFLICT,
+                self._error(
+                    failure.code,
+                    failure.message,
+                    failure.retryable,
+                    request_id,
+                    failure.details,
+                ),
+                failure.category,
+            )
         if failure.category in {"schema_error", "domain_error"}:
             return (
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                self._error(failure.code, failure.message, failure.retryable, request_id),
+                self._error(
+                    failure.code,
+                    failure.message,
+                    failure.retryable,
+                    request_id,
+                    failure.details,
+                ),
                 failure.category,
             )
         if failure.category == "backend_auth_error":
@@ -456,11 +485,7 @@ class GptActionsTransport:
                 failure.category,
             )
         if failure.category == "upstream_error":
-            status = (
-                HTTPStatus.SERVICE_UNAVAILABLE
-                if failure.retryable
-                else HTTPStatus.BAD_GATEWAY
-            )
+            status = HTTPStatus.SERVICE_UNAVAILABLE if failure.retryable else HTTPStatus.BAD_GATEWAY
             return (
                 status,
                 self._error(
@@ -485,9 +510,7 @@ class GptActionsTransport:
         if failure.category == "expected_error":
             return (
                 HTTPStatus.BAD_GATEWAY,
-                self._error(
-                    failure.code, "The tool operation failed.", False, request_id
-                ),
+                self._error(failure.code, "The tool operation failed.", False, request_id),
                 failure.category,
             )
         return (
@@ -498,9 +521,7 @@ class GptActionsTransport:
 
     @staticmethod
     def _render(payload: JsonObject) -> str:
-        return json.dumps(
-            payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-        )
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
     def _complete(
         self,
@@ -528,9 +549,7 @@ class GptActionsTransport:
         if handler.close_connection:
             handler.send_header("Connection", "close")
         if authenticate:
-            handler.send_header(
-                "WWW-Authenticate", 'Bearer realm="joplin-md-sync-gpt-actions"'
-            )
+            handler.send_header("WWW-Authenticate", 'Bearer realm="joplin-md-sync-gpt-actions"')
         if retry_after is not None:
             handler.send_header("Retry-After", str(retry_after))
         if allow is not None:

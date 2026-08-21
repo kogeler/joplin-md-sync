@@ -17,6 +17,7 @@ log = logging.getLogger("joplin_md_sync.tools")
 FailureClass = Literal[
     "schema_error",
     "domain_error",
+    "conflict_error",
     "backend_auth_error",
     "ambiguous_write",
     "partial_write",
@@ -59,21 +60,20 @@ class ToolExecutor:
         except SchemaValidationError as exc:
             return ToolExecution(
                 tool,
-                failure=ToolFailure(
-                    "INVALID_ARGUMENT", str(exc), False, "schema_error"
-                ),
+                failure=ToolFailure("INVALID_ARGUMENT", str(exc), False, "schema_error"),
             )
         try:
             return ToolExecution(tool, payload=tool.handler(arguments))
         except ToolServiceError as exc:
-            category: FailureClass = (
-                "partial_write" if exc.code.startswith("PARTIAL_") else "domain_error"
-            )
+            if exc.code.startswith("PARTIAL_"):
+                category: FailureClass = "partial_write"
+            elif exc.code.endswith("_ALREADY_EXISTS"):
+                category = "conflict_error"
+            else:
+                category = "domain_error"
             return ToolExecution(
                 tool,
-                failure=ToolFailure(
-                    exc.code, str(exc), exc.retryable, category, exc.details
-                ),
+                failure=ToolFailure(exc.code, str(exc), exc.retryable, category, exc.details),
             )
         except AuthError as exc:
             return ToolExecution(
@@ -83,9 +83,7 @@ class ToolExecutor:
         except AmbiguousWriteError as exc:
             return ToolExecution(
                 tool,
-                failure=ToolFailure(
-                    "AMBIGUOUS_WRITE", str(exc), False, "ambiguous_write"
-                ),
+                failure=ToolFailure("AMBIGUOUS_WRITE", str(exc), False, "ambiguous_write"),
             )
         except ApiError as exc:
             upstream_category: FailureClass = (
@@ -103,9 +101,7 @@ class ToolExecutor:
         except JoplinSyncError as exc:
             return ToolExecution(
                 tool,
-                failure=ToolFailure(
-                    exc.code, str(exc), False, "expected_error", exc.details
-                ),
+                failure=ToolFailure(exc.code, str(exc), False, "expected_error", exc.details),
             )
         except Exception:
             log.exception("unexpected tool failure: %s", tool.name)

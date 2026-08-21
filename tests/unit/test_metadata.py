@@ -29,9 +29,7 @@ class HeaderTest(unittest.TestCase):
         self.assertNotIn("\n", header)
         self.assertTrue(header.startswith("<!-- joplin-md-sync: {"))
         payload = header[len("<!-- joplin-md-sync: ") : -len(" -->")]
-        self.assertEqual(
-            payload, f'{{"id":"{NID}","schema":1,"tags":["a","z"],"title":"T"}}'
-        )
+        self.assertEqual(payload, f'{{"id":"{NID}","schema":1,"tags":["a","z"],"title":"T"}}')
 
     def test_cyrillic_title_preserved(self):
         text = emit_note_file(NID, "Заметка про кластер", (), "тело\n")

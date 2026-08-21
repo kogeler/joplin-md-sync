@@ -530,13 +530,9 @@ def validate_sync_args(args: argparse.Namespace) -> None:
             )
     if target.credentials_optional:
         if args.sync_secret_file and not args.sync_username:
-            raise ToolError(
-                "WebDAV --sync-secret-file requires --sync-username"
-            )
+            raise ToolError("WebDAV --sync-secret-file requires --sync-username")
         if args.non_interactive and args.sync_username and not args.sync_secret_file:
-            raise ToolError(
-                "non-interactive WebDAV credentials require --sync-secret-file"
-            )
+            raise ToolError("non-interactive WebDAV credentials require --sync-secret-file")
     if target.browser_auth or target.saml_auth:
         if args.non_interactive:
             raise ToolError(f"{target.label} authentication requires an interactive terminal")
@@ -762,9 +758,7 @@ class CommandRunner:
 
         if timed_out:
             _terminate_process_group(process)
-            raise ToolError(
-                f"{heartbeat_label} timed out after {_format_elapsed(timeout)}"
-            )
+            raise ToolError(f"{heartbeat_label} timed out after {_format_elapsed(timeout)}")
         returncode = process.wait()
         result = subprocess.CompletedProcess(
             command,
@@ -779,9 +773,7 @@ class CommandRunner:
                 raw_detail = (result.stderr or result.stdout).strip()[-2000:]
                 detail = self.redactor.redact(raw_detail)
             suffix = f": {detail}" if detail else ""
-            raise ToolError(
-                f"{heartbeat_label} failed with exit {returncode}{suffix}"
-            )
+            raise ToolError(f"{heartbeat_label} failed with exit {returncode}{suffix}")
         return result
 
     def run_interactive(
@@ -809,13 +801,11 @@ class CommandRunner:
             ) from None
         except OSError as exc:
             raise ToolError(
-                "interactive authentication requires a controlling terminal: "
-                f"{type(exc).__name__}"
+                f"interactive authentication requires a controlling terminal: {type(exc).__name__}"
             ) from None
         if result.returncode != 0:
             raise ToolError(
-                f"interactive command failed with exit {result.returncode}: "
-                f"{safe_command(command)}"
+                f"interactive command failed with exit {result.returncode}: {safe_command(command)}"
             )
 
 
@@ -1054,9 +1044,7 @@ def mcp_binary_version(runner: CommandRunner, binary: Path) -> str:
     if result.returncode != 0:
         detail = runner.redactor.redact((result.stderr or result.stdout).strip()[-1000:])
         suffix = f": {detail}" if detail else ""
-        raise ToolError(
-            f"refusing non-working joplin-md-sync executable: {binary}{suffix}"
-        )
+        raise ToolError(f"refusing non-working joplin-md-sync executable: {binary}{suffix}")
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -1174,8 +1162,7 @@ def install_or_update_mcp(
 def validate_service_bearer_token(token: str, *, label: str) -> None:
     if not token or len(token) > MAX_SERVICE_BEARER_TOKEN_CHARS:
         raise ToolError(
-            f"{label} bearer token must contain at most "
-            f"{MAX_SERVICE_BEARER_TOKEN_CHARS} characters"
+            f"{label} bearer token must contain at most {MAX_SERVICE_BEARER_TOKEN_CHARS} characters"
         )
     if re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", token) is None:
         raise ToolError(f"{label} bearer token must use URL-safe Base64 encoding")
@@ -1259,9 +1246,7 @@ def load_gpt_actions_token(paths: InstallPaths, redactor: SecretRedactor) -> str
     if not paths.gpt_actions_token_file.exists():
         return None
     if paths.gpt_actions_token_file.is_symlink() or not paths.gpt_actions_token_file.is_file():
-        raise ToolError(
-            f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}"
-        )
+        raise ToolError(f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}")
     if paths.gpt_actions_token_file.stat().st_size > MAX_SERVICE_BEARER_TOKEN_CHARS + 2:
         raise ToolError("existing GPT Actions token file is too large")
     try:
@@ -1279,9 +1264,7 @@ def resolve_gpt_actions_token(
     redactor: SecretRedactor,
 ) -> str:
     if paths.gpt_actions_token_file.exists() and not paths.gpt_actions_token_file.is_file():
-        raise ToolError(
-            f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}"
-        )
+        raise ToolError(f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}")
     if paths.gpt_actions_token_file.is_file():
         token = load_gpt_actions_token(paths, redactor)
         if token is None:  # guarded by is_file(); keeps the type explicit
@@ -1604,14 +1587,16 @@ def confirm_reconfigure(
     )
     if not (target_mismatch or setting_mismatch):
         return False
-    LOG.warning("existing profile sync configuration differs from requested %s", configuration.target.label)
+    LOG.warning(
+        "existing profile sync configuration differs from requested %s", configuration.target.label
+    )
     if args.force_reconfigure:
         return True
     if args.non_interactive:
-        raise ToolError("existing sync configuration differs; pass --force-reconfigure to change it")
-    answer = input_fn(
-        f"Reconfigure this profile for {configuration.target.label}? [y/N] "
-    )
+        raise ToolError(
+            "existing sync configuration differs; pass --force-reconfigure to change it"
+        )
+    answer = input_fn(f"Reconfigure this profile for {configuration.target.label}? [y/N] ")
     if answer.strip().lower() not in ("y", "yes"):
         raise ToolError("configuration change cancelled")
     return True
@@ -1673,9 +1658,7 @@ def resolve_secret(
     try:
         value = getpass_fn(prompt)
     except (EOFError, OSError):
-        raise ToolError(
-            f"interactive input is unavailable; pass {file_option}"
-        ) from None
+        raise ToolError(f"interactive input is unavailable; pass {file_option}") from None
     if not value:
         raise ToolError(f"{prompt.strip(': ')} may not be empty")
     return value
@@ -1797,9 +1780,7 @@ def run_browser_authenticated_sync(
 ) -> None:
     LOG.info("starting interactive %s authentication and initial sync", target.label)
     if target.target_id == 3:
-        LOG.info(
-            "OneDrive redirects to 127.0.0.1:9967; forward that port when the host is remote"
-        )
+        LOG.info("OneDrive redirects to 127.0.0.1:9967; forward that port when the host is remote")
     runner.run_interactive(joplin_command(paths, "sync"), timeout=SYNC_TIMEOUT)
     assert target.auth_setting is not None
     persisted_auth = read_setting(runner, paths, target.auth_setting, sensitive=True)
@@ -1880,7 +1861,9 @@ def authenticate_saml(
     server_url = next(
         setting.value for setting in configuration.settings if setting.name == "sync.11.path"
     )
-    LOG.info("open this URL in a browser and complete SAML login: %s/login/sso-saml-app", server_url)
+    LOG.info(
+        "open this URL in a browser and complete SAML login: %s/login/sso-saml-app", server_url
+    )
     code = input_fn("Joplin Server SAML login code: ")
     session_id, user_id = exchange_saml_code(server_url, code)
     redactor.add(session_id)
@@ -2023,9 +2006,7 @@ def persisted_e2ee_works(runner: CommandRunner, paths: InstallPaths) -> bool:
 
 def manual_e2ee_error(paths: InstallPaths, detail: str) -> ToolError:
     command = safe_command(joplin_command(paths, "e2ee", "decrypt", "--retry-failed-items"))
-    return ToolError(
-        f"{detail}. Run this command manually: {command}; then rerun the installer"
-    )
+    return ToolError(f"{detail}. Run this command manually: {command}; then rerun the installer")
 
 
 def bootstrap_e2ee(
@@ -2349,7 +2330,9 @@ def mcp_post(
     except TimeoutError:
         raise ToolError(f"MCP smoke request {method_name} failed: timeout") from None
     except OSError as exc:
-        detail = "connection refused" if isinstance(exc, ConnectionRefusedError) else type(exc).__name__
+        detail = (
+            "connection refused" if isinstance(exc, ConnectionRefusedError) else type(exc).__name__
+        )
         raise ToolError(f"MCP smoke request {method_name} failed: {detail}") from None
     if len(body) > 1024 * 1024:
         raise ToolError(f"MCP smoke response to {method_name} is unexpectedly large")
@@ -2457,9 +2440,7 @@ def gpt_actions_probe_status(
         exc.close()
         return status
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ToolError(
-            f"GPT Actions smoke probe failed: {type(exc).__name__}"
-        ) from None
+        raise ToolError(f"GPT Actions smoke probe failed: {type(exc).__name__}") from None
 
 
 def smoke_test_gpt_actions_service(

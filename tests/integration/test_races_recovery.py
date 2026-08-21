@@ -67,7 +67,9 @@ class RaceProtectionTest(WorkspaceTestCase):
 
     def test_read_timeout_fails_cleanly_before_write(self):
         self.init_and_pull()
-        self.server.set_before_request(lambda m, p, q: "abort" if m == "GET" and p == "/notes" else None)
+        self.server.set_before_request(
+            lambda m, p, q: "abort" if m == "GET" and p == "/notes" else None
+        )
         result = self.cli("pull", "--root", str(self.root), "--json", expect=4)
         self.server.set_before_request(None)
         self.assertEqual(result.json["code"], "API_UNAVAILABLE")
@@ -141,9 +143,7 @@ class LockingIntegrationTest(WorkspaceTestCase):
             time.sleep(20)
             """
         )
-        proc = subprocess.Popen(
-            [_sys.executable, "-c", script], stdout=subprocess.PIPE, text=True
-        )
+        proc = subprocess.Popen([_sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
         try:
             assert proc.stdout is not None
             self.assertEqual(proc.stdout.readline().strip(), "locked")
@@ -163,17 +163,24 @@ class RecoveryTest(WorkspaceTestCase):
         sync_dir = self.root / ".joplin-sync"
         run_id = "deadbeef" * 4
         journal = {
-            "run_id": run_id, "tool_version": "1.0.0", "command": "push",
-            "started_time": 0, "status": "in-progress",
+            "run_id": run_id,
+            "tool_version": "1.0.0",
+            "command": "push",
+            "started_time": 0,
+            "status": "in-progress",
             "operations": [
-                {"op_id": "op-0001", "kind": "push_update_remote", "status": "planned",
-                 "note_id": self.note_k8s, "path": "Work/x.md",
-                 "expected_local_hash": "0" * 64, "expected_remote_hash": "0" * 64},
+                {
+                    "op_id": "op-0001",
+                    "kind": "push_update_remote",
+                    "status": "planned",
+                    "note_id": self.note_k8s,
+                    "path": "Work/x.md",
+                    "expected_local_hash": "0" * 64,
+                    "expected_remote_hash": "0" * 64,
+                },
             ],
         }
-        (sync_dir / "journal" / f"{run_id}.json").write_text(
-            json.dumps(journal), encoding="utf-8"
-        )
+        (sync_dir / "journal" / f"{run_id}.json").write_text(json.dumps(journal), encoding="utf-8")
         import sqlite3
 
         conn = sqlite3.connect(sync_dir / "state.sqlite3")
@@ -223,19 +230,28 @@ class RecoveryTest(WorkspaceTestCase):
         ).fetchone()[0]
         run_id = "cafebabe" * 4
         journal = {
-            "run_id": run_id, "command": "pull", "status": "in-progress", "started_time": 0,
+            "run_id": run_id,
+            "command": "pull",
+            "status": "in-progress",
+            "started_time": 0,
             "tool_version": "1.0.0",
             "operations": [
-                {"op_id": "op-0001", "kind": "pull_update_local", "status": "planned",
-                 "note_id": self.note_k8s, "expected_remote_hash": combined,
-                 "expected_local_hash": None},
+                {
+                    "op_id": "op-0001",
+                    "kind": "pull_update_local",
+                    "status": "planned",
+                    "note_id": self.note_k8s,
+                    "expected_remote_hash": combined,
+                    "expected_local_hash": None,
+                },
             ],
         }
         jpath = self.root / ".joplin-sync" / "journal" / f"{run_id}.json"
         jpath.write_text(json.dumps(journal), encoding="utf-8")
         conn.execute(
             "INSERT INTO journal_runs(run_id, command, started_time, status, journal_path)"
-            " VALUES(?, 'pull', 0, 'in-progress', ?)", (run_id, str(jpath)),
+            " VALUES(?, 'pull', 0, 'in-progress', ?)",
+            (run_id, str(jpath)),
         )
         conn.commit()
         conn.close()

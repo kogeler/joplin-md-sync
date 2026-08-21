@@ -21,17 +21,13 @@ class ParseVersionTest(unittest.TestCase):
 
 class CheckForUpdateTest(unittest.TestCase):
     def test_outdated_detected(self):
-        with mock.patch.object(
-            update_check, "_fetch_json", return_value={"tag_name": "v99.0.0"}
-        ):
+        with mock.patch.object(update_check, "_fetch_json", return_value={"tag_name": "v99.0.0"}):
             result = update_check.check_for_update()
         self.assertTrue(result["outdated"])
         self.assertIn("v99.0.0", result["update_command"])
 
     def test_current_version_ok(self):
-        with mock.patch.object(
-            update_check, "_fetch_json", return_value={"tag_name": "v1.0.0"}
-        ):
+        with mock.patch.object(update_check, "_fetch_json", return_value={"tag_name": "v1.0.0"}):
             result = update_check.check_for_update()
         self.assertFalse(result["outdated"])
 
@@ -53,9 +49,7 @@ class CheckForUpdateTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "UPDATE_CHECK_FAILED")
 
     def test_no_stable_release(self):
-        with mock.patch.object(
-            update_check, "_fetch_json", return_value={"tag_name": "nightly"}
-        ):
+        with mock.patch.object(update_check, "_fetch_json", return_value={"tag_name": "nightly"}):
             with self.assertRaises(ApiError) as ctx:
                 update_check.check_for_update()
         self.assertEqual(ctx.exception.code, "UPDATE_CHECK_FAILED")

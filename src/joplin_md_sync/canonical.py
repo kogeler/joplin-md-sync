@@ -3,7 +3,7 @@
 The exact same canonicalization is used for hashing and for file emission,
 so a pulled file re-hashes to the hash stored in the base snapshot.
 
-Rules (docs/STATE_MODEL.md):
+Contract: docs/contracts/WORKSPACE.md.
 * line endings are normalized to ``\\n``;
 * no trailing-whitespace stripping, no Markdown reformatting;
 * no Unicode normalization (NFC/NFD differences are preserved verbatim);

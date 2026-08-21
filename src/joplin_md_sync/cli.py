@@ -1,6 +1,6 @@
 """Command-line interface: argparse tree, JSON envelope, stable exit codes.
 
-Contract (docs/CLI.md, AGENTS.md):
+Contract: docs/contracts/CLI.md.
 * ``--json`` output is deterministic UTF-8 on stdout, free of logs;
 * logs and diagnostics go to stderr (and optionally ``--log-file``);
 * exit codes are stable (see errors.py);
@@ -89,7 +89,9 @@ def _add_output_args(p: argparse.ArgumentParser) -> None:
 
 
 def _add_conn_args(p: argparse.ArgumentParser, *, timeout_default: float = 30.0) -> None:
-    p.add_argument("--base-url", metavar="URL", help="Joplin API base URL (e.g. http://127.0.0.1:41184)")
+    p.add_argument(
+        "--base-url", metavar="URL", help="Joplin API base URL (e.g. http://127.0.0.1:41184)"
+    )
     p.add_argument("--port", type=int, metavar="PORT", help="Joplin API port on 127.0.0.1")
     p.add_argument("--token-file", metavar="PATH", help="file containing the Joplin token")
     p.add_argument(
@@ -100,13 +102,16 @@ def _add_conn_args(p: argparse.ArgumentParser, *, timeout_default: float = 30.0)
         help=f"HTTP timeout (default {timeout_default:g})",
     )
     p.add_argument(
-        "--allow-remote-api", action="store_true",
+        "--allow-remote-api",
+        action="store_true",
         help="allow a non-loopback Joplin API address (off by default)",
     )
 
 
 def _add_root_arg(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--root", default=".", metavar="PATH", help="workspace root (default: current directory)")
+    p.add_argument(
+        "--root", default=".", metavar="PATH", help="workspace root (default: current directory)"
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -132,7 +137,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_output_args(p)
     _add_root_arg(p)
     p.add_argument(
-        "--mode", choices=("remote-first", "local-first"), default="remote-first",
+        "--mode",
+        choices=("remote-first", "local-first"),
+        default="remote-first",
         help="remote-first (default): Joplin is the initial source of truth",
     )
 
@@ -157,7 +164,8 @@ def build_parser() -> argparse.ArgumentParser:
         _add_root_arg(p)
         p.add_argument("--dry-run", action="store_true", help="plan only; mutate nothing")
         p.add_argument(
-            "--propagate-deletes", action="store_true",
+            "--propagate-deletes",
+            action="store_true",
             help="apply deletions across sides (local quarantine / Joplin trash)",
         )
 
@@ -228,8 +236,12 @@ def build_parser() -> argparse.ArgumentParser:
     _add_output_args(mp)
     _add_conn_args(mp, timeout_default=5.0)
     mp.add_argument("--host", default="127.0.0.1", help="MCP bind host (default: 127.0.0.1)")
-    mp.add_argument("--mcp-port", type=int, default=8765, metavar="PORT", help="MCP listen port (default: 8765)")
-    mp.add_argument("--mcp-path", default="/mcp", metavar="PATH", help="MCP endpoint path (default: /mcp)")
+    mp.add_argument(
+        "--mcp-port", type=int, default=8765, metavar="PORT", help="MCP listen port (default: 8765)"
+    )
+    mp.add_argument(
+        "--mcp-path", default="/mcp", metavar="PATH", help="MCP endpoint path (default: /mcp)"
+    )
     mp.add_argument(
         "--auth-token-file",
         metavar="PATH",
@@ -305,9 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("gpt-actions", help="export and operate ChatGPT GPT Actions")
     gsub = p.add_subparsers(dest="gpt_actions_command", required=True, metavar="SUBCOMMAND")
-    gp = gsub.add_parser(
-        "export-openapi", help="export the Actions OpenAPI 3.1 JSON contract"
-    )
+    gp = gsub.add_parser("export-openapi", help="export the Actions OpenAPI 3.1 JSON contract")
     _add_output_args(gp)
     gp.add_argument(
         "--server-url",
@@ -355,9 +365,7 @@ def _setup_logging(args: argparse.Namespace) -> None:
     if log_file:
         fh = logging.FileHandler(log_file, encoding="utf-8")
         fh.setLevel(logging.DEBUG)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-        )
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         fh.addFilter(_RedactionFilter())
         root.addHandler(fh)
 
@@ -426,7 +434,9 @@ def cmd_version(args: argparse.Namespace) -> CommandOutput:
         "build_commit": None,
         "distribution": _distribution(),
     }
-    text = [f"joplin-md-sync {__version__} (python {payload['python_version']}, {payload['distribution']})"]
+    text = [
+        f"joplin-md-sync {__version__} (python {payload['python_version']}, {payload['distribution']})"
+    ]
     return CommandOutput(EXIT_OK, errors.CODE_OK, payload, text)
 
 
@@ -438,11 +448,27 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
         "output_schema_version": OUTPUT_SCHEMA_VERSION,
         "platform": {"system": platform.system(), "python": platform.python_version()},
         "commands": [
-            "version", "capabilities", "update-check", "init", "doctor", "status",
-            "pull", "push", "sync", "diff", "recover",
-            "conflicts list", "conflicts show", "conflicts resolve", "conflicts discard",
-            "note set-title", "note set-tags", "note validate", "resources pull",
-            "mcp serve", "gpt-actions export-openapi",
+            "version",
+            "capabilities",
+            "update-check",
+            "init",
+            "doctor",
+            "status",
+            "pull",
+            "push",
+            "sync",
+            "diff",
+            "recover",
+            "conflicts list",
+            "conflicts show",
+            "conflicts resolve",
+            "conflicts discard",
+            "note set-title",
+            "note set-tags",
+            "note validate",
+            "resources pull",
+            "mcp serve",
+            "gpt-actions export-openapi",
         ],
         "features": {
             "propagate_deletes_flag": True,
@@ -460,11 +486,16 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "gpt_actions_openapi_export": True,
         },
         "exit_codes": {
-            "0": "ok / no differences", "1": "differences or pending actions",
-            "2": "unresolved conflicts", "3": "invalid workspace or managed file",
-            "4": "API unavailable or auth failed", "5": "concurrent modification / lock busy",
-            "6": "partial operation / recovery required", "7": "unsafe operation blocked",
-            "8": "tool version outdated", "9": "internal failure",
+            "0": "ok / no differences",
+            "1": "differences or pending actions",
+            "2": "unresolved conflicts",
+            "3": "invalid workspace or managed file",
+            "4": "API unavailable or auth failed",
+            "5": "concurrent modification / lock busy",
+            "6": "partial operation / recovery required",
+            "7": "unsafe operation blocked",
+            "8": "tool version outdated",
+            "9": "internal failure",
         },
     }
     return CommandOutput(EXIT_OK, errors.CODE_OK, payload, ["capabilities reported"])
@@ -472,8 +503,14 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
 
 def cmd_update_check(args: argparse.Namespace) -> CommandOutput:
     if args.offline:
-        payload = {"checked": False, "reason": "offline mode requested", "current_version": __version__}
-        return CommandOutput(EXIT_OK, "UPDATE_CHECK_SKIPPED", payload, ["update check skipped (--offline)"])
+        payload = {
+            "checked": False,
+            "reason": "offline mode requested",
+            "current_version": __version__,
+        }
+        return CommandOutput(
+            EXIT_OK, "UPDATE_CHECK_SKIPPED", payload, ["update check skipped (--offline)"]
+        )
     from joplin_md_sync.update_check import check_for_update
 
     result = check_for_update(include_prerelease=args.include_prerelease)
@@ -551,22 +588,27 @@ def cmd_doctor(args: argparse.Namespace) -> CommandOutput:
     if ws is not None and store is not None:
         runs = store.incomplete_runs()
         add(
-            "incomplete_runs", not runs,
+            "incomplete_runs",
+            not runs,
             "none" if not runs else f"{len(runs)} incomplete run(s); run 'recover'",
         )
         if runs and exit_code == EXIT_OK:
             exit_code, code = errors.EXIT_PARTIAL, errors.CODE_RECOVERY_REQUIRED
         conflicts = store.open_conflicts()
         add(
-            "open_conflicts", not conflicts,
+            "open_conflicts",
+            not conflicts,
             "none" if not conflicts else f"{len(conflicts)} open conflict(s); see 'conflicts list'",
         )
         if conflicts and exit_code == EXIT_OK:
             exit_code, code = EXIT_CONFLICTS, errors.CODE_CONFLICTS_PRESENT
         scan = ws.scan()
         add(
-            "invalid_local_files", not scan.invalid,
-            "none" if not scan.invalid else "; ".join(f"{i.rel_path}: {i.reason}" for i in scan.invalid[:10]),
+            "invalid_local_files",
+            not scan.invalid,
+            "none"
+            if not scan.invalid
+            else "; ".join(f"{i.rel_path}: {i.reason}" for i in scan.invalid[:10]),
         )
         if scan.invalid and exit_code == EXIT_OK:
             exit_code, code = errors.EXIT_INVALID_WORKSPACE, errors.CODE_INVALID_LOCAL_FILE
@@ -609,7 +651,10 @@ def cmd_status(args: argparse.Namespace) -> CommandOutput:
             scan = ws.scan()
             open_ids = frozenset(row["note_id"] for row in store.open_conflicts())
             classification = classify(
-                base_notes, base_folders, scan, snapshot_from_base(base_notes, base_folders),
+                base_notes,
+                base_folders,
+                scan,
+                snapshot_from_base(base_notes, base_folders),
                 open_conflict_note_ids=open_ids,
             )
             summary = summary_counts(classification)
@@ -619,8 +664,11 @@ def cmd_status(args: argparse.Namespace) -> CommandOutput:
             runs = [dict(r) for r in store.incomplete_runs()]
             payload = {
                 "summary": summary,
-                "items": [i for i in items_json(classification, remote_known=False)
-                          if i.get("status") != models.UNCHANGED],
+                "items": [
+                    i
+                    for i in items_json(classification, remote_known=False)
+                    if i.get("status") != models.UNCHANGED
+                ],
                 "open_conflicts": conflicts,
                 "incomplete_runs": runs,
                 "remote_state": "unknown (status is offline; use diff for a live comparison)",
@@ -661,7 +709,8 @@ def _sync_like(args: argparse.Namespace, direction: str) -> CommandOutput:
                 base_notes, base_folders, scan, snapshot, open_conflict_note_ids=open_ids
             )
             plan = build_plan(
-                classification, direction=direction,
+                classification,
+                direction=direction,
                 propagate_deletes=args.propagate_deletes,
             )
             summary = summary_counts(classification)
@@ -686,17 +735,25 @@ def _sync_like(args: argparse.Namespace, direction: str) -> CommandOutput:
                 }
                 if conflict_count:
                     return CommandOutput(
-                        EXIT_CONFLICTS, errors.CODE_CONFLICTS_PRESENT, payload,
+                        EXIT_CONFLICTS,
+                        errors.CODE_CONFLICTS_PRESENT,
+                        payload,
                         [f"dry-run: {len(plan)} operation(s); {conflict_count} conflict(s)"],
                         workspace=str(ws.root),
                     )
                 if plan or blocked_deletions:
                     return CommandOutput(
-                        EXIT_DIFF, errors.CODE_PENDING_ACTIONS, payload,
-                        [f"dry-run: {len(plan)} operation(s) pending"], workspace=str(ws.root),
+                        EXIT_DIFF,
+                        errors.CODE_PENDING_ACTIONS,
+                        payload,
+                        [f"dry-run: {len(plan)} operation(s) pending"],
+                        workspace=str(ws.root),
                     )
                 return CommandOutput(
-                    EXIT_OK, errors.CODE_OK, payload, ["dry-run: nothing to do"],
+                    EXIT_OK,
+                    errors.CODE_OK,
+                    payload,
+                    ["dry-run: nothing to do"],
                     workspace=str(ws.root),
                 )
 
@@ -734,17 +791,26 @@ def _sync_like(args: argparse.Namespace, direction: str) -> CommandOutput:
             ]
             if report.concurrent_failures:
                 return CommandOutput(
-                    errors.EXIT_CONCURRENT, errors.CODE_CONCURRENT_MODIFICATION,
-                    payload, text, workspace=str(ws.root),
+                    errors.EXIT_CONCURRENT,
+                    errors.CODE_CONCURRENT_MODIFICATION,
+                    payload,
+                    text,
+                    workspace=str(ws.root),
                 )
             if report.failed:
                 return CommandOutput(
-                    errors.EXIT_PARTIAL, errors.CODE_PARTIAL_FAILURE, payload, text,
+                    errors.EXIT_PARTIAL,
+                    errors.CODE_PARTIAL_FAILURE,
+                    payload,
+                    text,
                     workspace=str(ws.root),
                 )
             if open_after:
                 return CommandOutput(
-                    EXIT_CONFLICTS, errors.CODE_CONFLICTS_PRESENT, payload, text,
+                    EXIT_CONFLICTS,
+                    errors.CODE_CONFLICTS_PRESENT,
+                    payload,
+                    text,
                     workspace=str(ws.root),
                 )
             return CommandOutput(EXIT_OK, errors.CODE_OK, payload, text, workspace=str(ws.root))
@@ -797,9 +863,9 @@ def cmd_diff(args: argparse.Namespace) -> CommandOutput:
             text.append(rendered.rstrip("\n"))
         payload["unified"] = rendered
     if not text:
-        text = [
-            f"{k}: {v}" for k, v in summary.items() if k != "by_status" and v
-        ] or ["no differences"]
+        text = [f"{k}: {v}" for k, v in summary.items() if k != "by_status" and v] or [
+            "no differences"
+        ]
 
     has_changes = bool(
         [i for i in classification.items if i.status != models.UNCHANGED]
@@ -809,11 +875,15 @@ def cmd_diff(args: argparse.Namespace) -> CommandOutput:
     has_conflicts = summary["conflicts"] > 0
     if args.exit_code:
         if has_conflicts:
-            return CommandOutput(EXIT_CONFLICTS, errors.CODE_CONFLICTS_PRESENT, payload, text, str(ws.root))
+            return CommandOutput(
+                EXIT_CONFLICTS, errors.CODE_CONFLICTS_PRESENT, payload, text, str(ws.root)
+            )
         if has_changes:
             return CommandOutput(EXIT_DIFF, errors.CODE_DIFF_FOUND, payload, text, str(ws.root))
-    code = errors.CODE_CONFLICTS_PRESENT if has_conflicts else (
-        errors.CODE_DIFF_FOUND if has_changes else errors.CODE_OK
+    code = (
+        errors.CODE_CONFLICTS_PRESENT
+        if has_conflicts
+        else (errors.CODE_DIFF_FOUND if has_changes else errors.CODE_OK)
     )
     return CommandOutput(EXIT_OK, code, payload, text, str(ws.root))
 
@@ -858,8 +928,10 @@ def cmd_conflicts(args: argparse.Namespace) -> CommandOutput:
                 config = ws.read_config()
                 client = _client_for(args, config)
                 mode = (
-                    "take-local" if args.take_local
-                    else "take-remote" if args.take_remote
+                    "take-local"
+                    if args.take_local
+                    else "take-remote"
+                    if args.take_remote
                     else "merged-file"
                 )
                 journal = Journal(ws, store, f"conflicts resolve {mode}")
@@ -869,8 +941,13 @@ def cmd_conflicts(args: argparse.Namespace) -> CommandOutput:
                 journal.begin([op], input_summary={"conflict_id": args.conflict_id, "mode": mode})
                 try:
                     result = conflicts_mod.resolve_conflict(
-                        ws, store, client, args.conflict_id,
-                        mode=mode, merged_file=args.merged_file, run_id=journal.run_id,
+                        ws,
+                        store,
+                        client,
+                        args.conflict_id,
+                        mode=mode,
+                        merged_file=args.merged_file,
+                        run_id=journal.run_id,
                     )
                     journal.mark("op-0001", "applied", result.get("action", ""))
                     journal.finish("complete")
@@ -879,14 +956,20 @@ def cmd_conflicts(args: argparse.Namespace) -> CommandOutput:
                     journal.finish("complete")
                     raise
                 return CommandOutput(
-                    EXIT_OK, errors.CODE_OK, result,
-                    [f"conflict {args.conflict_id} resolved: {result['action']}"], str(ws.root),
+                    EXIT_OK,
+                    errors.CODE_OK,
+                    result,
+                    [f"conflict {args.conflict_id} resolved: {result['action']}"],
+                    str(ws.root),
                 )
             if sub == "discard":
                 result = conflicts_mod.discard_conflict(ws, store, args.conflict_id)
                 return CommandOutput(
-                    EXIT_OK, errors.CODE_OK, result,
-                    [f"conflict {args.conflict_id} discarded"], str(ws.root),
+                    EXIT_OK,
+                    errors.CODE_OK,
+                    result,
+                    [f"conflict {args.conflict_id} discarded"],
+                    str(ws.root),
                 )
         finally:
             store.close()
@@ -913,12 +996,18 @@ def cmd_note(args: argparse.Namespace) -> CommandOutput:
         except MetadataError as exc:
             payload = {"path": str(path), "valid": False, "managed": True, "detail": str(exc)}
             return CommandOutput(
-                errors.EXIT_INVALID_WORKSPACE, errors.CODE_INVALID_LOCAL_FILE, payload,
+                errors.EXIT_INVALID_WORKSPACE,
+                errors.CODE_INVALID_LOCAL_FILE,
+                payload,
                 [f"INVALID: {exc}"],
             )
         payload = {
-            "path": str(path), "valid": True, "managed": True,
-            "note_id": parsed.note_id, "title": parsed.title, "tags": list(parsed.tags),
+            "path": str(path),
+            "valid": True,
+            "managed": True,
+            "note_id": parsed.note_id,
+            "title": parsed.title,
+            "tags": list(parsed.tags),
         }
         return CommandOutput(EXIT_OK, errors.CODE_OK, payload, ["valid managed file"])
 
@@ -938,7 +1027,10 @@ def cmd_note(args: argparse.Namespace) -> CommandOutput:
         tags = canonicalize_tags(args.tags)
     write_file_atomic(path, emit_note_file(note_id, title, tags, body))
     payload = {
-        "path": str(path), "note_id": note_id, "title": title, "tags": list(tags),
+        "path": str(path),
+        "note_id": note_id,
+        "title": title,
+        "tags": list(tags),
         "header": serialize_header(note_id, title, tags),
     }
     return CommandOutput(EXIT_OK, errors.CODE_OK, payload, [f"updated header of {path}"])
@@ -990,14 +1082,14 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
     if not args.gpt_actions and any(value is not None for value in actions_only_options):
         raise UnsafeOperationError("GPT Actions options require --gpt-actions")
     if args.gpt_actions and not args.gpt_actions_token_file:
-        raise UnsafeOperationError(
-            "--gpt-actions requires --gpt-actions-token-file"
-        )
+        raise UnsafeOperationError("--gpt-actions requires --gpt-actions-token-file")
 
     if not 1 <= args.mcp_port <= 65535:
         raise UnsafeOperationError("--mcp-port must be between 1 and 65535")
     if not args.mcp_path.startswith("/") or "?" in args.mcp_path or "#" in args.mcp_path:
-        raise UnsafeOperationError("--mcp-path must be an absolute URL path without query or fragment")
+        raise UnsafeOperationError(
+            "--mcp-path must be an absolute URL path without query or fragment"
+        )
     if args.retry_timeout < 0:
         raise UnsafeOperationError("--retry-timeout must be non-negative")
     if args.retry_delay <= 0:
@@ -1010,9 +1102,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
                 f"refusing non-loopback MCP bind {args.host}; pass --allow-remote-mcp to override"
             )
         if not args.auth_token_file:
-            raise UnsafeOperationError(
-                "a non-loopback MCP bind requires --auth-token-file"
-            )
+            raise UnsafeOperationError("a non-loopback MCP bind requires --auth-token-file")
 
     allowed_origins: set[str] = set()
     for origin in args.allowed_origin:
@@ -1020,9 +1110,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
         try:
             split = urllib.parse.urlsplit(normalized)
         except (UnicodeError, ValueError):
-            raise UnsafeOperationError(
-                f"invalid --allowed-origin value: {origin!r}"
-            ) from None
+            raise UnsafeOperationError(f"invalid --allowed-origin value: {origin!r}") from None
         if split.scheme not in ("http", "https") or not split.hostname:
             raise UnsafeOperationError(f"invalid --allowed-origin value: {origin!r}")
         allowed_origins.add(normalized)
@@ -1073,6 +1161,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             GptActionsTransport,
             validate_distinct_actions_token,
         )
+
         try:
             actions_source = ActionsTokenSource(Path(args.gpt_actions_token_file))
             actions_token = actions_source.read()
@@ -1126,9 +1215,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
 
 def cmd_gpt_actions(args: argparse.Namespace) -> CommandOutput:
     if args.gpt_actions_command != "export-openapi":
-        raise errors.InternalError(
-            f"unknown GPT Actions subcommand: {args.gpt_actions_command}"
-        )
+        raise errors.InternalError(f"unknown GPT Actions subcommand: {args.gpt_actions_command}")
     from joplin_md_sync.gpt_openapi import (
         export_openapi,
         registry_for_export,
@@ -1208,14 +1295,16 @@ def main(argv: list[str] | None = None) -> int:
             out = _HANDLERS[command](args)
         except JoplinSyncError as exc:
             out = CommandOutput(
-                exc.exit_code, exc.code,
+                exc.exit_code,
+                exc.code,
                 {"error": _redact(str(exc)), "details": _jsonable(exc.details)},
                 [f"error: {_redact(str(exc))}"],
             )
         except Exception as exc:  # deterministic internal-error path
             log.exception("internal error")
             out = CommandOutput(
-                EXIT_INTERNAL, errors.CODE_INTERNAL_ERROR,
+                EXIT_INTERNAL,
+                errors.CODE_INTERNAL_ERROR,
                 {"error": _redact(f"{type(exc).__name__}: {exc}")},
                 [f"internal error: {_redact(f'{type(exc).__name__}: {exc}')}"],
             )

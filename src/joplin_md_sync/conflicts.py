@@ -83,9 +83,7 @@ def create_bundle(ws: Workspace, store: StateStore, item: ItemState) -> str:
     if item.local is not None:
         write_file_atomic(
             bundle_dir / "local.md",
-            emit_note_file(
-                item.local.note_id, item.local.title, item.local.tags, item.local.body
-            ),
+            emit_note_file(item.local.note_id, item.local.title, item.local.tags, item.local.body),
         )
         meta["local_hashes"] = _hashes_dict(
             item.local.title, item.local.body, item.local.tags, item.local.parent_id
@@ -100,7 +98,9 @@ def create_bundle(ws: Workspace, store: StateStore, item: ItemState) -> str:
         )
         meta["remote_updated_time"] = item.remote.updated_time
 
-    write_file_atomic(bundle_dir / "metadata.json", json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    write_file_atomic(
+        bundle_dir / "metadata.json", json.dumps(meta, indent=2, sort_keys=True) + "\n"
+    )
     store.add_conflict(
         conflict_id=conflict_id,
         note_id=item.note_id,
@@ -113,8 +113,11 @@ def create_bundle(ws: Workspace, store: StateStore, item: ItemState) -> str:
 def _hashes_dict(title: str, body: str, tags: tuple[str, ...], parent: str) -> dict[str, str]:
     h = note_hashes(title, body, tags, parent)
     return {
-        "title": h.title, "body": h.body, "tags": h.tags,
-        "parent": h.parent, "combined": h.combined,
+        "title": h.title,
+        "body": h.body,
+        "tags": h.tags,
+        "parent": h.parent,
+        "combined": h.combined,
     }
 
 
@@ -204,9 +207,7 @@ def _validate_not_stale(
     else:
         expected = (meta.get("remote_hashes") or {}).get("combined")
         actual = (
-            _combined(remote.title, remote.body, remote.tags, remote.parent_id)
-            if remote
-            else None
+            _combined(remote.title, remote.body, remote.tags, remote.parent_id) if remote else None
         )
         if actual != expected:
             raise ConcurrentModificationError(
@@ -318,16 +319,19 @@ def _push_content(
         client.update_note(note_id, fields)
     reconcile_tags(client, note_id, tags)
     check = fetch_remote_canonical(client, note_id)
-    if check is None or _combined(check.title, check.body, check.tags, check.parent_id) != _combined(
-        title, body, tags, check.parent_id
-    ):
-        raise ConcurrentModificationError(
-            f"post-resolution verification failed for note {note_id}"
-        )
+    if check is None or _combined(
+        check.title, check.body, check.tags, check.parent_id
+    ) != _combined(title, body, tags, check.parent_id):
+        raise ConcurrentModificationError(f"post-resolution verification failed for note {note_id}")
     write_file_atomic(ws.abs_path(rel_path), emit_note_file(note_id, title, tags, body))
     store.upsert_note(
-        note_id=note_id, rel_path=rel_path, title=title, body=body, tags=tags,
-        parent_id=check.parent_id, updated_time=check.updated_time,
+        note_id=note_id,
+        rel_path=rel_path,
+        title=title,
+        body=body,
+        tags=tags,
+        parent_id=check.parent_id,
+        updated_time=check.updated_time,
     )
     return {"remote_updated_time": check.updated_time, "path": rel_path}
 
@@ -384,8 +388,13 @@ def _resolve_take_remote(
         ws.abs_path(rel_path), emit_note_file(note_id, remote.title, remote.tags, remote.body)
     )
     store.upsert_note(
-        note_id=note_id, rel_path=rel_path, title=remote.title, body=remote.body,
-        tags=remote.tags, parent_id=remote.parent_id, updated_time=remote.updated_time,
+        note_id=note_id,
+        rel_path=rel_path,
+        title=remote.title,
+        body=remote.body,
+        tags=remote.tags,
+        parent_id=remote.parent_id,
+        updated_time=remote.updated_time,
     )
     return {"action": "remote content written to local file", "path": rel_path}
 
@@ -421,8 +430,15 @@ def _resolve_merged(
     base = store.get_note(note_id)
     parent_id = base.parent_id if base else ""
     result = _push_content(
-        ws, store, client, note_id, rel_path,
-        merged.title, merged.body, merged.tags, parent_id,
+        ws,
+        store,
+        client,
+        note_id,
+        rel_path,
+        merged.title,
+        merged.body,
+        merged.tags,
+        parent_id,
     )
     return {"action": "merged content applied to both sides", **result}
 

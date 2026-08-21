@@ -66,8 +66,14 @@ class Workspace:
         if ws.state_path.exists():
             raise WorkspaceError(f"workspace already initialized: {ws.root}")
         ws.root.mkdir(parents=True, exist_ok=True)
-        for d in (ws.sync_dir, ws.journal_dir, ws.backups_dir, ws.conflicts_dir,
-                  ws.quarantine_dir, ws.resources_dir):
+        for d in (
+            ws.sync_dir,
+            ws.journal_dir,
+            ws.backups_dir,
+            ws.conflicts_dir,
+            ws.quarantine_dir,
+            ws.resources_dir,
+        ):
             d.mkdir(parents=True, exist_ok=True)
         config = {
             "schema": WORKSPACE_SCHEMA_VERSION,
@@ -125,15 +131,25 @@ class Workspace:
         return scan
 
     def _scan_dir(
-        self, directory: Path, *, parent_folder_id: str, rel_prefix: str, scan: LocalScan, depth: int
+        self,
+        directory: Path,
+        *,
+        parent_folder_id: str,
+        rel_prefix: str,
+        scan: LocalScan,
+        depth: int,
     ) -> None:
         if depth > 32:
-            scan.invalid.append(InvalidLocalFile(rel_path=rel_prefix, reason="directory nesting too deep"))
+            scan.invalid.append(
+                InvalidLocalFile(rel_path=rel_prefix, reason="directory nesting too deep")
+            )
             return
         try:
             entries = sorted(directory.iterdir(), key=lambda p: p.name)
         except OSError as exc:
-            scan.invalid.append(InvalidLocalFile(rel_path=rel_prefix or ".", reason=f"unreadable directory: {exc}"))
+            scan.invalid.append(
+                InvalidLocalFile(rel_path=rel_prefix or ".", reason=f"unreadable directory: {exc}")
+            )
             return
 
         for entry in entries:
@@ -142,10 +158,16 @@ class Workspace:
             if name == SYNC_DIR or (name.startswith(".") and name != FOLDER_META):
                 continue
             if entry.is_symlink():
-                scan.invalid.append(InvalidLocalFile(rel_path=rel, reason="symlinks are not followed"))
+                scan.invalid.append(
+                    InvalidLocalFile(rel_path=rel, reason="symlinks are not followed")
+                )
                 continue
             if not is_within_root(self.root, entry):
-                scan.invalid.append(InvalidLocalFile(rel_path=rel, reason="path resolves outside the workspace root"))
+                scan.invalid.append(
+                    InvalidLocalFile(
+                        rel_path=rel, reason="path resolves outside the workspace root"
+                    )
+                )
                 continue
 
             if entry.is_dir():
@@ -192,7 +214,9 @@ class Workspace:
         meta_path = directory / FOLDER_META
         if not meta_path.is_file():
             # Candidate new notebook: title derives from the directory name.
-            return LocalFolderDir(rel_path=rel, folder_id=None, title=directory.name, parent_id=parent_folder_id)
+            return LocalFolderDir(
+                rel_path=rel, folder_id=None, title=directory.name, parent_id=parent_folder_id
+            )
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if not isinstance(meta, dict):
@@ -205,10 +229,14 @@ class Workspace:
                 raise ValueError("'id' and 'title' must be strings")
         except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
             scan.invalid.append(
-                InvalidLocalFile(rel_path=f"{rel}/{FOLDER_META}", reason=f"invalid folder metadata: {exc}")
+                InvalidLocalFile(
+                    rel_path=f"{rel}/{FOLDER_META}", reason=f"invalid folder metadata: {exc}"
+                )
             )
             return None
-        return LocalFolderDir(rel_path=rel, folder_id=folder_id, title=title, parent_id=parent_folder_id)
+        return LocalFolderDir(
+            rel_path=rel, folder_id=folder_id, title=title, parent_id=parent_folder_id
+        )
 
     def _read_note_file(self, path: Path, rel: str, parent_folder_id: str, scan: LocalScan) -> None:
         try:

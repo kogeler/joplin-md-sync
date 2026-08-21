@@ -263,12 +263,12 @@ class StateStore:
         start = len(old_prefix) + 1  # substr() is 1-based
         for table in ("notes", "folders"):
             self.conn.execute(
-                f"UPDATE {table} SET rel_path = ? || substr(rel_path, ?) "
+                f"UPDATE {table} SET rel_path = ? || substr(rel_path, ?) "  # nosec
                 "WHERE rel_path LIKE ? ESCAPE '\\'",
                 (new_prefix + "/", start + 1, like),
             )
             self.conn.execute(
-                f"UPDATE {table} SET rel_path = ? WHERE rel_path = ?",
+                f"UPDATE {table} SET rel_path = ? WHERE rel_path = ?",  # nosec
                 (new_prefix, old_prefix),
             )
         self.conn.commit()

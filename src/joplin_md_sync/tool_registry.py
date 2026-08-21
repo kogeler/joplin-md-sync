@@ -123,12 +123,8 @@ class ToolRegistry:
             by_name[tool.name] = tool
         self._definitions = definitions
         self._by_name = MappingProxyType(by_name)
-        self._exposed = tuple(
-            tool for tool in definitions if tool.action_exposure == "auto"
-        )
-        self._by_route = MappingProxyType(
-            {action_route(tool): tool for tool in self._exposed}
-        )
+        self._exposed = tuple(tool for tool in definitions if tool.action_exposure == "auto")
+        self._by_route = MappingProxyType({action_route(tool): tool for tool in self._exposed})
 
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
@@ -149,6 +145,7 @@ class ToolRegistry:
 
     def __len__(self) -> int:
         return len(self._definitions)
+
 
 def _object_schema(properties: JsonObject, *, required: tuple[str, ...] = ()) -> JsonObject:
     schema: JsonObject = {
@@ -262,6 +259,7 @@ class _ToolRegistryBuilder:
                 action_exposure="disabled",
                 action_exposure_reason=reason,
             )
+
         read_only = {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}
         write = {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True}
         destructive = {
@@ -301,7 +299,11 @@ class _ToolRegistryBuilder:
             exposed(
                 "joplin_create_notebook",
                 "Create a Joplin notebook",
-                "Create a root or nested notebook with metadata.",
+                (
+                    "Create a root or nested notebook with metadata. Fails with "
+                    "NOTEBOOK_ALREADY_EXISTS when the same title exists under that parent; "
+                    "use joplin_update_notebook with the returned ID instead."
+                ),
                 _object_schema(
                     {
                         "title": {"type": "string", "minLength": 1},
@@ -405,9 +407,10 @@ class _ToolRegistryBuilder:
                 "joplin_create_note",
                 "Create a Joplin note",
                 (
-                    "Create a Markdown note with tags and metadata. Set parent_id for an "
-                    "existing notebook, or notebook_title to find/create one. If neither is "
-                    "given, the MCP Notes notebook is found or created."
+                    "Create a Markdown note with tags and metadata. Choose the destination by "
+                    "parent_id or notebook_title; the latter finds or creates a root notebook "
+                    "and defaults to MCP Notes. NOTE_ALREADY_EXISTS returns an existing ID; "
+                    "use joplin_update_note instead."
                 ),
                 _object_schema(
                     {
@@ -417,7 +420,7 @@ class _ToolRegistryBuilder:
                             "type": "string",
                             "minLength": 1,
                             "description": (
-                                "Notebook title to find or create when parent_id is omitted."
+                                "Root notebook title to find or create when parent_id is omitted."
                             ),
                         },
                     },
@@ -430,7 +433,9 @@ class _ToolRegistryBuilder:
                 "joplin_update_note",
                 "Update a Joplin note",
                 "Update only supplied content or metadata fields; tags replace the complete tag set.",
-                _object_schema({"note_id": _NOTE_ID, **_EDITABLE_PROPERTIES}, required=("note_id",)),
+                _object_schema(
+                    {"note_id": _NOTE_ID, **_EDITABLE_PROPERTIES}, required=("note_id",)
+                ),
                 write,
                 self._service.update_note,
             ),
@@ -483,10 +488,11 @@ class _ToolRegistryBuilder:
             exposed(
                 "joplin_create_tag",
                 "Create a Joplin tag",
-                "Create a tag, or return the case-insensitive title match if it exists.",
-                _object_schema(
-                    {"title": {"type": "string", "minLength": 1}}, required=("title",)
+                (
+                    "Create a tag. Fails with TAG_ALREADY_EXISTS when its normalized title "
+                    "exists; use joplin_update_tag with the returned ID instead."
                 ),
+                _object_schema({"title": {"type": "string", "minLength": 1}}, required=("title",)),
                 write,
                 self._create_tag,
             ),
@@ -513,9 +519,7 @@ class _ToolRegistryBuilder:
                 "joplin_list_tag_notes",
                 "List notes with a Joplin tag",
                 "List notes associated with one tag.",
-                _object_schema(
-                    {"tag_id": _TAG_ID, "limit": _LIMIT}, required=("tag_id",)
-                ),
+                _object_schema({"tag_id": _TAG_ID, "limit": _LIMIT}, required=("tag_id",)),
                 read_only,
                 self._service.list_tag_notes,
             ),
@@ -570,7 +574,11 @@ class _ToolRegistryBuilder:
                 "Base64 binary content can exceed the GPT Actions text and payload limits.",
                 "joplin_create_resource",
                 "Create a Joplin resource",
-                "Upload a binary attachment from base64 content using the Joplin multipart API.",
+                (
+                    "Upload a binary attachment from base64 content using the Joplin multipart "
+                    "API. Fails with RESOURCE_ALREADY_EXISTS for a matching resource title; use "
+                    "joplin_update_resource with the returned ID instead."
+                ),
                 _object_schema(
                     {
                         "filename": {"type": "string", "minLength": 1},
@@ -613,9 +621,7 @@ class _ToolRegistryBuilder:
                 "joplin_list_note_resources",
                 "List resources in a Joplin note",
                 "List attachment metadata referenced by one note.",
-                _object_schema(
-                    {"note_id": _NOTE_ID, "limit": _LIMIT}, required=("note_id",)
-                ),
+                _object_schema({"note_id": _NOTE_ID, "limit": _LIMIT}, required=("note_id",)),
                 read_only,
                 self._service.list_note_resources,
             ),

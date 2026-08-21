@@ -47,7 +47,10 @@ class FakeStore:
     def add_folder(self, title: str, parent_id: str = "", folder_id: str | None = None) -> str:
         fid = folder_id or uuid.uuid4().hex
         self.folders[fid] = {
-            "id": fid, "title": title, "parent_id": parent_id, "updated_time": self.tick(),
+            "id": fid,
+            "title": title,
+            "parent_id": parent_id,
+            "updated_time": self.tick(),
         }
         return fid
 
@@ -64,8 +67,13 @@ class FakeStore:
         nid = note_id or uuid.uuid4().hex
         timestamp = self.tick()
         self.notes[nid] = {
-            "id": nid, "title": title, "body": body, "parent_id": parent_id,
-            "created_time": timestamp, "updated_time": timestamp, "is_conflict": is_conflict,
+            "id": nid,
+            "title": title,
+            "body": body,
+            "parent_id": parent_id,
+            "created_time": timestamp,
+            "updated_time": timestamp,
+            "is_conflict": is_conflict,
             "deleted_time": deleted_time,
         }
         return nid
@@ -79,7 +87,11 @@ class FakeStore:
         self.note_tags.add((tag_id, note_id))
 
     def add_resource(
-        self, data: bytes, *, mime: str = "image/png", filename: str = "",
+        self,
+        data: bytes,
+        *,
+        mime: str = "image/png",
+        filename: str = "",
         title: str | None = None,
         resource_id: str | None = None,
     ) -> str:
@@ -99,7 +111,9 @@ class FakeStore:
 
     def note_tag_titles(self, note_id: str) -> list[str]:
         return sorted(
-            self.tags[tid]["title"] for tid, nid in self.note_tags if nid == note_id and tid in self.tags
+            self.tags[tid]["title"]
+            for tid, nid in self.note_tags
+            if nid == note_id and tid in self.tags
         )
 
 
@@ -228,20 +242,37 @@ class _Handler(BaseHTTPRequestHandler):
                         # Real Joplin fails with a UNIQUE-constraint error
                         # when creating a note under an existing id (even a
                         # trashed one); restoring goes via PUT deleted_time=0.
-                        self._reply(500, {
-                            "error": "Internal Server Error: Error: SQLITE_CONSTRAINT: "
-                            "UNIQUE constraint failed: notes.id"
-                        })
+                        self._reply(
+                            500,
+                            {
+                                "error": "Internal Server Error: Error: SQLITE_CONSTRAINT: "
+                                "UNIQUE constraint failed: notes.id"
+                            },
+                        )
                         return
                     store.add_note(
-                        data.get("title", ""), data.get("body", data.get("body_html", "")),
-                        data.get("parent_id", ""), note_id=nid,
+                        data.get("title", ""),
+                        data.get("body", data.get("body_html", "")),
+                        data.get("parent_id", ""),
+                        note_id=nid,
                     )
                     for key in (
-                        "author", "source_url", "is_todo", "todo_due", "todo_completed",
-                        "user_created_time", "user_updated_time", "latitude", "longitude",
-                        "altitude", "source", "source_application", "application_data",
-                        "user_data", "order", "markup_language",
+                        "author",
+                        "source_url",
+                        "is_todo",
+                        "todo_due",
+                        "todo_completed",
+                        "user_created_time",
+                        "user_updated_time",
+                        "latitude",
+                        "longitude",
+                        "altitude",
+                        "source",
+                        "source_application",
+                        "application_data",
+                        "user_data",
+                        "order",
+                        "markup_language",
                     ):
                         if key in data:
                             store.notes[nid][key] = data[key]
@@ -264,11 +295,28 @@ class _Handler(BaseHTTPRequestHandler):
                     # accepts deleted_time (=0 restores from trash).
                     data = self._read_json()
                     for key in (
-                        "title", "body", "parent_id", "deleted_time", "author", "source_url",
-                        "is_todo", "todo_due", "todo_completed", "user_created_time",
-                        "user_updated_time", "latitude", "longitude", "altitude",
-                        "source", "source_application", "application_data", "user_data",
-                        "order", "markup_language", "body_html", "base_url",
+                        "title",
+                        "body",
+                        "parent_id",
+                        "deleted_time",
+                        "author",
+                        "source_url",
+                        "is_todo",
+                        "todo_due",
+                        "todo_completed",
+                        "user_created_time",
+                        "user_updated_time",
+                        "latitude",
+                        "longitude",
+                        "altitude",
+                        "source",
+                        "source_application",
+                        "application_data",
+                        "user_data",
+                        "order",
+                        "markup_language",
+                        "body_html",
+                        "base_url",
                     ):
                         if key in data:
                             note[key] = data[key]
@@ -288,7 +336,9 @@ class _Handler(BaseHTTPRequestHandler):
                     for tid, nid in store.note_tags
                     if nid == parts[1] and tid in store.tags
                 ]
-                self._reply(200, self._paginate(tags, {**query, "order_by": "id", "order_dir": "ASC"}))
+                self._reply(
+                    200, self._paginate(tags, {**query, "order_by": "id", "order_dir": "ASC"})
+                )
                 return
             if len(parts) == 3 and parts[2] == "resources" and method == "GET":
                 linked = [
@@ -296,14 +346,17 @@ class _Handler(BaseHTTPRequestHandler):
                     for rid in store.resources
                     if f":/{rid}" in note.get("body", "")
                 ]
-                self._reply(200, self._paginate(linked, {**query, "order_by": "id", "order_dir": "ASC"}))
+                self._reply(
+                    200, self._paginate(linked, {**query, "order_by": "id", "order_dir": "ASC"})
+                )
                 return
 
         elif parts[0] == "search" and method == "GET":
             raw_query = query.get("query", "").strip().lower()
             terms = [term for term in raw_query.split() if ":" not in term]
             notes = [
-                note for note in store.notes.values()
+                note
+                for note in store.notes.values()
                 if not note.get("deleted_time")
                 and not note.get("is_conflict")
                 and all(
@@ -343,8 +396,12 @@ class _Handler(BaseHTTPRequestHandler):
                 if method == "PUT":
                     data = self._read_json()
                     for key in (
-                        "title", "parent_id", "icon", "user_created_time",
-                        "user_updated_time", "deleted_time",
+                        "title",
+                        "parent_id",
+                        "icon",
+                        "user_created_time",
+                        "user_updated_time",
+                        "deleted_time",
                     ):
                         if key in data:
                             folder[key] = data[key]
@@ -359,10 +416,7 @@ class _Handler(BaseHTTPRequestHandler):
                     self._reply(200, {})
                     return
             if len(parts) == 3 and parts[2] == "notes" and method == "GET":
-                notes = [
-                    note for note in store.notes.values()
-                    if note.get("parent_id") == parts[1]
-                ]
+                notes = [note for note in store.notes.values() if note.get("parent_id") == parts[1]]
                 if not query.get("include_deleted"):
                     notes = [note for note in notes if not note.get("deleted_time")]
                 if not query.get("include_conflicts"):
@@ -373,7 +427,13 @@ class _Handler(BaseHTTPRequestHandler):
         elif parts[0] == "tags":
             if len(parts) == 1:
                 if method == "GET":
-                    self._reply(200, self._paginate(list(store.tags.values()), {**query, "order_by": "id", "order_dir": "ASC"}))
+                    self._reply(
+                        200,
+                        self._paginate(
+                            list(store.tags.values()),
+                            {**query, "order_by": "id", "order_dir": "ASC"},
+                        ),
+                    )
                     return
                 if method == "POST":
                     data = self._read_json()
@@ -401,7 +461,9 @@ class _Handler(BaseHTTPRequestHandler):
                         for tid, nid in store.note_tags
                         if tid == parts[1] and nid in store.notes
                     ]
-                    self._reply(200, self._paginate(notes, {**query, "order_by": "id", "order_dir": "ASC"}))
+                    self._reply(
+                        200, self._paginate(notes, {**query, "order_by": "id", "order_dir": "ASC"})
+                    )
                     return
                 if method == "POST":
                     data = self._read_json()
@@ -416,9 +478,7 @@ class _Handler(BaseHTTPRequestHandler):
             if len(parts) == 2 and method == "DELETE":
                 del store.tags[parts[1]]
                 store.note_tags = {
-                    (tag_id, note_id)
-                    for tag_id, note_id in store.note_tags
-                    if tag_id != parts[1]
+                    (tag_id, note_id) for tag_id, note_id in store.note_tags if tag_id != parts[1]
                 }
                 self._reply(200, {})
                 return

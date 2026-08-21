@@ -32,8 +32,12 @@ def snapshot_from_base(
         )
     for note in base_notes.values():
         snapshot.notes[note.id] = RemoteNote(
-            id=note.id, parent_id=note.parent_id, title=note.title, body=note.body,
-            updated_time=note.updated_time, tags=note.tags,
+            id=note.id,
+            parent_id=note.parent_id,
+            title=note.title,
+            body=note.body,
+            updated_time=note.updated_time,
+            tags=note.tags,
         )
     return snapshot
 
@@ -54,9 +58,7 @@ def summary_counts(classification: Classification) -> dict[str, Any]:
         "remote_new": by_status.get(models.REMOTE_NEW, 0),
         "local_deleted": by_status.get(models.LOCAL_DELETED, 0),
         "remote_deleted": by_status.get(models.REMOTE_DELETED, 0),
-        "conflicts": (
-            by_status.get(models.CONFLICT, 0) + by_status.get(models.DELETE_CONFLICT, 0)
-        ),
+        "conflicts": (by_status.get(models.CONFLICT, 0) + by_status.get(models.DELETE_CONFLICT, 0)),
         "invalid": by_status.get(models.INVALID_LOCAL_FILE, 0),
         "by_status": by_status,
     }
@@ -83,8 +85,11 @@ def _split_keepends(text: str) -> list[str]:
 
 def _unified(a_text: str, b_text: str, a_label: str, b_label: str) -> str:
     lines = difflib.unified_diff(
-        _split_keepends(a_text), _split_keepends(b_text),
-        fromfile=a_label, tofile=b_label, lineterm="\n",
+        _split_keepends(a_text),
+        _split_keepends(b_text),
+        fromfile=a_label,
+        tofile=b_label,
+        lineterm="\n",
     )
     return "".join(lines)
 
@@ -92,9 +97,7 @@ def _unified(a_text: str, b_text: str, a_label: str, b_label: str) -> str:
 def _meta_lines(side: str, item: ItemState) -> list[str]:
     """Human-readable non-body component changes."""
     out: list[str] = []
-    components = (
-        item.changed_components if side == "local" else item.remote_changed_components
-    )
+    components = item.changed_components if side == "local" else item.remote_changed_components
     obj = item.local if side == "local" else item.remote
     base = item.base
     if obj is None or base is None:
@@ -154,7 +157,9 @@ def unified_output(
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
-def items_json(classification: Classification, *, remote_known: bool = True) -> list[dict[str, Any]]:
+def items_json(
+    classification: Classification, *, remote_known: bool = True
+) -> list[dict[str, Any]]:
     items = [item.to_json() for item in classification.items]
     items.extend(fitem.to_json() for fitem in classification.folder_items)
     items.extend(
@@ -173,9 +178,7 @@ def filter_note(classification: Classification, ref: str) -> Classification:
         invalid=[i for i in classification.invalid if i.rel_path == ref],
         remote_folder_paths=classification.remote_folder_paths,
     )
-    filtered.items = [
-        i for i in classification.items if ref in (i.note_id, i.rel_path)
-    ]
+    filtered.items = [i for i in classification.items if ref in (i.note_id, i.rel_path)]
     filtered.folder_items = [
         f for f in classification.folder_items if ref in (f.folder_id, f.rel_path)
     ]

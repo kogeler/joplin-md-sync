@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -74,9 +75,7 @@ class McpHttpTest(WorkspaceTestCase):
                 self.server.base_url, TOKEN, timeout=0.2, retries=1, backoff_base=0.001
             )
 
-        service = JoplinMcpService(
-            client_factory, availability_timeout=0, retry_delay=0.001
-        )
+        service = JoplinMcpService(client_factory, availability_timeout=0, retry_delay=0.001)
         self.dispatcher = McpDispatcher(service)
         self.httpd = McpHttpServer(("127.0.0.1", 0), self.dispatcher)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
@@ -148,10 +147,12 @@ class McpHttpTest(WorkspaceTestCase):
         assert body is not None
         self.assertEqual(body["result"]["protocolVersion"], "2025-06-18")
         self.assertIn("tools", body["result"]["capabilities"])
-
-        status, body, _ = self.request(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"}
+        self.assertIn(
+            "Create tools reject an existing natural identity", body["result"]["instructions"]
         )
+        self.assertIn("update tool", body["result"]["instructions"])
+
+        status, body, _ = self.request({"jsonrpc": "2.0", "method": "notifications/initialized"})
         self.assertEqual((status, body), (202, None))
 
         status, body, _ = self.request(
@@ -239,18 +240,16 @@ class McpHttpTest(WorkspaceTestCase):
             "joplin_create_notebook",
             {
                 "title": "MCP notebook",
-                "icon": json.dumps(
-                    {"type": 3, "emoji": "", "name": "fas fa-book", "dataUrl": ""}
-                ),
+                "icon": json.dumps({"type": 3, "emoji": "", "name": "fas fa-book", "dataUrl": ""}),
             },
         )["structuredContent"]["notebook"]
         notebook_id = created["id"]
         self.assertEqual(created["title"], "MCP notebook")
         self.assertEqual(json.loads(created["icon"])["name"], "fas fa-book")
 
-        read = self.call_tool(
-            2, "joplin_get_notebook", {"notebook_id": notebook_id}
-        )["structuredContent"]["notebook"]
+        read = self.call_tool(2, "joplin_get_notebook", {"notebook_id": notebook_id})[
+            "structuredContent"
+        ]["notebook"]
         self.assertEqual(read["id"], notebook_id)
 
         updated = self.call_tool(
@@ -270,42 +269,221 @@ class McpHttpTest(WorkspaceTestCase):
             "joplin_create_note",
             {"title": "Notebook child", "parent_id": notebook_id},
         )["structuredContent"]["note"]
-        listed = self.call_tool(
-            5, "joplin_list_notebook_notes", {"notebook_id": notebook_id}
-        )["structuredContent"]
+        listed = self.call_tool(5, "joplin_list_notebook_notes", {"notebook_id": notebook_id})[
+            "structuredContent"
+        ]
         self.assertEqual([item["id"] for item in listed["notes"]], [note["id"]])
 
         disposable = self.call_tool(
             6, "joplin_create_notebook", {"title": "Disposable MCP notebook"}
         )["structuredContent"]["notebook"]
         disposable_id = disposable["id"]
-        deleted = self.call_tool(
-            7, "joplin_delete_notebook", {"notebook_id": disposable_id}
-        )["structuredContent"]
+        deleted = self.call_tool(7, "joplin_delete_notebook", {"notebook_id": disposable_id})[
+            "structuredContent"
+        ]
         self.assertFalse(deleted["already_trashed"])
         self.assertGreater(self.server.store.folders[disposable_id]["deleted_time"], 0)
-        deleted_list = self.call_tool(
-            8, "joplin_list_notebooks", {"include_deleted": True}
-        )["structuredContent"]["notebooks"]
+        deleted_list = self.call_tool(8, "joplin_list_notebooks", {"include_deleted": True})[
+            "structuredContent"
+        ]["notebooks"]
         self.assertTrue(any(item["id"] == disposable_id for item in deleted_list))
-        restored = self.call_tool(
-            9, "joplin_restore_notebook", {"notebook_id": disposable_id}
-        )["structuredContent"]
+        restored = self.call_tool(9, "joplin_restore_notebook", {"notebook_id": disposable_id})[
+            "structuredContent"
+        ]
         self.assertFalse(restored["already_active"])
         self.assertEqual(self.server.store.folders[disposable_id]["deleted_time"], 0)
 
-    def test_tag_crud_listing_and_note_relations(self) -> None:
+    def test_create_tools_reject_existing_object_identities(self) -> None:
+        def assert_conflict(
+            result: dict[str, Any], *, code: str, existing_id: str, update_tool: str
+        ) -> None:
+            self.assertTrue(result["isError"])
+            error = result["structuredContent"]["error"]
+            self.assertEqual(error["code"], code)
+            self.assertFalse(error["retryable"])
+            self.assertEqual(error["details"]["existing_id"], existing_id)
+            self.assertEqual(error["details"]["recommended_tool"], update_tool)
+
+        notebook_count = len(self.server.store.folders)
+        assert_conflict(
+            self.call_tool(1, "joplin_create_notebook", {"title": " work "}),
+            code="NOTEBOOK_ALREADY_EXISTS",
+            existing_id=self.folder_work,
+            update_tool="joplin_update_notebook",
+        )
+        self.assertEqual(len(self.server.store.folders), notebook_count)
+
+        unicode_notebook_id = self.server.store.add_folder("Café")
+        assert_conflict(
+            self.call_tool(6, "joplin_create_notebook", {"title": " CAFE\u0301 "}),
+            code="NOTEBOOK_ALREADY_EXISTS",
+            existing_id=unicode_notebook_id,
+            update_tool="joplin_update_notebook",
+        )
+
+        note_count = len(self.server.store.notes)
+        assert_conflict(
+            self.call_tool(
+                2,
+                "joplin_create_note",
+                {"title": " KUBERNETES ", "parent_id": self.folder_work},
+            ),
+            code="NOTE_ALREADY_EXISTS",
+            existing_id=self.note_k8s,
+            update_tool="joplin_update_note",
+        )
+        self.assertEqual(len(self.server.store.notes), note_count)
+
+        duplicate_note_id = self.server.store.add_note(
+            "kubernetes",
+            "duplicate body",
+            self.folder_work,
+        )
+        duplicate_result = self.call_tool(
+            8,
+            "joplin_create_note",
+            {"title": "Kubernetes", "parent_id": self.folder_work},
+        )
+        duplicate_error = duplicate_result["structuredContent"]["error"]
+        self.assertEqual(duplicate_error["code"], "NOTE_ALREADY_EXISTS")
+        self.assertEqual(
+            duplicate_error["details"]["existing_ids"],
+            sorted((self.note_k8s, duplicate_note_id)),
+        )
+        self.assertNotIn("existing_id", duplicate_error["details"])
+
+        same_title_elsewhere = self.call_tool(
+            3,
+            "joplin_create_note",
+            {"title": "Kubernetes", "parent_id": self.folder_personal},
+        )
+        self.assertFalse(same_title_elsewhere["isError"])
+
+        tag_id = next(
+            tag_id for tag_id, tag in self.server.store.tags.items() if tag["title"] == "homelab"
+        )
+        tag_count = len(self.server.store.tags)
+        assert_conflict(
+            self.call_tool(4, "joplin_create_tag", {"title": " HomeLab "}),
+            code="TAG_ALREADY_EXISTS",
+            existing_id=tag_id,
+            update_tool="joplin_update_tag",
+        )
+        self.assertEqual(len(self.server.store.tags), tag_count)
+
+        resource_data = b"existing resource"
+        replacement_data = b"replacement resource content"
+        resource_id = self.server.store.add_resource(
+            resource_data,
+            filename="existing.bin",
+            mime="application/octet-stream",
+            title="Existing resource",
+        )
+        resource_count = len(self.server.store.resources)
+        assert_conflict(
+            self.call_tool(
+                5,
+                "joplin_create_resource",
+                {
+                    "filename": "replacement.bin",
+                    "mime": "application/x-replacement",
+                    "title": " existing resource ",
+                    "content_base64": base64.b64encode(replacement_data).decode("ascii"),
+                },
+            ),
+            code="RESOURCE_ALREADY_EXISTS",
+            existing_id=resource_id,
+            update_tool="joplin_update_resource",
+        )
+        self.assertEqual(len(self.server.store.resources), resource_count)
+
+        same_title_nested = self.call_tool(
+            7,
+            "joplin_create_notebook",
+            {"title": "Work", "parent_id": self.folder_personal},
+        )
+        self.assertFalse(same_title_nested["isError"])
+
+    def test_notebook_title_resolves_only_one_root_destination(self) -> None:
+        nested_id = self.server.store.add_folder("Target", parent_id=self.folder_personal)
         created = self.call_tool(
-            1, "joplin_create_tag", {"title": "MCP Tag"}
-        )["structuredContent"]
+            1,
+            "joplin_create_note",
+            {"title": "First root note", "notebook_title": " target "},
+        )
+        self.assertFalse(created["isError"])
+        root_id = created["structuredContent"]["note"]["metadata"]["notebook"]["id"]
+        self.assertNotEqual(root_id, nested_id)
+        self.assertEqual(self.server.store.folders[root_id]["parent_id"], "")
+
+        self.server.store.add_folder("TARGET")
+        note_count = len(self.server.store.notes)
+        ambiguous = self.call_tool(
+            2,
+            "joplin_create_note",
+            {"title": "Blocked note", "notebook_title": "Target"},
+        )
+        self.assertTrue(ambiguous["isError"])
+        error = ambiguous["structuredContent"]["error"]
+        self.assertEqual(error["code"], "NOTEBOOK_PATH_AMBIGUOUS")
+        self.assertEqual(len(error["details"]["existing_ids"]), 2)
+        self.assertEqual(len(self.server.store.notes), note_count)
+
+    def test_concurrent_note_create_allows_exactly_one_object(self) -> None:
+        arguments = {"title": "Concurrent note", "parent_id": self.folder_work}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(
+                pool.map(
+                    lambda request_id: self.call_tool(request_id, "joplin_create_note", arguments),
+                    (1, 2),
+                )
+            )
+
+        self.assertEqual(sum(not result["isError"] for result in results), 1)
+        errors = [result["structuredContent"]["error"] for result in results if result["isError"]]
+        self.assertEqual([error["code"] for error in errors], ["NOTE_ALREADY_EXISTS"])
+        matches = [
+            note
+            for note in self.server.store.notes.values()
+            if note["parent_id"] == self.folder_work and note["title"] == "Concurrent note"
+        ]
+        self.assertEqual(len(matches), 1)
+
+    def test_create_rejects_matching_trashed_note_and_notebook(self) -> None:
+        trashed_notebook_id = self.server.store.add_folder("Archived destination")
+        self.server.store.folders[trashed_notebook_id]["deleted_time"] = self.server.store.tick()
+        notebook_result = self.call_tool(
+            1,
+            "joplin_create_notebook",
+            {"title": "archived destination"},
+        )
+        notebook_error = notebook_result["structuredContent"]["error"]
+        self.assertEqual(notebook_error["code"], "NOTEBOOK_ALREADY_EXISTS")
+        self.assertEqual(notebook_error["details"]["deleted_ids"], [trashed_notebook_id])
+
+        trashed_note_id = self.server.store.add_note(
+            "Archived note",
+            "old body",
+            self.folder_work,
+            deleted_time=self.server.store.tick(),
+        )
+        note_result = self.call_tool(
+            2,
+            "joplin_create_note",
+            {"title": "archived note", "parent_id": self.folder_work},
+        )
+        note_error = note_result["structuredContent"]["error"]
+        self.assertEqual(note_error["code"], "NOTE_ALREADY_EXISTS")
+        self.assertEqual(note_error["details"]["deleted_ids"], [trashed_note_id])
+
+    def test_tag_crud_listing_and_note_relations(self) -> None:
+        created = self.call_tool(1, "joplin_create_tag", {"title": "MCP Tag"})["structuredContent"]
         tag_id = created["tag"]["id"]
         self.assertTrue(created["created"])
 
         listed = self.call_tool(2, "joplin_list_tags", {})["structuredContent"]["tags"]
         self.assertTrue(any(item["id"] == tag_id for item in listed))
-        read = self.call_tool(3, "joplin_get_tag", {"tag_id": tag_id})[
-            "structuredContent"
-        ]["tag"]
+        read = self.call_tool(3, "joplin_get_tag", {"tag_id": tag_id})["structuredContent"]["tag"]
         self.assertEqual(read["title"], "mcp tag")
 
         renamed = self.call_tool(
@@ -319,9 +497,9 @@ class McpHttpTest(WorkspaceTestCase):
             {"tag_id": tag_id, "note_id": self.note_k8s},
         )["structuredContent"]
         self.assertFalse(attached["already_attached"])
-        tag_notes = self.call_tool(
-            6, "joplin_list_tag_notes", {"tag_id": tag_id}
-        )["structuredContent"]["notes"]
+        tag_notes = self.call_tool(6, "joplin_list_tag_notes", {"tag_id": tag_id})[
+            "structuredContent"
+        ]["notes"]
         self.assertEqual([item["id"] for item in tag_notes], [self.note_k8s])
 
         removed = self.call_tool(
@@ -330,9 +508,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"tag_id": tag_id, "note_id": self.note_k8s},
         )["structuredContent"]
         self.assertTrue(removed["was_attached"])
-        deleted = self.call_tool(
-            8, "joplin_delete_tag", {"tag_id": tag_id}
-        )["structuredContent"]
+        deleted = self.call_tool(8, "joplin_delete_tag", {"tag_id": tag_id})["structuredContent"]
         self.assertTrue(deleted["permanent"])
         self.assertNotIn(tag_id, self.server.store.tags)
 
@@ -351,9 +527,9 @@ class McpHttpTest(WorkspaceTestCase):
         resource_id = created["id"]
         self.assertEqual(created["size"], len(initial_data))
 
-        read = self.call_tool(
-            2, "joplin_read_resource", {"resource_id": resource_id}
-        )["structuredContent"]
+        read = self.call_tool(2, "joplin_read_resource", {"resource_id": resource_id})[
+            "structuredContent"
+        ]
         self.assertEqual(base64.b64decode(read["content_base64"]), initial_data)
 
         replacement = b"updated resource payload"
@@ -383,13 +559,11 @@ class McpHttpTest(WorkspaceTestCase):
         )["structuredContent"]["notes"]
         self.assertEqual([item["id"] for item in resource_notes], [self.note_k8s])
 
-        resources = self.call_tool(7, "joplin_list_resources", {})[
-            "structuredContent"
-        ]["resources"]
+        resources = self.call_tool(7, "joplin_list_resources", {})["structuredContent"]["resources"]
         self.assertTrue(any(item["id"] == resource_id for item in resources))
-        deleted = self.call_tool(
-            8, "joplin_delete_resource", {"resource_id": resource_id}
-        )["structuredContent"]
+        deleted = self.call_tool(8, "joplin_delete_resource", {"resource_id": resource_id})[
+            "structuredContent"
+        ]
         self.assertTrue(deleted["permanent"])
 
     def test_create_note_from_html_and_with_binary_attachments(self) -> None:
@@ -458,9 +632,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid parent", "parent_id": "0" * 32},
         )
         self.assertTrue(failed["isError"])
-        self.assertEqual(
-            failed["structuredContent"]["error"]["code"], "NOTEBOOK_NOT_FOUND"
-        )
+        self.assertEqual(failed["structuredContent"]["error"]["code"], "NOTEBOOK_NOT_FOUND")
 
     def test_entity_and_content_validation_errors_are_structured(self) -> None:
         invalid_icon = self.call_tool(
@@ -469,9 +641,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid icon", "icon": "fas fa-book"},
         )
         self.assertTrue(invalid_icon["isError"])
-        self.assertEqual(
-            invalid_icon["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(invalid_icon["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         both_bodies = self.call_tool(
             1,
@@ -479,9 +649,7 @@ class McpHttpTest(WorkspaceTestCase):
             {"title": "invalid bodies", "body": "Markdown", "body_html": "<p>HTML</p>"},
         )
         self.assertTrue(both_bodies["isError"])
-        self.assertEqual(
-            both_bodies["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(both_bodies["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         invalid_base64 = self.call_tool(
             2,
@@ -493,9 +661,7 @@ class McpHttpTest(WorkspaceTestCase):
             },
         )
         self.assertTrue(invalid_base64["isError"])
-        self.assertEqual(
-            invalid_base64["structuredContent"]["error"]["code"], "INVALID_ARGUMENT"
-        )
+        self.assertEqual(invalid_base64["structuredContent"]["error"]["code"], "INVALID_ARGUMENT")
 
         missing_id = "0" * 32
         for request_id, tool, key, code in (
@@ -513,9 +679,7 @@ class McpHttpTest(WorkspaceTestCase):
         self.assertEqual(status, 406)
         status, _, _ = self.request(payload, headers={"Origin": "https://evil.example"})
         self.assertEqual(status, 403)
-        status, body, _ = self.request(
-            payload, headers={"MCP-Protocol-Version": "1900-01-01"}
-        )
+        status, body, _ = self.request(payload, headers={"MCP-Protocol-Version": "1900-01-01"})
         self.assertEqual(status, 400)
         assert body is not None
         self.assertIn("Unsupported", body["error"]["message"])
@@ -577,9 +741,7 @@ class McpHttpTest(WorkspaceTestCase):
                     )
                     try:
                         connection.putrequest("POST", "/mcp")
-                        connection.putheader(
-                            "Accept", "application/json, text/event-stream"
-                        )
+                        connection.putheader("Accept", "application/json, text/event-stream")
                         connection.putheader("Content-Type", "application/json")
                         connection.putheader("Content-Length", str(len(raw)))
                         for authorization in authorizations:
@@ -674,7 +836,12 @@ class McpCliSafetyTest(WorkspaceTestCase):
         self.assertIn("--allow-remote-mcp", result.stdout)
 
         result = run_cli(
-            "mcp", "serve", "--host", "0.0.0.0", "--mcp-port", "8765",
+            "mcp",
+            "serve",
+            "--host",
+            "0.0.0.0",
+            "--mcp-port",
+            "8765",
             "--allow-remote-mcp",
         )
         self.assertEqual(result.exit_code, 7)

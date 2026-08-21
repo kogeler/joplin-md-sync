@@ -39,16 +39,36 @@ from joplin_md_sync.config import build_client  # noqa: E402
 TOKEN_FILE = REPO / "token"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 EXPECTED_MCP_TOOLS = {
-    "joplin_list_notebooks", "joplin_get_notebook", "joplin_create_notebook",
-    "joplin_update_notebook", "joplin_delete_notebook", "joplin_restore_notebook",
-    "joplin_list_notebook_notes", "joplin_list_notes", "joplin_get_note",
-    "joplin_create_note", "joplin_update_note", "joplin_delete_note",
-    "joplin_restore_note", "joplin_search_notes", "joplin_list_tags",
-    "joplin_get_tag", "joplin_create_tag", "joplin_update_tag", "joplin_delete_tag",
-    "joplin_list_tag_notes", "joplin_add_tag_to_note", "joplin_remove_tag_from_note",
-    "joplin_list_resources", "joplin_get_resource", "joplin_read_resource",
-    "joplin_create_resource", "joplin_update_resource", "joplin_delete_resource",
-    "joplin_list_note_resources", "joplin_list_resource_notes",
+    "joplin_list_notebooks",
+    "joplin_get_notebook",
+    "joplin_create_notebook",
+    "joplin_update_notebook",
+    "joplin_delete_notebook",
+    "joplin_restore_notebook",
+    "joplin_list_notebook_notes",
+    "joplin_list_notes",
+    "joplin_get_note",
+    "joplin_create_note",
+    "joplin_update_note",
+    "joplin_delete_note",
+    "joplin_restore_note",
+    "joplin_search_notes",
+    "joplin_list_tags",
+    "joplin_get_tag",
+    "joplin_create_tag",
+    "joplin_update_tag",
+    "joplin_delete_tag",
+    "joplin_list_tag_notes",
+    "joplin_add_tag_to_note",
+    "joplin_remove_tag_from_note",
+    "joplin_list_resources",
+    "joplin_get_resource",
+    "joplin_read_resource",
+    "joplin_create_resource",
+    "joplin_update_resource",
+    "joplin_delete_resource",
+    "joplin_list_note_resources",
+    "joplin_list_resource_notes",
 }
 
 
@@ -84,9 +104,7 @@ class LiveMcpTest(unittest.TestCase):
         if TOKEN_FILE.stat().st_mode & 0o077:
             raise RuntimeError(f"live Joplin token file must have mode 0600: {TOKEN_FILE}")
 
-        cls.api = build_client(
-            token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25
-        )
+        cls.api = build_client(token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25)
         if not cls.api.ping():
             raise RuntimeError(f"unexpected Joplin ping response from {cls.api.base_url}")
         before = cls.api.list_notes(
@@ -95,8 +113,7 @@ class LiveMcpTest(unittest.TestCase):
             fields="id,updated_time,deleted_time",
         )
         cls.initial_notes = {
-            str(note["id"]): (note.get("updated_time"), note.get("deleted_time"))
-            for note in before
+            str(note["id"]): (note.get("updated_time"), note.get("deleted_time")) for note in before
         }
         cls.initial_folders = {
             str(folder["id"]): (
@@ -139,9 +156,7 @@ class LiveMcpTest(unittest.TestCase):
         env = dict(os.environ)
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = (
-            str(SRC)
-            if not existing_pythonpath
-            else str(SRC) + os.pathsep + existing_pythonpath
+            str(SRC) if not existing_pythonpath else str(SRC) + os.pathsep + existing_pythonpath
         )
         cls.process = subprocess.Popen(
             [
@@ -190,9 +205,8 @@ class LiveMcpTest(unittest.TestCase):
                     cls.owned_note_ids.add(note_id)
             for folder in cls.api.list_folders(include_deleted=True):
                 folder_id = str(folder["id"])
-                if (
-                    folder_id not in cls.initial_folders
-                    and cls.run_id in str(folder.get("title") or "")
+                if folder_id not in cls.initial_folders and cls.run_id in str(
+                    folder.get("title") or ""
                 ):
                     cls.owned_folder_ids.add(folder_id)
             for tag in cls.api.list_tags():
@@ -328,9 +342,7 @@ class LiveMcpTest(unittest.TestCase):
                     f"MCP process exited {cls.process.returncode}: {stdout}\n{stderr}"
                 )
             try:
-                status, body, _ = cls._request(
-                    {"jsonrpc": "2.0", "id": 0, "method": "ping"}
-                )
+                status, body, _ = cls._request({"jsonrpc": "2.0", "id": 0, "method": "ping"})
                 if status == 200 and body is not None and body.get("result") == {}:
                     return
                 last_error = f"unexpected readiness response: {status} {body}"
@@ -457,9 +469,7 @@ class LiveMcpTest(unittest.TestCase):
     def _update_owned_note(cls, note_id: str, **fields: object) -> dict[str, Any]:
         if note_id not in cls.owned_note_ids:
             raise AssertionError(f"refusing to update non-owned note: {note_id}")
-        return cls._tool(
-            "joplin_update_note", {"note_id": note_id, **fields}
-        )["note"]
+        return cls._tool("joplin_update_note", {"note_id": note_id, **fields})["note"]
 
     @classmethod
     def _delete_owned_note(cls, note_id: str) -> dict[str, Any]:
@@ -489,9 +499,9 @@ class LiveMcpTest(unittest.TestCase):
     def _update_owned_notebook(cls, notebook_id: str, **fields: object) -> dict[str, Any]:
         if notebook_id not in cls.owned_folder_ids:
             raise AssertionError(f"refusing to update non-owned notebook: {notebook_id}")
-        return cls._tool(
-            "joplin_update_notebook", {"notebook_id": notebook_id, **fields}
-        )["notebook"]
+        return cls._tool("joplin_update_notebook", {"notebook_id": notebook_id, **fields})[
+            "notebook"
+        ]
 
     @classmethod
     def _delete_owned_notebook(cls, notebook_id: str) -> dict[str, Any]:
@@ -507,9 +517,7 @@ class LiveMcpTest(unittest.TestCase):
 
     @classmethod
     def _create_owned_tag(cls, title_suffix: str) -> dict[str, Any]:
-        result = cls._tool(
-            "joplin_create_tag", {"title": f"jms-live-{title_suffix}-{cls.run_id}"}
-        )
+        result = cls._tool("joplin_create_tag", {"title": f"jms-live-{title_suffix}-{cls.run_id}"})
         tag = result["tag"]
         tag_id = str(tag["id"])
         if not result["created"] or tag_id in cls.initial_tags:
@@ -530,9 +538,7 @@ class LiveMcpTest(unittest.TestCase):
         return cls._tool("joplin_delete_tag", {"tag_id": tag_id})
 
     @classmethod
-    def _create_owned_resource(
-        cls, *, filename: str, mime: str, data: bytes
-    ) -> dict[str, Any]:
+    def _create_owned_resource(cls, *, filename: str, mime: str, data: bytes) -> dict[str, Any]:
         resource = cls._tool(
             "joplin_create_resource",
             {
@@ -552,9 +558,9 @@ class LiveMcpTest(unittest.TestCase):
     def _update_owned_resource(cls, resource_id: str, **fields: object) -> dict[str, Any]:
         if resource_id not in cls.owned_resource_ids:
             raise AssertionError(f"refusing to update non-owned resource: {resource_id}")
-        return cls._tool(
-            "joplin_update_resource", {"resource_id": resource_id, **fields}
-        )["resource"]
+        return cls._tool("joplin_update_resource", {"resource_id": resource_id, **fields})[
+            "resource"
+        ]
 
     @classmethod
     def _delete_owned_resource(cls, resource_id: str) -> dict[str, Any]:
@@ -563,9 +569,7 @@ class LiveMcpTest(unittest.TestCase):
         return cls._tool("joplin_delete_resource", {"resource_id": resource_id})
 
     def test_01_lifecycle_tools_auth_and_transport(self) -> None:
-        status, _, _ = self._request(
-            {"jsonrpc": "2.0", "id": 1, "method": "ping"}, authorize=False
-        )
+        status, _, _ = self._request({"jsonrpc": "2.0", "id": 1, "method": "ping"}, authorize=False)
         self.assertEqual(status, 401)
 
         initialized = self._rpc(
@@ -581,9 +585,7 @@ class LiveMcpTest(unittest.TestCase):
         tools = self._rpc("tools/list", {})["tools"]
         self.assertEqual({tool["name"] for tool in tools}, EXPECTED_MCP_TOOLS)
 
-        status, body, _ = self._request(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"}
-        )
+        status, body, _ = self._request({"jsonrpc": "2.0", "method": "notifications/initialized"})
         self.assertEqual((status, body), (202, None))
         status, _, _ = self._request(
             {"jsonrpc": "2.0", "id": 2, "method": "ping"},
@@ -599,6 +601,107 @@ class LiveMcpTest(unittest.TestCase):
         status, _, headers = self._request(method="GET")
         self.assertEqual(status, 405)
         self.assertEqual(headers["Allow"], "POST")
+
+    def test_02_explicit_creates_reject_existing_natural_identities(self) -> None:
+        notebook_title = f"jms-live-duplicate-guard-{self.run_id}"
+        notebook = self._create_owned_notebook("duplicate-guard")
+        notebook_id = str(notebook["id"])
+        note_title = f"jms-live-duplicate-note-{self.run_id}"
+        note = self._create_owned_note(
+            title=note_title,
+            body=f"original duplicate-guard body {self.run_id}",
+            parent_id=notebook_id,
+            tags=[],
+        )
+        note_id = str(note["id"])
+        tag_title = f"jms-live-duplicate-tag-{self.run_id}"
+        tag = self._create_owned_tag("duplicate-tag")
+        tag_id = str(tag["id"])
+        filename = f"jms-live-duplicate-resource-{self.run_id}.txt"
+        resource = self._create_owned_resource(
+            filename=filename,
+            mime="text/plain",
+            data=f"original resource {self.run_id}".encode(),
+        )
+        resource_id = str(resource["id"])
+
+        conflicts = (
+            (
+                "joplin_create_notebook",
+                {"title": f" {notebook_title.upper()} "},
+                "NOTEBOOK_ALREADY_EXISTS",
+                notebook_id,
+                "joplin_update_notebook",
+            ),
+            (
+                "joplin_create_note",
+                {
+                    "title": f" {note_title.upper()} ",
+                    "body": f"replacement body {self.run_id}",
+                    "parent_id": notebook_id,
+                },
+                "NOTE_ALREADY_EXISTS",
+                note_id,
+                "joplin_update_note",
+            ),
+            (
+                "joplin_create_tag",
+                {"title": f" {tag_title.upper()} "},
+                "TAG_ALREADY_EXISTS",
+                tag_id,
+                "joplin_update_tag",
+            ),
+            (
+                "joplin_create_resource",
+                {
+                    "filename": f"replacement-{self.run_id}.bin",
+                    "title": f" {filename.upper()} ",
+                    "mime": "application/x-replacement",
+                    "content_base64": base64.b64encode(
+                        f"different resource content {self.run_id}".encode()
+                    ).decode("ascii"),
+                },
+                "RESOURCE_ALREADY_EXISTS",
+                resource_id,
+                "joplin_update_resource",
+            ),
+        )
+        for tool, arguments, code, existing_id, update_tool in conflicts:
+            error = self._tool(tool, arguments, expect_error=code)
+            self.assertFalse(error["retryable"])
+            self.assertEqual(error["details"]["existing_id"], existing_id)
+            self.assertEqual(error["details"]["existing_ids"], [existing_id])
+            self.assertEqual(error["details"]["recommended_tool"], update_tool)
+
+        def key(value: object) -> str:
+            return str(value or "").strip().casefold()
+
+        folders = [
+            folder
+            for folder in self.api.list_folders(include_deleted=True)
+            if key(folder.get("title")) == key(notebook_title)
+            and str(folder.get("parent_id") or "") == ""
+        ]
+        notes = [
+            item
+            for item in self.api.list_folder_notes(
+                notebook_id,
+                include_deleted=True,
+                include_conflicts=True,
+            )
+            if key(item.get("title")) == key(note_title)
+        ]
+        tags = [item for item in self.api.list_tags() if key(item.get("title")) == key(tag_title)]
+        resources = [
+            item for item in self.api.list_resources() if key(item.get("title")) == key(filename)
+        ]
+        self.assertEqual([str(item["id"]) for item in folders], [notebook_id])
+        self.assertEqual([str(item["id"]) for item in notes], [note_id])
+        self.assertEqual([str(item["id"]) for item in tags], [tag_id])
+        self.assertEqual([str(item["id"]) for item in resources], [resource_id])
+        unchanged = self.api.get_note(note_id, include_deleted=True)
+        assert unchanged is not None
+        self.assertEqual(unchanged["body"], f"original duplicate-guard body {self.run_id}")
 
     def test_02_owned_note_crud_metadata_tags_search_and_trash(self) -> None:
         suffix = self.run_id
@@ -619,9 +722,7 @@ class LiveMcpTest(unittest.TestCase):
         )
 
         read = self._tool("joplin_get_note", {"note_id": note_id})["note"]
-        self.assertEqual(
-            read["body"], f"real MCP create sentinel {suffix} {search_token}"
-        )
+        self.assertEqual(read["body"], f"real MCP create sentinel {suffix} {search_token}")
         self.assertEqual(read["metadata"]["author"], "joplin-md-sync live test")
         self.assertEqual(read["metadata"]["source_url"], "https://example.invalid/jms-live")
 
@@ -674,9 +775,9 @@ class LiveMcpTest(unittest.TestCase):
         self.assertGreater(trashed["metadata"]["deleted_time"], 0)
         default_list = self._tool("joplin_list_notes", {"limit": 100})["notes"]
         self.assertFalse(any(str(note["id"]) == note_id for note in default_list))
-        deleted_list = self._tool(
-            "joplin_list_notes", {"limit": 100, "include_deleted": True}
-        )["notes"]
+        deleted_list = self._tool("joplin_list_notes", {"limit": 100, "include_deleted": True})[
+            "notes"
+        ]
         self.assertTrue(any(str(note["id"]) == note_id for note in deleted_list))
         self.assertTrue(self._delete_owned_note(note_id)["already_trashed"])
         restored = self._restore_owned_note(note_id)
@@ -706,9 +807,9 @@ class LiveMcpTest(unittest.TestCase):
             child_id, title=f"jms-live-child-renamed-{self.run_id}"
         )
         self.assertIn(self.run_id, renamed_child["title"])
-        notebooks = self._tool(
-            "joplin_list_notebooks", {"limit": 100, "include_deleted": True}
-        )["notebooks"]
+        notebooks = self._tool("joplin_list_notebooks", {"limit": 100, "include_deleted": True})[
+            "notebooks"
+        ]
         self.assertTrue(any(str(notebook["id"]) == child_id for notebook in notebooks))
 
         entity_note = self._create_owned_note(
@@ -727,9 +828,7 @@ class LiveMcpTest(unittest.TestCase):
         tag = self._create_owned_tag("tag")
         tag_id = str(tag["id"])
         self.assertEqual(self._tool("joplin_get_tag", {"tag_id": tag_id})["tag"]["id"], tag_id)
-        renamed_tag = self._update_owned_tag(
-            tag_id, f"jms-live-tag-renamed-{self.run_id}"
-        )
+        renamed_tag = self._update_owned_tag(tag_id, f"jms-live-tag-renamed-{self.run_id}")
         self.assertIn(self.run_id, renamed_tag["title"])
         tags = self._tool("joplin_list_tags", {"limit": 100})["tags"]
         self.assertTrue(any(str(item["id"]) == tag_id for item in tags))
@@ -737,9 +836,7 @@ class LiveMcpTest(unittest.TestCase):
             "joplin_add_tag_to_note", {"tag_id": tag_id, "note_id": entity_note_id}
         )
         self.assertFalse(attached["already_attached"])
-        tag_notes = self._tool(
-            "joplin_list_tag_notes", {"tag_id": tag_id, "limit": 100}
-        )["notes"]
+        tag_notes = self._tool("joplin_list_tag_notes", {"tag_id": tag_id, "limit": 100})["notes"]
         self.assertTrue(any(str(note["id"]) == entity_note_id for note in tag_notes))
         removed = self._tool(
             "joplin_remove_tag_from_note", {"tag_id": tag_id, "note_id": entity_note_id}
@@ -758,9 +855,7 @@ class LiveMcpTest(unittest.TestCase):
             self._tool("joplin_get_resource", {"resource_id": resource_id})["resource"]["id"],
             resource_id,
         )
-        read_resource = self._tool(
-            "joplin_read_resource", {"resource_id": resource_id}
-        )
+        read_resource = self._tool("joplin_read_resource", {"resource_id": resource_id})
         self.assertEqual(base64.b64decode(read_resource["content_base64"]), original_data)
         replacement_data = f"replacement resource {self.run_id}".encode()
         updated_resource = self._update_owned_resource(
@@ -829,9 +924,7 @@ class LiveMcpTest(unittest.TestCase):
             self._delete_owned_tag(missing_id)
         with self.assertRaisesRegex(AssertionError, "refusing to delete non-owned resource"):
             self._delete_owned_resource(missing_id)
-        self._tool(
-            "joplin_get_note", {"note_id": missing_id}, expect_error="NOTE_NOT_FOUND"
-        )
+        self._tool("joplin_get_note", {"note_id": missing_id}, expect_error="NOTE_NOT_FOUND")
         self._tool(
             "joplin_create_note",
             {"title": f"invalid-{self.run_id}", "parent_id": missing_id},

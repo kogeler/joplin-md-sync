@@ -74,9 +74,7 @@ def test_actions_secret_must_be_distinct() -> None:
     with pytest.raises(ValueError, match="Joplin"):
         validate_distinct_actions_token("a" * 43, joplin_token="a" * 43, mcp_token=None)
     with pytest.raises(ValueError, match="MCP"):
-        validate_distinct_actions_token(
-            "a" * 43, joplin_token="j" * 43, mcp_token="a" * 43
-        )
+        validate_distinct_actions_token("a" * 43, joplin_token="j" * 43, mcp_token="a" * 43)
 
 
 def test_runtime_limits_are_strict() -> None:

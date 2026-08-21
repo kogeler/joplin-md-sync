@@ -15,7 +15,7 @@ site_dir: site
 
 theme:
   name: material
-  custom_dir: overrides
+  custom_dir: docs/site/overrides
   language: en
   font:
     text: Montserrat
@@ -57,7 +57,15 @@ plugins:
   - search
 
 hooks:
-  - scripts/docs_hooks.py
+  - docs/site/hooks.py
+
+exclude_docs: |
+  site/CNAME
+  site/hooks.py
+  site/llms.txt
+  site/robots.txt
+  site/overrides/**
+  site/__pycache__/**
 
 markdown_extensions:
   - abbr
@@ -81,10 +89,10 @@ markdown_extensions:
       alternate_style: true
 
 extra_css:
-  - assets/stylesheets/extra.css
+  - site/assets/stylesheets/extra.css
 
 extra_javascript:
-  - assets/javascripts/site.js
+  - site/assets/javascripts/site.js
 
 extra:
   analytics:
@@ -98,23 +106,36 @@ extra:
 
 nav:
   - Home: index.md
-  - Get started:
-      - Overview: OVERVIEW.md
-      - Installation and quick start: GETTING_STARTED.md
-      - Agent workflows: AGENT_WORKFLOWS.md
+  - User guide:
+      - Overview: user/OVERVIEW.md
+      - Installation and quick start: user/GETTING_STARTED.md
+      - Agent workflows: user/AGENT_WORKFLOWS.md
   - Markdown sync:
-      - Workspace format: WORKSPACE_FORMAT.md
-      - CLI reference: CLI.md
-      - State and synchronization: STATE_MODEL.md
-      - Conflict handling: CONFLICTS.md
+      - Workspace format: user/WORKSPACE_FORMAT.md
+      - CLI reference: user/CLI.md
+      - Conflict handling: user/CONFLICTS.md
   - Agent interfaces:
-      - Choose an interface: AGENT_INTERFACES.md
-      - MCP API: MCP_API.md
-      - ChatGPT Actions: CHATGPT_ACTIONS.md
-      - Self-hosted service: SELF_HOSTED.md
-      - Service operations: SERVICE.md
-  - Internals:
-      - Architecture: ARCHITECTURE.md
-      - Security: SECURITY.md
-      - Release process: RELEASE_PROCESS.md
+      - Choose an interface: user/AGENT_INTERFACES.md
+      - MCP API: user/MCP_API.md
+      - ChatGPT Actions: user/CHATGPT_ACTIONS.md
+      - Self-hosted service: user/SELF_HOSTED.md
+      - Service operations: user/SERVICE.md
+  - Contracts:
+      - Catalog: contracts/README.md
+      - CLI and output: contracts/CLI.md
+      - Workspace: contracts/WORKSPACE.md
+      - Synchronization: contracts/SYNCHRONIZATION.md
+      - Agent interfaces: contracts/AGENT_INTERFACES.md
+      - Service: contracts/SERVICE.md
+      - Security: contracts/SECURITY.md
+      - Dependencies: contracts/DEPENDENCIES.md
+      - CI and releases: contracts/CI_RELEASES.md
+  - Maintainers:
+      - Architecture: maintenance/ARCHITECTURE.md
+      - Synchronization design: maintenance/SYNCHRONIZATION.md
+      - Security rationale: maintenance/SECURITY.md
+      - Dependencies: maintenance/DEPENDENCIES.md
+      - Development: maintenance/DEVELOPMENT.md
+      - Service maintenance: maintenance/SERVICE.md
+      - Releases: maintenance/RELEASES.md
   - Changelog: https://github.com/kogeler/joplin-md-sync/blob/main/CHANGELOG.md

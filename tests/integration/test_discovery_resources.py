@@ -69,7 +69,11 @@ class DoctorTest(WorkspaceTestCase):
         self.init_and_pull()
         self.server.stop()
         result = run_cli(
-            "doctor", "--root", str(self.root), "--offline", "--json",
+            "doctor",
+            "--root",
+            str(self.root),
+            "--offline",
+            "--json",
             env={"JOPLIN_TOKEN": TOKEN, "JOPLIN_BASE_URL": "http://127.0.0.1:1"},
         )
         self.assertEqual(result.exit_code, 0, result.stdout)
@@ -77,7 +81,10 @@ class DoctorTest(WorkspaceTestCase):
     def test_doctor_reports_auth_failure(self):
         self.init_and_pull()
         result = run_cli(
-            "doctor", "--root", str(self.root), "--json",
+            "doctor",
+            "--root",
+            str(self.root),
+            "--json",
             env={"JOPLIN_TOKEN": "bad-token", "JOPLIN_BASE_URL": self.server.base_url},
         )
         self.assertEqual(result.exit_code, 4, result.stdout)
@@ -119,9 +126,7 @@ class ResourcesTest(WorkspaceTestCase):
         result = self.cli("resources", "pull", "--root", str(self.root), "--json", expect=0)
         self.assertEqual(result.json["already_present"], [rid])
         # Markdown was not rewritten.
-        self.assertIn(
-            f"(:/{rid})", self.find_note_file("With image").read_text(encoding="utf-8")
-        )
+        self.assertIn(f"(:/{rid})", self.find_note_file("With image").read_text(encoding="utf-8"))
 
     def test_note_links_not_treated_as_missing_resources(self):
         """Joplin note-to-note links use the same :/id syntax as resources."""

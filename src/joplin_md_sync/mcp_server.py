@@ -54,9 +54,7 @@ class RpcError(Exception):
 class McpDispatcher:
     """JSON-RPC/MCP adapter over the shared tool registry and executor."""
 
-    def __init__(
-        self, service: JoplinMcpService, *, registry: ToolRegistry | None = None
-    ) -> None:
+    def __init__(self, service: JoplinMcpService, *, registry: ToolRegistry | None = None) -> None:
         self.registry = registry or build_tool_registry(service)
         self.executor = ToolExecutor(self.registry)
 
@@ -86,9 +84,7 @@ class McpDispatcher:
         if tool is None:
             raise RpcError(-32602, f"Unknown tool: {name}")
         arguments = params.get("arguments", {})
-        if not isinstance(arguments, dict) or any(
-            not isinstance(key, str) for key in arguments
-        ):
+        if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):
             raise RpcError(-32602, "tool arguments must be an object with string keys")
         execution = self.executor.execute(tool, arguments)
         if execution.success:
@@ -120,11 +116,7 @@ class McpDispatcher:
                 if not isinstance(params, dict):
                     raise RpcError(-32602, "initialize params must be an object")
                 requested = params.get("protocolVersion")
-                version = (
-                    requested
-                    if requested in MCP_SUPPORTED_VERSIONS
-                    else MCP_PROTOCOL_VERSION
-                )
+                version = requested if requested in MCP_SUPPORTED_VERSIONS else MCP_PROTOCOL_VERSION
                 result: JsonObject = {
                     "protocolVersion": version,
                     "capabilities": {"tools": {"listChanged": False}},
@@ -135,6 +127,8 @@ class McpDispatcher:
                     },
                     "instructions": (
                         "Read and modify Joplin notes through the Joplin Data API. "
+                        "Create tools reject an existing natural identity; use the "
+                        "returned ID with the corresponding update tool. "
                         "Delete moves notes to trash and never permanently deletes them."
                     ),
                 }
@@ -147,9 +141,7 @@ class McpDispatcher:
                 cursor = params.get("cursor")
                 if cursor not in (None, ""):
                     raise RpcError(-32602, "tools/list cursor is not supported")
-                result = {
-                    "tools": [tool.to_mcp_json() for tool in self.registry.definitions]
-                }
+                result = {"tools": [tool.to_mcp_json() for tool in self.registry.definitions]}
             elif method == "tools/call":
                 result = self._call_tool(message.get("params"))
             elif method in {
@@ -300,9 +292,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         try:
             authorization_values = self.headers.get_all("Authorization", [])
-            authorization = (
-                authorization_values[0] if len(authorization_values) == 1 else None
-            )
+            authorization = authorization_values[0] if len(authorization_values) == 1 else None
             accepted = self.server.token_source.accepts(authorization)
         except AuthError as exc:
             log.error("%s", exc)
@@ -410,7 +400,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             return
         content_type = self.headers.get_content_type()
         if content_type != "application/json":
-            self._rpc_error(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, -32600, "Content-Type must be application/json")
+            self._rpc_error(
+                HTTPStatus.UNSUPPORTED_MEDIA_TYPE, -32600, "Content-Type must be application/json"
+            )
             return
         accept = self.headers.get("Accept", "")
         if "application/json" not in accept or "text/event-stream" not in accept:
@@ -426,10 +418,14 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             length = -1
         if length < 0:
-            self._rpc_error(HTTPStatus.LENGTH_REQUIRED, -32600, "A valid Content-Length is required")
+            self._rpc_error(
+                HTTPStatus.LENGTH_REQUIRED, -32600, "A valid Content-Length is required"
+            )
             return
         if length > MAX_REQUEST_BYTES:
-            self._rpc_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, -32600, "Request body is too large")
+            self._rpc_error(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE, -32600, "Request body is too large"
+            )
             return
         try:
             raw = self.rfile.read(length)
@@ -445,9 +441,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         if method != "initialize":
             effective_version = protocol_header or "2025-03-26"
             if effective_version not in MCP_SUPPORTED_VERSIONS:
-                self._rpc_error(
-                    HTTPStatus.BAD_REQUEST, -32600, "Unsupported MCP-Protocol-Version"
-                )
+                self._rpc_error(HTTPStatus.BAD_REQUEST, -32600, "Unsupported MCP-Protocol-Version")
                 return
         mirrored_method = self.headers.get("Mcp-Method")
         if mirrored_method is not None and mirrored_method != method:

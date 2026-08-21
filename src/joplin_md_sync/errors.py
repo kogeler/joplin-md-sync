@@ -1,7 +1,7 @@
 """Error hierarchy, stable exit codes, and machine-readable result codes.
 
-Exit codes are part of the public agent contract (see AGENTS.md and
-docs/CLI.md) and must stay stable across releases.
+Exit codes are defined by docs/contracts/CLI.md and stay stable across
+releases.
 """
 
 from __future__ import annotations

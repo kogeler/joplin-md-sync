@@ -145,9 +145,7 @@ def _expect_status(response: HttpResponse, expected: set[int], check: str) -> No
     if response.status not in expected:
         wanted = "/".join(str(status) for status in sorted(expected))
         suffix = _edge_rejection(response.body)
-        raise SetupError(
-            f"{check}: expected HTTP {wanted}, received {response.status}{suffix}"
-        )
+        raise SetupError(f"{check}: expected HTTP {wanted}, received {response.status}{suffix}")
 
 
 def _edge_rejection(body: bytes) -> str:
@@ -178,9 +176,7 @@ def _expect_success(response: HttpResponse, action_name: str) -> None:
     try:
         payload = json.loads(response.body)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        raise SetupError(
-            f"authenticated {action_name} Action response is not valid JSON"
-        ) from None
+        raise SetupError(f"authenticated {action_name} Action response is not valid JSON") from None
     if not isinstance(payload, dict) or payload.get("success") is not True:
         raise SetupError(
             f"authenticated {action_name} Action response does not report success: true"
@@ -231,14 +227,10 @@ def generate_contract(origin: str, output: Path) -> int:
             raise SetupError("generated contract contains an invalid Action operation")
         operations.append(item["post"])
     if not operations or any(
-        operation.get("security") != [{"GPTActionBearer": []}]
-        for operation in operations
+        operation.get("security") != [{"GPTActionBearer": []}] for operation in operations
     ):
         raise SetupError("generated contract does not require bearer authentication")
-    if any(
-        operation.get("x-openai-isConsequential") is not False
-        for operation in operations
-    ):
+    if any(operation.get("x-openai-isConsequential") is not False for operation in operations):
         raise SetupError("generated contract does not allow persistent Action approval")
 
     rendered = json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

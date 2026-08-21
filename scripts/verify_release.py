@@ -100,17 +100,16 @@ def check_standalones(artifacts: list[Path], *, require_all: bool) -> None:
         for artifact in artifacts
         if artifact.suffix in (".whl", ".pyz") or artifact.name.endswith(".tar.gz")
     }
-    standalone_names = {artifact.name for artifact in artifacts if artifact not in package_artifacts}
+    standalone_names = {
+        artifact.name for artifact in artifacts if artifact not in package_artifacts
+    }
     unexpected = standalone_names - STANDALONE_NAMES
     if unexpected:
         fail(f"unexpected release artifacts: {sorted(unexpected)}")
     if not standalone_names:
         fail("dist/ does not contain a standalone executable")
     if require_all and standalone_names != STANDALONE_NAMES:
-        fail(
-            f"standalone inventory {sorted(standalone_names)} != "
-            f"{sorted(STANDALONE_NAMES)}"
-        )
+        fail(f"standalone inventory {sorted(standalone_names)} != {sorted(STANDALONE_NAMES)}")
 
 
 def check_artifacts(*, require_all_standalones: bool = False) -> None:

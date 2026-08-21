@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "joplin-md-sync"
-# The version lives in the root .version file (single source, see docs/RELEASE_PROCESS.md).
+# The version lives in the root .version file (see docs/contracts/CI_RELEASES.md).
 dynamic = ["version"]
 description = "Safe two-way synchronization between Joplin notes and a local Markdown workspace, built for autonomous coding agents"
 readme = "README.md"
@@ -23,15 +23,35 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
 ]
-# Zero third-party runtime dependencies by design (see docs/ARCHITECTURE.md).
-# If one ever becomes necessary, declare it here; requirements-dev.txt stays
-# a pip-freeze lock of the development environment only.
+# Runtime dependency policy is owned by docs/contracts/DEPENDENCIES.md.
 dependencies = []
 
-[dependency-groups]
-# Declared (unpinned) development tools; the committed pip-freeze lock lives
-# in requirements-dev.txt and is regenerated with `make freeze`.
-dev = ["ruff", "mypy", "build", "pyinstaller", "pytest", "pytest-xdist"]
+[project.optional-dependencies]
+# Direct tools track their latest stable compatible releases and use exact pins.
+# pip-compile resolves their transitive dependencies into separate hash locks so
+# a platform-specific tool limitation does not force a repository-wide downgrade.
+dev = [
+    "bandit[toml]==1.9.4",
+    "mypy==2.3.1",
+    "pip-audit==2.10.1",
+    "ruff==0.16.4",
+]
+test = [
+    # pip-compile evaluates platform markers on its Linux host. Keep the latest
+    # Windows console dependency explicit so this lock is installable there.
+    "colorama==0.4.6",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pytest-xdist==3.8.0",
+]
+package = [
+    "build==1.5.0",
+    "colorama==0.4.6",
+    "pefile==2024.8.26",
+    "pyinstaller==6.22.2",
+    "pywin32-ctypes==0.2.3",
+]
+docs = ["mkdocs-material==9.7.7"]
 
 [project.urls]
 Repository = "https://github.com/kogeler/joplin-md-sync"
@@ -53,6 +73,10 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
 ignore = ["E501"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "tests_live", "scripts/joplin_terminal_service/tests"]
+skips = ["B101", "B105", "B110"]
 
 [tool.mypy]
 python_version = "3.13"

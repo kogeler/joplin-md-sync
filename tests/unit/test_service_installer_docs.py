@@ -1,44 +1,38 @@
 """Documentation contract for the headless service installer CLI reference."""
 
+import argparse
+import runpy
+import sys
 from pathlib import Path
+from typing import Any, cast
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SERVICE_DOC = ROOT / "docs" / "SERVICE.md"
+SERVICE_DOC = ROOT / "docs" / "user" / "SERVICE.md"
+SERVICE_SCRIPTS = ROOT / "scripts" / "joplin_terminal_service"
 
 
+def _installer_parser() -> argparse.ArgumentParser:
+    sys.path.insert(0, str(SERVICE_SCRIPTS))
+    try:
+        namespace = runpy.run_path(str(SERVICE_SCRIPTS / "install_joplin_terminal.py"))
+    finally:
+        sys.path.pop(0)
+    build_parser = cast("Any", namespace["build_parser"])
+    return cast("argparse.ArgumentParser", build_parser({}))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
 def test_service_installer_reference_covers_every_public_option() -> None:
     contents = SERVICE_DOC.read_text(encoding="utf-8")
     assert "## Installer CLI reference" in contents
-    options = (
-        "--sync-target",
-        "--sync-location",
-        "--sync-username",
-        "--sync-secret-file",
-        "--s3-endpoint",
-        "--s3-region",
-        "--s3-force-path-style",
-        "--no-s3-force-path-style",
-        "--e2ee-password-file",
-        "--profile-dir",
-        "--api-port",
-        "--sync-interval",
-        "--joplin-version",
-        "--joplin-prefix",
-        "--joplin-md-sync-version",
-        "--mcp-port",
-        "--allow-remote-mcp",
-        "--upgrade",
-        "--no-enable-service",
-        "--no-start-service",
-        "--force-reconfigure",
-        "--enable-linger",
-        "--purge",
-        "--yes",
-        "--non-interactive",
-        "--dry-run",
-        "--verbose",
-        "--help",
-    )
+    options = {
+        option
+        for action in _installer_parser()._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
     for option in options:
         assert f"`{option}" in contents
 

@@ -7,8 +7,8 @@ DOCS = REPO / "docs"
 
 
 def test_chatgpt_actions_setup_is_complete_and_not_split() -> None:
-    setup = (DOCS / "CHATGPT_ACTIONS.md").read_text(encoding="utf-8")
-    assert not (DOCS / "CHATGPT_INSTRUCTIONS.md").exists()
+    setup = (DOCS / "user" / "CHATGPT_ACTIONS.md").read_text(encoding="utf-8")
+    assert not (DOCS / "user" / "CHATGPT_INSTRUCTIONS.md").exists()
     for required in (
         "python3 scripts/prepare_chatgpt_action.py",
         "asks for exactly two values",
@@ -26,7 +26,7 @@ def test_chatgpt_actions_setup_is_complete_and_not_split() -> None:
         "API key",
         "Bearer",
         "Do not add the word `Bearer`",
-        "Version 1.5.3 generates 27 Actions",
+        "Version 1.5.4 generates 27 Actions",
         "Authorization: Bearer <token>",
         "Test in Preview",
         "success: true",
@@ -39,13 +39,13 @@ def test_chatgpt_actions_setup_is_complete_and_not_split() -> None:
 
     markdown = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in [REPO / "README.md", REPO / "AGENTS.md", *DOCS.glob("*.md")]
+        for path in [REPO / "README.md", REPO / "AGENTS.md", *DOCS.rglob("*.md")]
     )
     assert "CHATGPT_INSTRUCTIONS.md" not in markdown
 
 
 def test_service_guide_delegates_actions_setup_without_duplicate_commands() -> None:
-    service = (DOCS / "SERVICE.md").read_text(encoding="utf-8")
+    service = (DOCS / "user" / "SERVICE.md").read_text(encoding="utf-8")
     assert "ChatGPT Actions end-to-end setup" in service
     assert "setup-probe-not-a-tool" not in service
     assert "gpt-actions export-openapi" not in service
