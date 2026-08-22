@@ -32,7 +32,7 @@ owned by [`CLI-001`](../contracts/CLI.md#cli-001-json-output-is-deterministic-an
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.5.6",
+  "tool_version": "1.6.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -117,6 +117,30 @@ validation (exit 3 for a malformed header).
 Downloads every `:/resource-id` referenced by managed notes into
 `.joplin-sync/resources/<id>[.ext]`. Markdown links are never rewritten.
 
+### `mcp stdio --token TOKEN [--port PORT]`
+
+Runs a local MCP server over stdin/stdout for an IDE or agent that launches the
+executable directly. Joplin Desktop must already be running locally with Web
+Clipper enabled. `--token TOKEN` is required, and `--port PORT` selects its
+Data API port on `127.0.0.1` (default `41184`). No network MCP listener or
+Markdown workspace is created.
+
+This mode does not expose `/mcp`, GPT Actions, `/healthz`, or `/readyz` and
+does not accept `--auth-token-file`, `--gpt-actions`, or
+`--gpt-actions-token-file`. Those bearer credentials protect HTTP interfaces
+that do not exist in stdio mode; only the required Joplin `--token` is used.
+
+The optional `--timeout SECONDS`, `--retry-timeout SECONDS`, and
+`--retry-delay SECONDS` settings have the same call behavior as `mcp serve`.
+The process reads one JSON-RPC message per stdin line, writes only JSON-RPC to
+stdout, and exits when the client closes stdin. `--verbose`, `--quiet`, and
+`--log-file PATH` affect diagnostics on stderr or in the selected log file.
+
+The raw-token flag is deliberately limited to this local launch mode. IDE
+configuration normally persists command arguments, and other processes owned
+by the same user may be able to inspect them. Protect the configuration as a
+credential and do not paste the command into shell history.
+
 ### `mcp serve [connection and server options]`
 
 Runs a foreground MCP Streamable HTTP server at
@@ -124,6 +148,10 @@ Runs a foreground MCP Streamable HTTP server at
 binary-resource CRUD, trash/restore where Joplin supports it, Markdown/HTML
 content, attachments, relationship traversal, and full-text search. No
 workspace is required.
+
+This remains the network listener mode. Without the separate `mcp stdio`
+subcommand, the HTTP listener and its existing MCP/Actions options behave as
+before.
 
 For note creation, pass an existing `parent_id` or a `notebook_title` to
 find/create a root notebook. With neither, `MCP Notes` is found or created.

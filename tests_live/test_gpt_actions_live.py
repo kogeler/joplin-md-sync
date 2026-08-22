@@ -1,4 +1,4 @@
-"""Destructive opt-in GPT Actions checks against a real local Joplin profile.
+"""GPT Actions checks against a session-scoped ephemeral Joplin profile.
 
 The suite starts the production CLI listener and exercises the complete HTTP
 Actions chain. Every created entity contains a random run id. Teardown scans
@@ -31,8 +31,8 @@ sys.path.insert(0, str(SRC))
 from joplin_md_sync.api import JoplinClient  # noqa: E402
 from joplin_md_sync.config import build_client  # noqa: E402
 from joplin_md_sync.gpt_openapi import registry_for_export  # noqa: E402
+from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
 
-TOKEN_FILE = REPO / "token"
 ACTIONS_PREFIX = "/api/gpt/v1/tools"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 CURRENT_TOKEN = object()
@@ -46,6 +46,7 @@ def _free_port() -> int:
 
 class LiveGptActionsTest(unittest.TestCase):
     api: JoplinClient
+    token_file: Path
     process: subprocess.Popen[str]
     auth_tmp: tempfile.TemporaryDirectory[str]
     actions_token_file: Path
@@ -74,15 +75,17 @@ class LiveGptActionsTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        if not TOKEN_FILE.is_file():
-            raise unittest.SkipTest(f"live Joplin token file not found: {TOKEN_FILE}")
-        if os.name == "posix" and TOKEN_FILE.stat().st_mode & 0o077:
-            raise RuntimeError(f"live Joplin token file must have mode 0600: {TOKEN_FILE}")
-
-        cls.api = build_client(token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25)
+        runtime = running_joplin()
+        cls.token_file = runtime.token_file
+        cls.api = build_client(
+            token_file=str(cls.token_file),
+            cli_base_url=runtime.base_url,
+            timeout=5.0,
+            discovery_timeout=0.25,
+        )
         if not cls.api.ping():
             raise RuntimeError(f"unexpected Joplin ping response from {cls.api.base_url}")
-        cls.joplin_token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        cls.joplin_token = cls.token_file.read_text(encoding="utf-8").strip()
         cls._snapshot_initial_state()
         cls.owned_note_ids = set()
         cls.owned_folder_ids = set()
@@ -320,7 +323,7 @@ class LiveGptActionsTest(unittest.TestCase):
         extra_args: list[str],
         *,
         base_url: str | None = None,
-        token_file: Path = TOKEN_FILE,
+        token_file: Path | None = None,
     ) -> tuple[subprocess.Popen[str], str]:
         port = _free_port()
         public_url = f"http://127.0.0.1:{port}"
@@ -336,7 +339,7 @@ class LiveGptActionsTest(unittest.TestCase):
             "mcp",
             "serve",
             "--token-file",
-            str(token_file),
+            str(token_file or cls.token_file),
             "--base-url",
             base_url or cls.api.base_url,
             "--mcp-port",
@@ -996,14 +999,14 @@ class LiveGptActionsTest(unittest.TestCase):
             [
                 *common,
                 "--token-file",
-                str(TOKEN_FILE),
+                str(self.token_file),
                 "--gpt-actions-token-file",
-                str(TOKEN_FILE),
+                str(self.token_file),
             ],
             [
                 *common,
                 "--token-file",
-                str(TOKEN_FILE),
+                str(self.token_file),
                 "--auth-token-file",
                 str(self.actions_token_file),
                 "--gpt-actions-token-file",
@@ -1034,7 +1037,7 @@ class LiveGptActionsTest(unittest.TestCase):
             timeout=10,
             check=True,
         )
-        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.5.6")
+        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.6.0")
 
     def test_99_every_exposed_action_was_exercised(self) -> None:
         expected = {tool.name for tool in registry_for_export().exposed}

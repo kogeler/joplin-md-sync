@@ -1,7 +1,8 @@
 # Joplin for ChatGPT and MCP
 
-> Authenticated ChatGPT Actions and Streamable HTTP MCP access to self-hosted
-> Joplin, plus automated headless deployment and reviewable Markdown sync.
+> Local stdio and Streamable HTTP MCP access to self-hosted Joplin,
+> authenticated ChatGPT Actions, automated headless deployment, and reviewable
+> Markdown sync.
 
 Canonical documentation: https://joplin-mcp.romancello.net/
 Source: https://github.com/kogeler/joplin-md-sync

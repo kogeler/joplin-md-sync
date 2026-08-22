@@ -67,7 +67,7 @@ CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/n
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs venv-lock lock refresh-dependencies freeze \
 	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	lock-platform-check test test-full test-live test-service-installer audit dependency-snapshot \
+	lock-platform-check test test-full test-live test-live-stdio-standalone test-service-installer audit dependency-snapshot \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release clean
@@ -226,8 +226,12 @@ test-full: venv-test ## full test suite with coverage reports and gate
 		--cov-report=xml:$(ARTIFACTS)/coverage.xml --cov-fail-under=$(COVERAGE_MIN)
 	$(PYTHON_TEST) -m coverage report --format=markdown > $(ARTIFACTS)/coverage-report.md
 
-test-live: venv-test ## opt-in live MCP and GPT Actions tests; reads ./token
+test-live: venv-test ## live protocols against ephemeral Joplin Desktop 3.6.15 (Linux AMD64)
 	$(PYTHON_TEST) -m pytest -q tests_live
+
+test-live-stdio-standalone: standalone venv-test ## native stdio acceptance against ephemeral Joplin Desktop
+	JOPLIN_MD_SYNC_LIVE_EXECUTABLE="$(abspath $(STANDALONE))" \
+		$(PYTHON_TEST) -m pytest -q tests_live/test_mcp_stdio_live.py
 
 test-service-installer: venv-test ## Linux headless service installer tests
 	$(PYTHON_TEST) -m unittest discover -s scripts/joplin_terminal_service/tests -v

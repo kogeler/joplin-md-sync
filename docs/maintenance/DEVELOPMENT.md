@@ -45,9 +45,19 @@ make smoke
 ```
 
 `make ci` adds coverage, lock drift, strict docs, dependency submission,
-workflow lint, and vulnerability audit. Live Joplin acceptance is deliberately
-opt-in through `make test-live` because it needs a running Joplin instance and
-the ignored repository-root `token` file.
+workflow lint, and vulnerability audit. Reusable CI follows that job with a
+separate Linux AMD64 `make test-live` gate. The live target downloads the
+checksum-pinned official Joplin Desktop 3.6.15 Debian binary, extracts it
+without installing system packages, and runs it with Xvfb, `HOME`, XDG paths,
+and its profile isolated under `/tmp`. Python stops the process groups and
+removes the complete temporary tree after the session. Local runs require
+network access, `dpkg-deb`, and Xvfb; they do not use a running Joplin instance
+or the repository-root `token` file.
+
+`make test-live-stdio-standalone` builds the current platform's native
+executable and runs the read-only stdio acceptance through that artifact
+against the same ephemeral Joplin Desktop runtime. Both live targets are Linux
+AMD64 only.
 
 ## Documentation changes
 

@@ -35,9 +35,15 @@ tag, trash, and restore current Joplin objects without a Markdown workspace.
 
 ## MCP
 
-`joplin-md-sync mcp serve` exposes Streamable HTTP at
-`http://127.0.0.1:8765/mcp`. It does not require a workspace and does not use
-the base snapshot.
+`joplin-md-sync mcp stdio --token TOKEN` lets a local editor launch the native
+executable directly, while `joplin-md-sync mcp serve` exposes Streamable HTTP
+at `http://127.0.0.1:8765/mcp`. Neither requires a workspace or uses the base
+snapshot.
+
+The stdio process opens no listener and needs no MCP or Actions bearer token;
+its required `--token` is only the upstream Joplin Web Clipper credential.
+`mcp serve` retains the existing HTTP, authorization, Origin, and optional
+Actions behavior.
 
 MCP calls operate on current Joplin state immediately. Reads retry bounded
 availability failures. Writes are sent once and are never automatically
@@ -82,7 +88,7 @@ the agent needs files from another repository, large edits, or Git review.
 | Private Custom GPT | Public HTTPS Actions namespace; Joplin API stays private |
 | Dedicated Linux host with Joplin Terminal | Authenticated MCP and/or Actions |
 | Joplin Desktop with a private network client | Authenticated MCP behind TLS |
-| Joplin Desktop and agent on one machine | Loopback MCP or Markdown workspace |
+| Joplin Desktop and agent on one machine | Local stdio MCP or Markdown workspace |
 
 See [Self-hosted deployment](SELF_HOSTED.md) for the trust boundaries behind
 these topologies.

@@ -1202,13 +1202,26 @@ body {
 
   .home-actions {
     align-items: stretch;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin: 0 auto;
-    max-width: 320px;
+    max-width: 354px;
   }
 
   .home-button {
+    font-size: 0.72rem;
+    padding-left: 10px;
+    padding-right: 10px;
     width: 100%;
+  }
+
+  .home-button--primary {
+    grid-column: 1 / -1;
+  }
+
+  .hero-console__bar,
+  .hero-console__run {
+    display: none;
   }
 
   .use-case-grid,
@@ -1269,30 +1282,40 @@ body {
   }
 
   .home-hero__content {
-    padding-bottom: 18px;
-    padding-top: 20px;
+    padding-bottom: 10px;
+    padding-top: 10px;
   }
 
-  .home-hero__lead {
-    font-size: 0.74rem;
-    line-height: 1.5;
+  .home-kicker {
+    font-size: 0.5rem;
+    margin-bottom: 10px !important;
+  }
+
+  .home-hero h1 {
+    font-size: 1.5rem;
     margin-bottom: 15px !important;
   }
 
-  .home-button--secondary,
+  .home-hero h1::after {
+    margin-top: 10px;
+  }
+
+  .home-hero__lead {
+    font-size: 0.68rem;
+    line-height: 1.35;
+    margin-bottom: 10px !important;
+  }
+
   .home-proof,
-  .hero-console__bar,
-  .hero-console__run {
+  .hero-console {
     display: none;
   }
 
-  .hero-console {
-    margin-top: 14px;
+  .home-actions {
+    gap: 8px;
   }
 
-  .hero-console__flow {
-    min-height: 76px;
-    padding-bottom: 9px;
-    padding-top: 9px;
+  .home-button {
+    min-height: 38px;
   }
 }

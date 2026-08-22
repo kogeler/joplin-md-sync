@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "joplin-md-sync"
 # The version lives in the root .version file (see docs/contracts/CI_RELEASES.md).
 dynamic = ["version"]
-description = "Self-hosted Joplin access for ChatGPT, MCP clients, and reviewable Markdown workflows"
+description = "Self-hosted Joplin access for ChatGPT Actions, local stdio and HTTP MCP clients, and reviewable Markdown workflows"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

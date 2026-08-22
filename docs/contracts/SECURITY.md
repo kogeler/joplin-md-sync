@@ -7,15 +7,21 @@
 ### `SEC-001` - Joplin credentials never enter public output or workspace state
 
 **Contract:** The Joplin token MUST be accepted only from `JOPLIN_TOKEN` or a
-token file, MUST be redacted from stdout, stderr, and log files, and MUST NOT be
-stored in workspace files. Authentication failure MUST not echo remote response
-content containing the credential.
+token file except for the local process contract `mcp stdio --token TOKEN`.
+Every accepted form MUST be redacted from stdout, stderr, and log files and
+MUST NOT be stored in workspace files. Stdio stdout MUST contain only protocol
+messages, and stdio mode MUST NOT open HTTP interfaces or accept their bearer
+credentials. Authentication failure MUST not echo remote response content
+containing the credential.
 
 **Evidence:**
 
 - [`test_token_never_in_output_on_auth_error`](../../tests/integration/test_cli_contract.py) - `tests/integration/test_cli_contract.py::TokenSafetyTest::test_token_never_in_output_on_auth_error`
 - [`test_token_never_in_log_file`](../../tests/integration/test_cli_contract.py) - `tests/integration/test_cli_contract.py::TokenSafetyTest::test_token_never_in_log_file`
 - [`test_token_not_stored_in_workspace`](../../tests/integration/test_cli_contract.py) - `tests/integration/test_cli_contract.py::TokenSafetyTest::test_token_not_stored_in_workspace`
+- [`test_configuration_errors_never_write_to_protocol_stdout`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_configuration_errors_never_write_to_protocol_stdout`
+- [`test_lifecycle_tools_live_call_and_protocol_errors`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_lifecycle_tools_live_call_and_protocol_errors`
+- [`test_stdio_has_no_http_listener_or_interface_bearer_options`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_stdio_has_no_http_listener_or_interface_bearer_options`
 
 ### `SEC-002` - Remote network exposure always requires explicit authorization
 

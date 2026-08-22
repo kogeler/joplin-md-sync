@@ -1,1 +1,1 @@
-"""Opt-in tests against a real local Joplin profile; never run by CI."""
+"""Live protocol tests against an ephemeral Joplin Desktop profile."""

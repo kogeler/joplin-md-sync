@@ -1,26 +1,27 @@
 # joplin-md-sync Agent Runbook
 
-Safe two-way synchronization between Joplin and ordinary Markdown, with MCP
-and ChatGPT Actions interfaces for agents. Product guarantees are defined only
-by the [contract catalog](docs/contracts/README.md). This runbook tells an agent
-how to operate the project safely; it does not replace those contracts.
+Safe two-way synchronization between Joplin and ordinary Markdown, with local
+stdio and HTTP MCP plus ChatGPT Actions interfaces for agents. Product
+guarantees are defined only by the [contract catalog](docs/contracts/README.md).
+This runbook tells an agent how to operate the project safely; it does not
+replace those contracts.
 
 ## Requirements
 
 - CPython 3.13 or 3.14 on Windows or Linux for source, wheel, and zipapp use.
 - Joplin Desktop running locally with Web Clipper enabled, normally on port
   `41184`.
-- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN` or a protected
-  token file.
+- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN`, a protected
+  token file, or the required local `mcp stdio --token` argument.
 
 Native release executables include Python.
 
 ## Install
 
 ```bash
-python -m pip install "joplin-md-sync==1.5.6"
+python -m pip install "joplin-md-sync==1.6.0"
 # or:
-pipx install "joplin-md-sync==1.5.6"
+pipx install "joplin-md-sync==1.6.0"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```
@@ -101,6 +102,13 @@ does not need a Markdown workspace:
 joplin-md-sync mcp serve --token-file /protected/joplin-token
 ```
 
+A local IDE can instead launch the release executable over stdio while Joplin
+Desktop is already running. Configure its process argument vector with
+`mcp stdio --token TOKEN`; add `--port PORT` only when Joplin does not use the
+default `41184`. Treat the IDE configuration as a credential-bearing file and
+do not type this form into shell history. This mode opens no MCP, Actions,
+health, or readiness port and needs no bearer credential for those interfaces.
+
 Setup and operation:
 
 - [MCP API](docs/user/MCP_API.md)
@@ -142,7 +150,8 @@ Review [Conflict handling](docs/user/CONFLICTS.md) before selecting a side.
 - Never resolve a conflict by manipulating its bundle directly.
 - Never access Joplin's database, profile, or sync target directly.
 - Never put Joplin, MCP, Actions, sync, or encryption credentials in Git,
-  chat, logs, or shell arguments.
+  chat, logs, or interactive shell arguments. The only process-argument
+  exception is the IDE-managed local `mcp stdio --token` contract above.
 - Never expose the Joplin Data API to a public network.
 - Do not interleave direct MCP/Actions writes with unpushed Markdown edits.
 
