@@ -44,6 +44,7 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     ci = _workflow("ci.yml")
     for job in (
         "quality:",
+        "live-joplin:",
         "compatibility:",
         "distribution:",
         "dependency-review:",
@@ -58,6 +59,9 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         "ubuntu-24.04-arm",
         "windows-latest",
         "make test-service-installer",
+        "name: Live protocols",
+        "make test-live PY=python",
+        "command -v Xvfb",
         "actions/dependency-review-action@",
         "github/codeql-action/init@",
         "github/codeql-action/analyze@",
@@ -72,6 +76,25 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "COVERAGE_MIN ?= 87" in makefile
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
+
+
+def test_live_ci_uses_pinned_ephemeral_joplin_binary() -> None:
+    runtime = (ROOT / "tests_live" / "ephemeral_joplin.py").read_text(encoding="utf-8")
+    live_tests = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "tests_live").glob("test_*.py")
+    )
+    assert 'JOPLIN_VERSION = "3.6.15"' in runtime
+    assert "Joplin-{JOPLIN_VERSION}.deb" in runtime
+    assert (
+        'JOPLIN_DEB_SHA256 = "c9fc77c077f1c81c581324dfdd4cc785307ea3c5b5f19ceecf9ee20fa78ac792"'
+        in runtime
+    )
+    assert 'TemporaryDirectory(prefix="jms-live-joplin-", dir="/tmp")' in runtime
+    assert "dpkg-deb" in runtime
+    assert "Xvfb" in runtime
+    assert "npm install" not in runtime
+    assert 'shutil.which("node")' not in runtime
+    assert 'REPO / "token"' not in live_tests
 
 
 def test_version_job_compares_exact_base_and_head() -> None:

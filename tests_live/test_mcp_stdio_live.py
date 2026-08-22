@@ -1,4 +1,4 @@
-"""Read-only MCP stdio acceptance against a running local Joplin instance."""
+"""Read-only MCP stdio acceptance against the ephemeral Joplin profile."""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ SRC = REPO / "src"
 sys.path.insert(0, str(SRC))
 
 from joplin_md_sync.config import build_client  # noqa: E402
+from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
 
-TOKEN_FILE = REPO / "token"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -33,13 +33,14 @@ def _cli_command() -> list[str]:
 
 class LiveMcpStdioTest(unittest.TestCase):
     def test_stdio_process_reads_running_joplin(self) -> None:
-        if not TOKEN_FILE.is_file():
-            raise unittest.SkipTest(f"live Joplin token file not found: {TOKEN_FILE}")
-        if os.name == "posix" and TOKEN_FILE.stat().st_mode & 0o077:
-            raise RuntimeError(f"live Joplin token file must have mode 0600: {TOKEN_FILE}")
-
-        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
-        api = build_client(token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25)
+        runtime = running_joplin()
+        token = runtime.token_file.read_text(encoding="utf-8").strip()
+        api = build_client(
+            token_file=str(runtime.token_file),
+            cli_base_url=runtime.base_url,
+            timeout=5.0,
+            discovery_timeout=0.25,
+        )
         if not api.ping():
             raise RuntimeError(f"unexpected Joplin ping response from {api.base_url}")
         split = urllib.parse.urlsplit(api.base_url)

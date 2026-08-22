@@ -20,13 +20,16 @@ permissions and concurrency behavior.
 
 **Contract:** Reusable CI MUST run the complete Linux quality contract through
 `make ci`, separately test supported Python 3.13/3.14 and Linux AMD64/ARM64 and
-Windows AMD64 compatibility, run Linux installer tests, and build and smoke
-each supported native distribution. Coverage MUST remain blocking at the
-reviewed floor.
+Windows AMD64 compatibility, run Linux installer tests, run the complete live
+protocol suite on Linux AMD64 against a checksum-verified ephemeral Joplin
+Desktop 3.6.15 profile, and build and smoke each supported native distribution.
+Coverage MUST remain blocking at the reviewed floor. The live job MUST NOT use
+a repository credential or a pre-existing Joplin process or profile.
 
 **Evidence:**
 
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
+- [`test_live_ci_uses_pinned_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_pinned_ephemeral_joplin_binary`
 - [`test_supported_platform_names`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneNameTest::test_supported_platform_names`
 
 ### `CIR-003` - Write permissions are confined to dedicated jobs

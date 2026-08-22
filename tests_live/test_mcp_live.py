@@ -1,14 +1,14 @@
-"""Destructive opt-in MCP checks against a real, local Joplin profile.
+"""MCP checks against a session-scoped ephemeral Joplin Desktop profile.
 
 Safety contract:
-* the Joplin token is read from the repository-root ``token`` file;
+* Python verifies, extracts, and starts the exact reviewed Linux binary;
 * every created notebook/note/tag/resource contains a random run id;
 * mutation helpers reject every entity id not created by this process;
 * cleanup permanently removes only allowlisted ids created by this process;
-* pre-existing notes, notebooks, tags, and resources are verified unchanged.
+* the entire temporary profile is removed after the test session.
 
-Run explicitly with ``make test-live``. The normal ``make test`` and CI only
-collect ``tests/``, never ``tests_live/``.
+Run explicitly with ``make test-live``. Reusable CI runs the same target in its
+own live acceptance job.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ sys.path.insert(0, str(SRC))
 
 from joplin_md_sync.api import JoplinClient  # noqa: E402
 from joplin_md_sync.config import build_client  # noqa: E402
+from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
 
-TOKEN_FILE = REPO / "token"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 EXPECTED_MCP_TOOLS = {
     "joplin_list_notebooks",
@@ -80,6 +80,7 @@ def _free_port() -> int:
 
 class LiveMcpTest(unittest.TestCase):
     api: JoplinClient
+    token_file: Path
     process: subprocess.Popen[str]
     auth_tmp: tempfile.TemporaryDirectory[str]
     auth_token_file: Path
@@ -99,12 +100,14 @@ class LiveMcpTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        if not TOKEN_FILE.is_file():
-            raise unittest.SkipTest(f"live Joplin token file not found: {TOKEN_FILE}")
-        if TOKEN_FILE.stat().st_mode & 0o077:
-            raise RuntimeError(f"live Joplin token file must have mode 0600: {TOKEN_FILE}")
-
-        cls.api = build_client(token_file=str(TOKEN_FILE), timeout=5.0, discovery_timeout=0.25)
+        runtime = running_joplin()
+        cls.token_file = runtime.token_file
+        cls.api = build_client(
+            token_file=str(cls.token_file),
+            cli_base_url=runtime.base_url,
+            timeout=5.0,
+            discovery_timeout=0.25,
+        )
         if not cls.api.ping():
             raise RuntimeError(f"unexpected Joplin ping response from {cls.api.base_url}")
         before = cls.api.list_notes(
@@ -166,7 +169,7 @@ class LiveMcpTest(unittest.TestCase):
                 "mcp",
                 "serve",
                 "--token-file",
-                str(TOKEN_FILE),
+                str(cls.token_file),
                 "--base-url",
                 cls.api.base_url,
                 "--mcp-port",
@@ -966,7 +969,7 @@ class LiveMcpTest(unittest.TestCase):
                 "mcp",
                 "serve",
                 "--token-file",
-                str(TOKEN_FILE),
+                str(self.token_file),
                 "--base-url",
                 "http://127.0.0.1:1",
                 "--mcp-port",

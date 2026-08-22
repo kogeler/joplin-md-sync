@@ -42,8 +42,9 @@ podman run --rm \
 
 The exact behavioral coverage is indexed by the evidence links in the
 [service contract](../contracts/SERVICE.md). Protocol changes also require the
-regular integration suite and, when a local Joplin instance is available,
-`make test-live`.
+regular integration suite and `make test-live`. That target provisions its own
+checksum-verified Joplin Desktop 3.6.15 binary and temporary profile on Linux
+AMD64; it never uses the operator's running Joplin instance.
 
 ## Change procedure
 

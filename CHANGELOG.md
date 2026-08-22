@@ -15,11 +15,17 @@ All notable changes to this project are documented here. The format follows
   that defaults to `41184`.
 - Add isolated transport coverage and read-only live acceptance against both
   the source CLI and the native one-file executable.
+- Run the MCP, GPT Actions, and stdio live suite in CI against a
+  checksum-verified official Joplin Desktop 3.6.15 Linux binary with all state
+  isolated under a temporary directory.
 
 ### Changed
 
 - Advertise local stdio alongside the existing Streamable HTTP MCP transport
   throughout CLI capabilities, package documentation, and the public site.
+- Replace live-test access to a user's running Joplin and repository token with
+  an ephemeral profile that Python starts, stops, and removes for every test
+  session.
 
 ### Security
 

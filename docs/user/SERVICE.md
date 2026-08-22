@@ -891,25 +891,29 @@ process is listening successfully.
 
 ## Live acceptance
 
-With Joplin running locally, place its token in the ignored repository-root
-`token` file and run both protocol suites together:
+On Linux AMD64 with `dpkg-deb`, Xvfb, and network access available, run all
+protocol paths together:
 
 ```bash
-chmod 600 token
 make test-live
 ```
 
-The MCP suite exercises every MCP capability, authentication, Origin handling,
-upstream outages, and notebook-icon rejection. The Actions suite starts the
-same combined listener, invokes every Actions-exposed operation, and verifies
-credential isolation and rotation, routing, validation, request/response
-limits, rate limiting, and upstream errors.
+The Python fixture downloads the official Joplin Desktop 3.6.15 Debian binary,
+checks its exact size and SHA-256 digest, extracts it without system
+installation, and starts it on Xvfb. `HOME`, all XDG paths, the Electron data,
+the Joplin profile, the generated API token, and logs live under one temporary
+`/tmp/jms-live-joplin-*` tree. It never reads a user profile or the ignored
+repository-root `token` file.
 
-Both suites use randomized UUID-owned entities, preserve the pre-existing
-Joplin state, clean up owned notes, notebooks, tags, and resources after
-success or failure, verify their absence, stop temporary processes, and remove
-temporary credentials. Always run the complete target after changing either
-transport.
+The MCP suite exercises every MCP capability, authentication, Origin handling,
+upstream outages, and notebook-icon rejection. The Actions suite invokes every
+Actions-exposed operation and verifies credential isolation and rotation,
+routing, validation, request/response limits, rate limiting, and upstream
+errors. The stdio test launches the local process transport against the same
+isolated API. Mutation suites use randomized UUID-owned entities and clean up
+their objects; session teardown stops the complete Joplin and Xvfb process
+groups before deleting the temporary tree. Reusable CI runs this target in a
+dedicated Linux AMD64 job.
 
 ## Manual integration checklist
 

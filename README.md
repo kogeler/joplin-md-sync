@@ -235,6 +235,9 @@ Runtime dependencies are empty by design. Development, test, package, and docs
 tools use purpose-specific hash-verified locks. See
 [Development](https://joplin-mcp.romancello.net/maintenance/DEVELOPMENT/) and
 [Dependency maintenance](https://joplin-mcp.romancello.net/maintenance/DEPENDENCIES/).
+On Linux AMD64, `make test-live` provisions a checksum-pinned Joplin Desktop
+3.6.15 binary and isolated temporary profile; it never uses the user's Joplin
+process or token.
 
 ## Releases and license
 

@@ -226,10 +226,10 @@ test-full: venv-test ## full test suite with coverage reports and gate
 		--cov-report=xml:$(ARTIFACTS)/coverage.xml --cov-fail-under=$(COVERAGE_MIN)
 	$(PYTHON_TEST) -m coverage report --format=markdown > $(ARTIFACTS)/coverage-report.md
 
-test-live: venv-test ## opt-in live MCP and GPT Actions tests; reads ./token
+test-live: venv-test ## live protocols against ephemeral Joplin Desktop 3.6.15 (Linux AMD64)
 	$(PYTHON_TEST) -m pytest -q tests_live
 
-test-live-stdio-standalone: standalone venv-test ## live stdio test through the native executable; reads ./token
+test-live-stdio-standalone: standalone venv-test ## native stdio acceptance against ephemeral Joplin Desktop
 	JOPLIN_MD_SYNC_LIVE_EXECUTABLE="$(abspath $(STANDALONE))" \
 		$(PYTHON_TEST) -m pytest -q tests_live/test_mcp_stdio_live.py
 
