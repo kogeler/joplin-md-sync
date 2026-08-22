@@ -6,9 +6,11 @@ with ``/ping``), falling back to automatic discovery of ports 41184-41194.
 Nothing needs to be configured when Joplin runs with its default Clipper
 settings; every layer stays overridable.
 
-The token is intentionally *not* accepted as a raw CLI value (it would leak
-into the process list and shell history): use ``JOPLIN_TOKEN`` or
-``--token-file PATH``. The token is never stored in the workspace.
+Normal connection resolution intentionally does not accept a raw CLI token
+(it would leak into the process list and shell history): use ``JOPLIN_TOKEN``
+or ``--token-file PATH``. The separate local ``mcp stdio`` process contract
+requires its own raw ``--token`` argument and does not call this resolver. The
+token is never stored in the workspace.
 """
 
 from __future__ import annotations

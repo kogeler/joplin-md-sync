@@ -4,16 +4,52 @@ This is the client-facing tool reference. Its normative registry, lifecycle,
 failure, authentication, and resource-limit behavior is defined by the
 [agent-interface contract](../contracts/AGENT_INTERFACES.md).
 
-`joplin-md-sync mcp serve` runs a foreground
-[MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
-server backed by the Joplin Data API. It does not require a sync workspace and
-does not read or write `.joplin-sync/`.
+`joplin-md-sync` exposes MCP through local stdio or foreground
+[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+Both transports use the same tools and Joplin Data API service. Neither needs a
+sync workspace or reads or writes `.joplin-sync/`.
 
 ## Endpoint and transport
 
-The MCP endpoint is `http://127.0.0.1:8765/mcp`. Deployment, credentials,
-systemd, Task Scheduler, and live acceptance are documented once in
-[Joplin API Service](SERVICE.md).
+### Local stdio
+
+Use stdio when the MCP client and Joplin Desktop run on the same machine. Give
+the IDE the native executable path and these arguments:
+
+```json
+{
+  "mcpServers": {
+    "joplin": {
+      "command": "/absolute/path/to/joplin-md-sync-linux-amd64",
+      "args": ["mcp", "stdio", "--token", "<Joplin Web Clipper token>"]
+    }
+  }
+}
+```
+
+On Windows, use the absolute path to
+`joplin-md-sync-windows-amd64.exe`. `--token` is mandatory. Add
+`"--port", "41185"` to `args` when Joplin uses a non-default port; otherwise
+the process connects to `127.0.0.1:41184`. Joplin must already be running with
+Web Clipper enabled.
+
+The IDE launches one process, writes newline-delimited JSON-RPC to stdin, and
+reads JSON-RPC from stdout. Closing stdin stops the process. No TCP MCP port,
+MCP bearer credential, or Markdown workspace is involved. It also exposes no
+GPT Actions, health, or readiness HTTP routes, so their bearer options are not
+accepted. Diagnostics remain on stderr.
+
+The Joplin token is stored in the IDE configuration and appears in the local
+process argument vector. Restrict access to that configuration and avoid
+typing this form into an interactive shell. This raw-token form is supported
+only by `mcp stdio`; other commands retain the token-file/environment policy.
+
+### Streamable HTTP
+
+`mcp serve` remains the network mode and opens the MCP endpoint at
+`http://127.0.0.1:8765/mcp` by default. Deployment, credentials, systemd, Task
+Scheduler, and live acceptance are documented once in [Joplin API
+Service](SERVICE.md).
 
 Example MCP client settings without MCP authorization:
 

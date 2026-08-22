@@ -42,4 +42,4 @@ def test_committed_release_metadata_produces_notes(tmp_path: Path) -> None:
     output = tmp_path / "notes.md"
     result = _run(ROOT, output)
     assert result.returncode == 0, result.stderr
-    assert "Reframe the GitHub and PyPI project page" in output.read_text(encoding="utf-8")
+    assert "Add a local MCP stdio transport" in output.read_text(encoding="utf-8")

@@ -27,7 +27,7 @@ from joplin_md_sync import (
     errors,
     models,
 )
-from joplin_md_sync.api import JoplinClient
+from joplin_md_sync.api import DEFAULT_PORT, JoplinClient
 from joplin_md_sync.canonical import canonicalize_tags
 from joplin_md_sync.config import build_client, resolve_token
 from joplin_md_sync.diff import (
@@ -83,6 +83,10 @@ class _RedactionFilter(logging.Filter):
 
 def _add_output_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--json", action="store_true", help="machine-readable JSON on stdout")
+    _add_logging_args(p)
+
+
+def _add_logging_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--verbose", action="store_true", help="debug logging on stderr")
     p.add_argument("--quiet", action="store_true", help="errors only on stderr")
     p.add_argument("--log-file", metavar="PATH", help="also write debug logs to PATH")
@@ -315,6 +319,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="timeout per Joplin discovery port (default: 0.25)",
     )
 
+    ms = msub.add_parser("stdio", help="serve MCP over stdio for a local client")
+    _add_logging_args(ms)
+    ms.add_argument(
+        "--token",
+        required=True,
+        metavar="TOKEN",
+        help="Joplin Web Clipper token (required for local stdio mode)",
+    )
+    ms.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        metavar="PORT",
+        help=f"Joplin API port on 127.0.0.1 (default: {DEFAULT_PORT})",
+    )
+    ms.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        metavar="SECONDS",
+        help="HTTP timeout for one Joplin attempt (default: 5)",
+    )
+    ms.add_argument(
+        "--retry-timeout",
+        type=float,
+        default=10.0,
+        metavar="SECONDS",
+        help="bounded wait for Joplin per tool call (default: 10)",
+    )
+    ms.add_argument(
+        "--retry-delay",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="delay between Joplin availability attempts (default: 1)",
+    )
+
     p = sub.add_parser("gpt-actions", help="export and operate ChatGPT GPT Actions")
     gsub = p.add_subparsers(dest="gpt_actions_command", required=True, metavar="SUBCOMMAND")
     gp = gsub.add_parser("export-openapi", help="export the Actions OpenAPI 3.1 JSON contract")
@@ -468,6 +509,7 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "note validate",
             "resources pull",
             "mcp serve",
+            "mcp stdio",
             "gpt-actions export-openapi",
         ],
         "features": {
@@ -478,6 +520,7 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "events_optimization": False,
             "permanent_deletion": False,
             "mcp_streamable_http": True,
+            "mcp_stdio": True,
             "mcp_optional_bearer_auth": True,
             "mcp_notebook_tag_resource_crud": True,
             "mcp_html_and_binary_note_content": True,
@@ -1061,6 +1104,8 @@ def cmd_resources(args: argparse.Namespace) -> CommandOutput:
 
 
 def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
+    if args.mcp_command == "stdio":
+        return _cmd_mcp_stdio(args)
     if args.mcp_command != "serve":
         raise errors.InternalError(f"unknown MCP subcommand: {args.mcp_command}")
 
@@ -1213,6 +1258,37 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
     return CommandOutput(EXIT_OK, errors.CODE_OK, text=["MCP server stopped"])
 
 
+def _cmd_mcp_stdio(args: argparse.Namespace) -> CommandOutput:
+    from joplin_md_sync.mcp_server import McpDispatcher
+    from joplin_md_sync.mcp_service import JoplinMcpService
+    from joplin_md_sync.mcp_stdio import serve_mcp_stdio
+
+    token = args.token.strip()
+    if token:
+        _REDACT_TOKENS.append(token)
+    if not token:
+        raise errors.AuthError("--token must contain a Joplin Web Clipper token")
+    if not 1 <= args.port <= 65535:
+        raise UnsafeOperationError("--port must be between 1 and 65535")
+    if args.timeout <= 0:
+        raise UnsafeOperationError("--timeout must be positive")
+    if args.retry_timeout < 0:
+        raise UnsafeOperationError("--retry-timeout must be non-negative")
+    if args.retry_delay <= 0:
+        raise UnsafeOperationError("--retry-delay must be positive")
+
+    def client_factory() -> JoplinClient:
+        return JoplinClient(f"http://127.0.0.1:{args.port}", token, timeout=args.timeout)
+
+    service = JoplinMcpService(
+        client_factory,
+        availability_timeout=args.retry_timeout,
+        retry_delay=args.retry_delay,
+    )
+    serve_mcp_stdio(McpDispatcher(service))
+    return CommandOutput(EXIT_OK, errors.CODE_OK)
+
+
 def cmd_gpt_actions(args: argparse.Namespace) -> CommandOutput:
     if args.gpt_actions_command != "export-openapi":
         raise errors.InternalError(f"unknown GPT Actions subcommand: {args.gpt_actions_command}")
@@ -1277,6 +1353,10 @@ def _emit(args: argparse.Namespace, command: str, out: CommandOutput) -> int:
         "workspace": out.workspace,
     }
     envelope.update(out.payload)
+    if command == "mcp" and getattr(args, "mcp_command", None) == "stdio":
+        for line in out.text:
+            sys.stderr.write(line + "\n")
+        return out.exit_code
     if getattr(args, "json", False):
         sys.stdout.write(json.dumps(envelope, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
     else:

@@ -41,14 +41,17 @@ feature, schema, and exit-code surface.
 **Contract:** Joplin connection resolution MUST apply CLI options before
 environment variables, workspace configuration, the loopback default, and
 loopback discovery. Token-file input MUST override `JOPLIN_TOKEN`; raw token
-values MUST NOT be accepted as CLI arguments. Zero or multiple discovered
-Clipper services MUST fail unambiguously.
+values MUST NOT be accepted as CLI arguments except that the local-only
+`mcp stdio` transport MUST require `--token`. Its Joplin `--port` MUST default
+to `41184` without discovery. Zero or multiple discovered Clipper services
+MUST fail unambiguously.
 
 **Evidence:**
 
 - [`test_cli_beats_everything`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveBaseUrlTest::test_cli_beats_everything`
 - [`test_env_base_url_beats_env_port_and_workspace`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveBaseUrlTest::test_env_base_url_beats_env_port_and_workspace`
 - [`test_token_file_beats_env`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveTokenTest::test_token_file_beats_env`
+- [`test_token_is_required_and_joplin_port_defaults_to_41184`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_token_is_required_and_joplin_port_defaults_to_41184`
 - [`test_no_service_is_unambiguous_error`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::DiscoveryTest::test_no_service_is_unambiguous_error`
 - [`test_multiple_services_is_unambiguous_error`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::DiscoveryTest::test_multiple_services_is_unambiguous_error`
 

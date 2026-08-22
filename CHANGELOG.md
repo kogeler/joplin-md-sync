@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-22
+
+### Added
+
+- Add a local MCP stdio transport for IDEs and agents that launch the native
+  executable directly, with a required Joplin `--token` and a Joplin `--port`
+  that defaults to `41184`.
+- Add isolated transport coverage and read-only live acceptance against both
+  the source CLI and the native one-file executable.
+
+### Changed
+
+- Advertise local stdio alongside the existing Streamable HTTP MCP transport
+  throughout CLI capabilities, package documentation, and the public site.
+
+### Security
+
+- Keep stdio stdout exclusive to newline-delimited JSON-RPC, bound individual
+  messages, and stop cleanly when the client closes stdin.
+- Keep `mcp serve` as the network listener mode while ensuring `mcp stdio`
+  opens no MCP, GPT Actions, health, or readiness ports and accepts no bearer
+  credential for those disabled interfaces.
+
 ## [1.5.6] - 2026-08-21
 
 ### Changed

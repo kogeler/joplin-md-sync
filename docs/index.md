@@ -9,7 +9,7 @@ hide:
 
 <section class="home-hero">
   <div class="home-shell home-hero__content">
-    <p class="home-kicker" data-reveal>ChatGPT Actions <span></span> Streamable HTTP MCP <span></span> Self-hosted Joplin</p>
+    <p class="home-kicker" data-reveal>ChatGPT Actions <span></span> Local &amp; HTTP MCP <span></span> Self-hosted Joplin</p>
     <h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>
     <p class="home-hero__lead" data-reveal>
       Search, read, create, organize, and update your own Joplin notes from the
@@ -97,8 +97,8 @@ hide:
         <span class="value-number">02</span>
         <h3>Connect any MCP client</h3>
         <p>
-          Expose typed Streamable HTTP tools for notes, notebooks, tags, search,
-          and attachments to editors, coding agents, and other MCP assistants.
+          Launch typed local stdio tools with no listener, or expose Streamable
+          HTTP for notes, notebooks, tags, search, and attachments.
         </p>
         <a href="user/MCP_API/">Explore the MCP tools &rarr;</a>
       </article>

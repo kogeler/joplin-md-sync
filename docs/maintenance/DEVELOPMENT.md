@@ -49,6 +49,11 @@ workflow lint, and vulnerability audit. Live Joplin acceptance is deliberately
 opt-in through `make test-live` because it needs a running Joplin instance and
 the ignored repository-root `token` file.
 
+`make test-live-stdio-standalone` builds the current platform's native
+executable and runs the read-only stdio acceptance through that artifact. The
+test starts no Joplin process; Joplin Desktop and Web Clipper must already be
+running locally.
+
 ## Documentation changes
 
 Put normative testable behavior in `docs/contracts/`, user tasks and reference

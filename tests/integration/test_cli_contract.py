@@ -65,6 +65,7 @@ class JsonContractTest(WorkspaceTestCase):
                 "note validate",
                 "resources pull",
                 "mcp serve",
+                "mcp stdio",
                 "gpt-actions export-openapi",
             ],
         )

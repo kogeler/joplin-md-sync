@@ -851,7 +851,9 @@ class McpCliSafetyTest(WorkspaceTestCase):
         result = run_cli("capabilities", "--json")
         self.assertEqual(result.exit_code, 0)
         self.assertIn("mcp serve", result.json["commands"])
+        self.assertIn("mcp stdio", result.json["commands"])
         self.assertTrue(result.json["features"]["mcp_streamable_http"])
+        self.assertTrue(result.json["features"]["mcp_stdio"])
 
 
 if __name__ == "__main__":

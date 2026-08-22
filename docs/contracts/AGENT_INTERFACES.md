@@ -18,18 +18,25 @@ operation list or bypass schema validation and failure classification.
 - [`test_executor_validates_and_preserves_domain_errors`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_executor_validates_and_preserves_domain_errors`
 - [`test_generated_operations_match_exposed_registry`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_generated_operations_match_exposed_registry`
 
-### `AIF-002` - MCP follows the advertised Streamable HTTP lifecycle
+### `AIF-002` - MCP follows its advertised HTTP and stdio lifecycles
 
-**Contract:** `mcp serve` MUST expose MCP Streamable HTTP on loopback
-`/mcp` by default, negotiate only its supported protocol versions, implement
-initialize/initialized, tools/list, and tools/call, and return both text content
-and `structuredContent`. The server MUST advertise itself through CLI
-capabilities and MUST NOT require a Markdown workspace.
+**Contract:** `mcp serve` MUST expose MCP Streamable HTTP on loopback `/mcp` by
+default. `mcp stdio` MUST exchange one JSON-RPC message per line over
+stdin/stdout, write no non-protocol content to stdout, open no MCP, Actions,
+health, or readiness listener, require no bearer credential for those absent
+interfaces, and stop cleanly at stdin EOF. Both transports MUST negotiate only supported protocol versions,
+implement initialize/initialized, tools/list, and tools/call, and return both
+text content and `structuredContent`. The server MUST advertise both transports
+through CLI capabilities and MUST NOT require a Markdown workspace.
 
 **Evidence:**
 
 - [`test_lifecycle_and_transport_contract`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_lifecycle_and_transport_contract`
+- [`test_lifecycle_tools_live_call_and_protocol_errors`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_lifecycle_tools_live_call_and_protocol_errors`
+- [`test_stdio_has_no_http_listener_or_interface_bearer_options`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_stdio_has_no_http_listener_or_interface_bearer_options`
+- [`test_serve_remains_the_network_listener_mode`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_serve_remains_the_network_listener_mode`
 - [`test_capabilities_advertise_mcp`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpCliSafetyTest::test_capabilities_advertise_mcp`
+- [`test_stdio_process_reads_running_joplin`](../../tests_live/test_mcp_stdio_live.py) - `tests_live/test_mcp_stdio_live.py::LiveMcpStdioTest::test_stdio_process_reads_running_joplin`
 
 ### `AIF-003` - MCP exposes complete Joplin object workflows
 

@@ -11,14 +11,16 @@ It provides three complementary ways to work with the same notes:
 1. **ChatGPT Actions.** Connect a private Custom GPT to authenticated operations
    for current notes, notebooks, tags, and search through generated OpenAPI.
 2. **Typed MCP tools.** Give any compatible assistant structured access to
-   notes, notebooks, tags, search, and resources over Streamable HTTP.
+   notes, notebooks, tags, search, and resources over local stdio or Streamable
+   HTTP.
 3. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
    edit them with an agent or local tools, inspect a three-way diff, dry-run the
    exact push plan, and only then update Joplin.
 
-MCP and Actions share one operation registry and listener while keeping their
-transport and credentials separate. The file workflow uses a distinct
-consistency model that prioritizes review and Git history.
+Both MCP transports and Actions share one operation registry. Streamable HTTP
+MCP and Actions also share one listener while keeping their credentials
+separate. The file workflow uses a distinct consistency model that prioritizes
+review and Git history.
 
 ## Why this exists
 
@@ -48,7 +50,7 @@ yours:
 | --- | --- |
 | Note application | Joplin Desktop or a dedicated Joplin Terminal profile |
 | Joplin synchronization | Filesystem, Nextcloud, WebDAV, S3, Joplin Server, Joplin Cloud, or another supported Joplin target |
-| Agent access | ChatGPT Actions, local or remote authenticated MCP, or Markdown files |
+| Agent access | ChatGPT Actions, local stdio MCP, Streamable HTTP MCP, or Markdown files |
 | Change review | CLI diff/dry-run, Git review, client-side MCP approval, or a combination |
 | Network boundary | Loopback only, private network, VPN, or a controlled HTTPS publishing layer |
 

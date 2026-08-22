@@ -2,8 +2,9 @@
 
 `joplin-md-sync` gives AI assistants controlled access to your own
 [Joplin](https://joplinapp.org/) knowledge base. Search, read, create, update,
-move, tag, and trash notes from a private Custom GPT or any Streamable HTTP MCP
-client without moving your notes into another hosted note service.
+move, tag, and trash notes from a private Custom GPT or any local stdio or
+Streamable HTTP MCP client without moving your notes into another hosted note
+service.
 
 Run it beside Joplin Desktop, or deploy a complete headless Joplin Terminal and
 agent API stack on your own Linux host. A separate Markdown sync workflow is
@@ -20,9 +21,9 @@ history.
 - **Joplin inside ChatGPT.** A generated OpenAPI contract exposes authenticated
   Actions for current notes, notebooks, tags, and search to a private Custom
   GPT.
-- **Typed MCP tools.** One Streamable HTTP endpoint gives compatible clients
-  structured note operations plus attachment upload, download, replacement,
-  and relationship traversal.
+- **Typed MCP tools.** Local stdio and Streamable HTTP transports give
+  compatible clients structured note operations plus attachment upload,
+  download, replacement, and relationship traversal.
 - **A headless Joplin service.** The rootless Linux installer deploys Joplin
   Terminal, recurrent sync, and the combined MCP/Actions adapter as coordinated
   systemd user services. Joplin Desktop does not need to remain running.
@@ -87,7 +88,7 @@ The supported boundaries and deployment choices are documented in
 From a checkout matching the deployed release, run the setup assistant:
 
 ```bash
-git clone --depth 1 --branch v1.5.6 \
+git clone --depth 1 --branch v1.6.0 \
   https://github.com/kogeler/joplin-md-sync.git
 cd joplin-md-sync
 python3 scripts/prepare_chatgpt_action.py
@@ -101,23 +102,34 @@ instructions and acceptance test in
 
 ## Use Joplin from an MCP client
 
-For a local Joplin Desktop instance, enable **Tools > Options > Web Clipper**,
-install the adapter, and start the MCP listener:
+For a local Joplin Desktop instance, enable **Tools > Options > Web Clipper**
+and point an MCP-capable editor at the downloaded native executable:
+
+```json
+{
+  "mcpServers": {
+    "joplin": {
+      "command": "/absolute/path/to/joplin-md-sync-linux-amd64",
+      "args": ["mcp", "stdio", "--token", "<Joplin Web Clipper token>"]
+    }
+  }
+}
+```
+
+The local stdio process connects to Joplin on port `41184` by default; add
+`"--port", "PORT"` to the arguments when Joplin uses another local port. For
+a long-running or remote adapter, install the package and start Streamable HTTP
+instead. Stdio opens no MCP or Actions port and therefore needs no bearer token
+for those interfaces; `--token` authenticates only to Joplin:
 
 ```bash
-pipx install "joplin-md-sync==1.5.6"
+pipx install "joplin-md-sync==1.6.0"
 export JOPLIN_TOKEN=...
 joplin-md-sync mcp serve
 ```
 
-Then configure a Streamable HTTP MCP connection:
-
-```json
-{
-  "type": "streamable-http",
-  "url": "http://127.0.0.1:8765/mcp"
-}
-```
+Connect the HTTP client to `http://127.0.0.1:8765/mcp` with transport type
+`streamable-http`.
 
 The service can start while Joplin is offline and recovers on later calls.
 Create operations reject an existing notebook, note, tag, or resource identity
@@ -151,8 +163,9 @@ or the
 ## Control and failure behavior
 
 - The Joplin Data API remains private on loopback in the headless topology.
-- Joplin, MCP, and Actions credentials are distinct and read from protected
-  files or the environment, never accepted as raw token arguments.
+- Joplin, MCP, and Actions credentials are distinct and normally read from
+  protected files or the environment. Local `mcp stdio` deliberately requires
+  its Joplin token in the IDE-managed argument vector.
 - Direct API writes are sent once. An ambiguous timeout is reported instead of
   being replayed and possibly duplicated.
 - Creating an occupied notebook, note, tag, or resource identity returns an
@@ -174,8 +187,8 @@ operating a Markdown workspace should also follow
 Python installations require CPython 3.13 or 3.14 on Windows or Linux:
 
 ```bash
-python -m pip install "joplin-md-sync==1.5.6"
-# or: pipx install "joplin-md-sync==1.5.6"
+python -m pip install "joplin-md-sync==1.6.0"
+# or: pipx install "joplin-md-sync==1.6.0"
 ```
 
 GitHub Releases also provide a standalone zipapp and native executables that

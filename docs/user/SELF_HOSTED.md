@@ -55,7 +55,7 @@ of constructing profile commands manually.
 ```text
 agent or MCP client
         |
-        | Markdown files or http://127.0.0.1:8765/mcp
+        | stdio, Markdown files, or http://127.0.0.1:8765/mcp
         v
 joplin-md-sync
         |

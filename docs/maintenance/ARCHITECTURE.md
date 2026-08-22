@@ -17,7 +17,8 @@ api.py          Joplin Data API client (urllib): pagination, GET retries,
                 ambiguous-write surfacing, token redaction, port discovery
 mcp_service.py  validated note/notebook/tag/resource operations, relationship
                 traversal, base64 limits, bounded Joplin availability waits
-mcp_server.py   combined HTTP listener and MCP JSON-RPC protocol adapter
+mcp_server.py   combined HTTP listener and shared MCP JSON-RPC dispatcher
+mcp_stdio.py    local newline-delimited MCP transport over stdin/stdout
 tool_registry.py shared immutable definitions, Actions exposure, effect mapping
 tool_schema.py  dependency-free JSON Schema subset validation
 tool_executor.py shared handler invocation and failure classification
@@ -50,9 +51,9 @@ The direct Joplin adapters are deliberately separate from the workspace sync
 engine:
 
 ```
-MCP client --------> MCP protocol adapter --+
-                                             +-> tool registry/executor -> mcp_service -> api -> Joplin
-Custom GPT Action -> Actions HTTP adapter ---+
+HTTP MCP client ---> MCP HTTP adapter ----+
+Local MCP client --> MCP stdio adapter ---+-> tool registry/executor -> mcp_service -> api -> Joplin
+Custom GPT Action -> Actions HTTP adapter +
 ```
 
 It directly manages Joplin notes, notebooks, tags, and resources and does not
