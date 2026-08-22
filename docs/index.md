@@ -1,6 +1,6 @@
 ---
 title: Joplin for ChatGPT and MCP
-description: Use self-hosted Joplin notes directly from ChatGPT and MCP clients, with an automated headless deployment and a separate reviewable Markdown workflow.
+description: Use self-hosted Joplin notes through ChatGPT Actions, local stdio MCP, or authenticated HTTP MCP, with a separate reviewable Markdown workflow.
 template: home.html
 hide:
   - navigation
@@ -13,12 +13,16 @@ hide:
     <h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>
     <p class="home-hero__lead" data-reveal>
       Search, read, create, organize, and update your own Joplin notes from the
-      assistants you already use. Keep Joplin, its sync target, and its Data API
-      under your control while a guarded bridge exposes only the operations you need.
+      assistants you already use. Connect ChatGPT, launch a local MCP process
+      over stdio with no listener, or deploy guarded HTTP interfaces while
+      keeping Joplin, its sync target, and its Data API under your control.
     </p>
     <div class="home-actions" data-reveal>
       <a class="home-button home-button--primary" href="user/CHATGPT_ACTIONS/">
         Connect ChatGPT
+      </a>
+      <a class="home-button home-button--secondary" href="user/MCP_API/#local-stdio">
+        Connect local MCP
       </a>
       <a class="home-button home-button--secondary" href="user/SERVICE/">
         Deploy headless

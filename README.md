@@ -13,7 +13,7 @@ history.
 
 **[Website](https://joplin-mcp.romancello.net/)** ·
 **[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
-**[MCP tools](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
+**[MCP: local stdio & HTTP](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
 **[Deploy headless](https://joplin-mcp.romancello.net/user/SERVICE/)**
 
 ## What you get

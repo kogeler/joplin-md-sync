@@ -1,17 +1,18 @@
 # joplin-md-sync Agent Runbook
 
-Safe two-way synchronization between Joplin and ordinary Markdown, with MCP
-and ChatGPT Actions interfaces for agents. Product guarantees are defined only
-by the [contract catalog](docs/contracts/README.md). This runbook tells an agent
-how to operate the project safely; it does not replace those contracts.
+Safe two-way synchronization between Joplin and ordinary Markdown, with local
+stdio and HTTP MCP plus ChatGPT Actions interfaces for agents. Product
+guarantees are defined only by the [contract catalog](docs/contracts/README.md).
+This runbook tells an agent how to operate the project safely; it does not
+replace those contracts.
 
 ## Requirements
 
 - CPython 3.13 or 3.14 on Windows or Linux for source, wheel, and zipapp use.
 - Joplin Desktop running locally with Web Clipper enabled, normally on port
   `41184`.
-- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN` or a protected
-  token file.
+- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN`, a protected
+  token file, or the required local `mcp stdio --token` argument.
 
 Native release executables include Python.
 

@@ -1,7 +1,7 @@
 site_name: "Joplin for ChatGPT & MCP"
 site_description: >-
-  Use self-hosted Joplin notes directly from ChatGPT and MCP clients, with an
-  automated headless deployment and a separate reviewable Markdown workflow.
+  Use self-hosted Joplin notes through ChatGPT Actions, local stdio MCP, or
+  authenticated HTTP MCP, with a separate reviewable Markdown workflow.
 site_url: https://joplin-mcp.romancello.net/
 site_author: kogeler
 copyright: MIT licensed. Joplin is a trademark of Laurent Cozic.
@@ -109,7 +109,7 @@ nav:
   - "ChatGPT & MCP":
       - Choose an interface: user/AGENT_INTERFACES.md
       - ChatGPT Actions: user/CHATGPT_ACTIONS.md
-      - MCP API: user/MCP_API.md
+      - "MCP: local & HTTP": user/MCP_API.md
       - Self-hosted deployment: user/SELF_HOSTED.md
       - Service operations: user/SERVICE.md
   - Markdown sync:

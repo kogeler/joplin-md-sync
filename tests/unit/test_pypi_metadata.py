@@ -18,6 +18,9 @@ def test_pypi_readme_uses_only_portable_absolute_links() -> None:
 def test_pypi_readme_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert readme.startswith("# Joplin for ChatGPT and MCP\n")
+    introduction = readme.partition("## What you get")[0]
+    assert "local stdio" in introduction
+    assert "MCP: local stdio & HTTP" in introduction
     headless = readme.index("## Fast path: headless Joplin for ChatGPT")
     mcp = readme.index("## Use Joplin from an MCP client")
     markdown = readme.index("## Use Joplin notes as reviewable files")
@@ -28,6 +31,10 @@ def test_pypi_readme_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
 
 def test_pypi_metadata_exposes_public_project_routes() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert (
+        'description = "Self-hosted Joplin access for ChatGPT Actions, local stdio and HTTP '
+        'MCP clients, and reviewable Markdown workflows"'
+    ) in pyproject
     for expected in (
         'Homepage = "https://joplin-mcp.romancello.net/"',
         'Documentation = "https://joplin-mcp.romancello.net/"',

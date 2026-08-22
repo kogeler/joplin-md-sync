@@ -228,10 +228,22 @@ def test_homepage_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
     homepage = (DOCS / "index.md").read_text(encoding="utf-8")
     assert "<h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>" in homepage
     chatgpt = homepage.index("Connect ChatGPT")
+    local_mcp = homepage.index("Connect local MCP")
+    deploy = homepage.index("Deploy headless")
     headless = homepage.index("Deploy the complete headless path")
     markdown = homepage.index("Use ordinary Markdown when the diff matters")
-    assert chatgpt < headless < markdown
+    assert chatgpt < local_mcp < deploy < headless < markdown
+    assert 'href="user/MCP_API/#local-stdio"' in homepage
+    assert "local stdio MCP" in homepage.partition("</section>")[0]
     assert "install_joplin_terminal.py" in homepage
+
+    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
+    social_metadata = (DOCS / "site" / "overrides" / "home.html").read_text(
+        encoding="utf-8"
+    )
+    assert '"MCP: local & HTTP": user/MCP_API.md' in mkdocs
+    assert "local stdio MCP" in mkdocs
+    assert "local stdio MCP" in social_metadata
 
 
 def test_site_hook_rewrites_repository_links_and_publishes_root_files(
