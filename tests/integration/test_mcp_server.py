@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from joplin_md_sync.api import JoplinClient
 from joplin_md_sync.errors import ApiError
 from joplin_md_sync.mcp_server import (
+    MCP_PROTOCOL_VERSION,
     BearerTokenSource,
     McpDispatcher,
     McpHttpServer,
@@ -100,7 +101,7 @@ class McpHttpTest(WorkspaceTestCase):
         request_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
-            "MCP-Protocol-Version": "2025-06-18",
+            "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
         }
         if headers:
             request_headers.update(headers)
@@ -137,7 +138,7 @@ class McpHttpTest(WorkspaceTestCase):
                 "id": 1,
                 "method": "initialize",
                 "params": {
-                    "protocolVersion": "2025-06-18",
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {"name": "test", "version": "1"},
                 },
@@ -145,7 +146,7 @@ class McpHttpTest(WorkspaceTestCase):
         )
         self.assertEqual(status, 200)
         assert body is not None
-        self.assertEqual(body["result"]["protocolVersion"], "2025-06-18")
+        self.assertEqual(body["result"]["protocolVersion"], MCP_PROTOCOL_VERSION)
         self.assertIn("tools", body["result"]["capabilities"])
         self.assertIn(
             "Create tools reject an existing natural identity", body["result"]["instructions"]

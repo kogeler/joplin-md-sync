@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Keep CI version increment and release consistency enforcement blocking while
+  removing duplicated concrete version, action, and checksum literals from
+  test expectations.
+
 ## [1.6.0] - 2026-08-22
 
 ### Added

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from joplin_md_sync.gpt_openapi import (
     CANONICAL_SERVER_URL,
+    OPENAPI_VERSION,
     generate_openapi,
     registry_for_export,
     render_openapi,
@@ -53,7 +54,7 @@ def test_contract_is_deterministic_and_secret_free() -> None:
     first = render_openapi(registry, CANONICAL_SERVER_URL)
     assert first == render_openapi(registry, CANONICAL_SERVER_URL)
     parsed = json.loads(first)
-    assert parsed["openapi"] == "3.1.0"
+    assert parsed["openapi"] == OPENAPI_VERSION
     assert parsed["servers"] == [{"url": CANONICAL_SERVER_URL}]
     assert (
         "details"

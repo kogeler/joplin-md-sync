@@ -74,11 +74,12 @@ class AgentNotesInstallerTest(unittest.TestCase):
 
     def test_release_inventory_and_urls_are_verified(self):
         asset_name = "joplin-md-sync-linux-amd64"
-        prefix = "https://github.com/kogeler/joplin-md-sync/releases/download/v2.3.4"
+        version = "2.3.4"
+        prefix = f"https://github.com/kogeler/joplin-md-sync/releases/download/v{version}"
         payload = {
             "draft": False,
             "prerelease": False,
-            "tag_name": "v2.3.4",
+            "tag_name": f"v{version}",
             "assets": [
                 {"name": asset_name, "browser_download_url": f"{prefix}/{asset_name}"},
                 {
@@ -88,7 +89,7 @@ class AgentNotesInstallerTest(unittest.TestCase):
             ],
         }
         release = installer.parse_release(payload, asset_name)
-        self.assertEqual(release.version, "2.3.4")
+        self.assertEqual(release.version, version)
 
         payload["assets"][0]["browser_download_url"] = "https://example.invalid/binary"
         with self.assertRaisesRegex(installer.InstallError, "unexpected URL"):

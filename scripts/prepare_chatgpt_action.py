@@ -21,6 +21,7 @@ sys.path.insert(0, str(SRC))
 from joplin_md_sync.auth import validate_bearer_token  # noqa: E402
 from joplin_md_sync.gpt_openapi import (  # noqa: E402
     ACTION_PATH_PREFIX,
+    OPENAPI_VERSION,
     generate_openapi,
     registry_for_export,
     validate_server_url,
@@ -43,6 +44,7 @@ ACTION_PROBES = (
 )
 REQUEST_TIMEOUT_SECONDS = 20.0
 MAX_RESPONSE_BYTES = 1_000_000
+MINIMUM_TLS_VERSION = ssl.TLSVersion.TLSv1_2
 
 
 class SetupError(RuntimeError):
@@ -98,7 +100,7 @@ def create_tls_context() -> ssl.SSLContext:
     """Create a public-Web TLS context with strict certificate validation."""
 
     context = ssl.create_default_context()
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.minimum_version = MINIMUM_TLS_VERSION
     return context
 
 
@@ -213,8 +215,8 @@ def generate_contract(origin: str, output: Path) -> int:
     """Generate, validate, and atomically write the canonical OpenAPI contract."""
 
     document = generate_openapi(registry_for_export(), origin)
-    if document.get("openapi") != "3.1.0":
-        raise SetupError("generated contract is not OpenAPI 3.1.0")
+    if document.get("openapi") != OPENAPI_VERSION:
+        raise SetupError(f"generated contract is not OpenAPI {OPENAPI_VERSION}")
     if document.get("servers") != [{"url": origin}]:
         raise SetupError("generated contract contains the wrong public origin")
     paths = document.get("paths")

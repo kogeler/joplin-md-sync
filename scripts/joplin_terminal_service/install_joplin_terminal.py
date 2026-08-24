@@ -96,6 +96,7 @@ from joplin_terminal_common import (  # noqa: E402
 LOG = logging.getLogger("joplin-terminal-installer")
 MINIMUM_NODE_MAJOR = 12
 RECOMMENDED_NODE_MAJOR = 18
+RECOMMENDED_PYTHON = (3, 14)
 NPM_TIMEOUT = 900.0
 COMMAND_TIMEOUT = 120.0
 SYNC_TIMEOUT = 24 * 60 * 60.0
@@ -810,9 +811,10 @@ class CommandRunner:
 
 
 def check_dependencies(runner: CommandRunner) -> Dependencies:
-    if sys.version_info < (3, 14):
+    if sys.version_info < RECOMMENDED_PYTHON:
         LOG.warning(
-            "Python 3.14 is recommended; continuing with Python %s",
+            "Python %s is recommended; continuing with Python %s",
+            ".".join(str(part) for part in RECOMMENDED_PYTHON),
             sys.version.split()[0],
         )
     programs = {name: shutil.which(name) for name in ("node", "npm", "systemctl", "loginctl")}
