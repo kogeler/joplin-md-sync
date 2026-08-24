@@ -14,18 +14,18 @@ from joplin_md_sync.mcp_stdio import serve_mcp_stdio
 
 
 def test_oversized_line_is_discarded_and_next_request_is_processed() -> None:
-    valid = b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+    request = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+    response = {"jsonrpc": request["jsonrpc"], "id": request["id"], "result": {}}
+    valid = (json.dumps(request, separators=(",", ":")) + "\n").encode()
     source = io.BytesIO(b"x" * 65 + b"\n" + valid)
     sink = io.BytesIO()
     dispatcher = mock.Mock()
-    dispatcher.dispatch.return_value = {"jsonrpc": "2.0", "id": 1, "result": {}}
+    dispatcher.dispatch.return_value = response
 
     with mock.patch("joplin_md_sync.mcp_stdio.MAX_REQUEST_BYTES", 64):
         serve_mcp_stdio(dispatcher, input_stream=source, output_stream=sink)
 
     responses = [json.loads(line) for line in sink.getvalue().splitlines()]
     assert responses[0]["error"]["code"] == -32600
-    assert responses[1] == {"jsonrpc": "2.0", "id": 1, "result": {}}
-    dispatcher.dispatch.assert_called_once_with(
-        {"jsonrpc": "2.0", "id": 1, "method": "ping"}
-    )
+    assert responses[1] == response
+    dispatcher.dispatch.assert_called_once_with(request)

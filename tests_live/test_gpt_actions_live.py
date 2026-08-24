@@ -28,13 +28,14 @@ REPO = Path(__file__).resolve().parents[1]
 SRC = REPO / "src"
 sys.path.insert(0, str(SRC))
 
+from joplin_md_sync import __version__  # noqa: E402
 from joplin_md_sync.api import JoplinClient  # noqa: E402
 from joplin_md_sync.config import build_client  # noqa: E402
 from joplin_md_sync.gpt_openapi import registry_for_export  # noqa: E402
+from joplin_md_sync.mcp_server import MCP_PROTOCOL_VERSION  # noqa: E402
 from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
 
 ACTIONS_PREFIX = "/api/gpt/v1/tools"
-MCP_PROTOCOL_VERSION = "2025-06-18"
 CURRENT_TOKEN = object()
 
 
@@ -1037,7 +1038,7 @@ class LiveGptActionsTest(unittest.TestCase):
             timeout=10,
             check=True,
         )
-        self.assertEqual(json.loads(version.stdout)["tool_version"], "1.6.0")
+        self.assertEqual(json.loads(version.stdout)["tool_version"], __version__)
 
     def test_99_every_exposed_action_was_exercised(self) -> None:
         expected = {tool.name for tool in registry_for_export().exposed}

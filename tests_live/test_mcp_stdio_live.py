@@ -16,9 +16,8 @@ SRC = REPO / "src"
 sys.path.insert(0, str(SRC))
 
 from joplin_md_sync.config import build_client  # noqa: E402
+from joplin_md_sync.mcp_server import MCP_PROTOCOL_VERSION  # noqa: E402
 from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
-
-MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
 def _cli_command() -> list[str]:

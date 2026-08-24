@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from joplin_md_sync import STATE_SCHEMA_VERSION
 from joplin_md_sync.errors import WorkspaceError
 from joplin_md_sync.state import MIGRATIONS, StateDB, StateStore
 
@@ -54,7 +55,7 @@ class StateDBTest(unittest.TestCase):
 
     def test_newer_schema_rejected(self):
         store = self.open_store(create=True)
-        store.set_meta("state_schema_version", "999")
+        store.set_meta("state_schema_version", str(STATE_SCHEMA_VERSION + 1))
         store.close()
         with self.assertRaises(WorkspaceError) as ctx:
             StateDB(self.path).connect()
@@ -62,25 +63,30 @@ class StateDBTest(unittest.TestCase):
         self.path.unlink()  # Windows proves the failed connection was closed.
 
     def test_migration_path_applied(self):
+        previous_schema = STATE_SCHEMA_VERSION - 1
         store = self.open_store(create=True)
-        store.set_meta("state_schema_version", "0")
+        store.set_meta("state_schema_version", str(previous_schema))
         store.close()
         calls = []
 
-        def migrate_0_to_1(conn):
-            calls.append("0->1")
+        def migrate_to_current(conn):
+            calls.append((previous_schema, STATE_SCHEMA_VERSION))
 
-        MIGRATIONS[0] = migrate_0_to_1
+        MIGRATIONS[previous_schema] = migrate_to_current
         try:
             store = self.open_store()
-            self.assertEqual(calls, ["0->1"])
-            self.assertEqual(store.get_meta("state_schema_version"), "1")
+            self.assertEqual(calls, [(previous_schema, STATE_SCHEMA_VERSION)])
+            self.assertEqual(
+                store.get_meta("state_schema_version"),
+                str(STATE_SCHEMA_VERSION),
+            )
         finally:
-            del MIGRATIONS[0]
+            del MIGRATIONS[previous_schema]
 
     def test_missing_migration_fails_cleanly(self):
+        previous_schema = STATE_SCHEMA_VERSION - 1
         store = self.open_store(create=True)
-        store.set_meta("state_schema_version", "0")
+        store.set_meta("state_schema_version", str(previous_schema))
         store.close()
         with self.assertRaises(WorkspaceError) as ctx:
             StateDB(self.path).connect()

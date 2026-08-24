@@ -17,9 +17,8 @@ SRC = ROOT / "src"
 sys.path.insert(0, str(SRC))
 
 from joplin_md_sync.cli import build_parser  # noqa: E402
+from joplin_md_sync.mcp_server import MCP_PROTOCOL_VERSION  # noqa: E402
 from tests.helpers import TOKEN, WorkspaceTestCase, run_cli  # noqa: E402
-
-MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
 class McpStdioCliTest(WorkspaceTestCase):

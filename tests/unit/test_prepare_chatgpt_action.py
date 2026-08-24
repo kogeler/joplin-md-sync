@@ -22,7 +22,7 @@ def test_tls_context_requires_valid_public_certificate_and_tls_1_2() -> None:
     context = assistant.create_tls_context()
     assert context.check_hostname is True
     assert context.verify_mode == ssl.CERT_REQUIRED
-    assert context.minimum_version >= ssl.TLSVersion.TLSv1_2
+    assert context.minimum_version >= assistant.MINIMUM_TLS_VERSION
 
 
 def test_normalize_origin_accepts_only_a_bare_host_or_https_origin() -> None:

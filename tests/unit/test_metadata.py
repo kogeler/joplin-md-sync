@@ -1,9 +1,11 @@
+import json
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+from joplin_md_sync import NOTE_METADATA_SCHEMA_VERSION
 from joplin_md_sync.metadata import (
     MetadataError,
     emit_note_file,
@@ -29,7 +31,15 @@ class HeaderTest(unittest.TestCase):
         self.assertNotIn("\n", header)
         self.assertTrue(header.startswith("<!-- joplin-md-sync: {"))
         payload = header[len("<!-- joplin-md-sync: ") : -len(" -->")]
-        self.assertEqual(payload, f'{{"id":"{NID}","schema":1,"tags":["a","z"],"title":"T"}}')
+        self.assertEqual(
+            json.loads(payload),
+            {
+                "id": NID,
+                "schema": NOTE_METADATA_SCHEMA_VERSION,
+                "tags": ["a", "z"],
+                "title": "T",
+            },
+        )
 
     def test_cyrillic_title_preserved(self):
         text = emit_note_file(NID, "Заметка про кластер", (), "тело\n")
