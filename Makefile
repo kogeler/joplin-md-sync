@@ -260,9 +260,9 @@ release-notes: ## generate the exact current-version GitHub release body
 	mkdir -p $(ARTIFACTS)
 	$(PY) .github/scripts/release_notes.py --output $(RELEASE_NOTES)
 
-check: lint typecheck bandit syntax test verify-release dependency-snapshot ## local cross-platform gates
+check: lint typecheck bandit syntax test dependency-snapshot ## local cross-platform gates
 
-ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
+ci: lint typecheck bandit syntax test-full test-service-installer \
 	freeze-check lock-platform-check docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
 
 build: venv-package ## reproducibly build wheel and sdist into dist/

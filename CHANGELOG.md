@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Move current-version ownership out of ordinary tests and reusable CI into
+  release publication verification, and keep mutable dependency, tool, runtime,
+  and action version values out of policy-test assertions. A later main commit
+  retaining the fully published version now leaves that release unchanged.
+
 ## [1.6.0] - 2026-08-22
 
 ### Added

@@ -98,10 +98,10 @@ jobs:
               if (draft) existing = { data: draft };
             }
             const commit = await taggedCommit();
-            if (commit && commit !== context.sha) {
-              throw new Error(`Tag ${tagName} already points to ${commit}`);
-            }
             if (!existing || existing.data.draft) {
+              if (commit && commit !== context.sha) {
+                throw new Error(`Tag ${tagName} already points to ${commit}`);
+              }
               core.notice(`Release ${tagName} is not published; running release gates`);
               core.setOutput("release_required", "true");
             } else {
@@ -123,6 +123,9 @@ jobs:
               { headers: { accept: "application/json" } },
             );
             if (pypi.status === 404) {
+              if (commit && commit !== context.sha) {
+                throw new Error(`Cannot publish ${version} from commit ${context.sha}`);
+              }
               core.notice(`PyPI ${project} ${version} is not published; running release gates`);
               core.setOutput("pypi_required", "true");
               return;

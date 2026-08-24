@@ -17,7 +17,9 @@ maintainer procedure without redefining those guarantees.
 5. Refresh direct dependencies and locks when dependency updates are included.
 6. Run `make ci`, `make package`, and `make smoke` on Linux.
 
-`make verify-release` checks version ownership and changelog structure.
+`make verify-release` checks version ownership and release artifact metadata in
+the publication workflow; ordinary tests and reusable CI do not enforce a
+version increment.
 `make release-notes` extracts the current changelog entry into the artifact
 consumed by the release workflow. The PyPI project trusts repository
 `kogeler/joplin-md-sync`, workflow `release.yml`, and GitHub Environment
@@ -43,7 +45,9 @@ A matching publication in both destinations is a no-op. If only PyPI is
 complete, the workflow verifies rebuilt distribution sizes and hashes against
 PyPI before recovering GitHub publication. A recoverable matching GitHub draft
 may be completed; conflicting package files, tags, release metadata, targets,
-or published assets stop the workflow for inspection. Confirm the PyPI wheel,
+or published assets stop the workflow for inspection. A later main commit that
+keeps the fully published version exits without rebuilding or moving its tag.
+Confirm the PyPI wheel,
 sdist, and provenance plus the GitHub release body, complete asset inventory,
 and checksums after publication. The documentation site is deployed separately
 from the default branch by the Pages workflow.

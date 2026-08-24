@@ -16,6 +16,10 @@ LOCKS = (
 EXACT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9._,-]+\])?==[^\s;]+$")
 
 
+def _requirement_name(requirement: str) -> str:
+    return requirement.partition("==")[0].partition("[")[0].lower()
+
+
 def test_direct_dependencies_are_exact_and_scoped() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["dependencies"] == []
@@ -29,9 +33,18 @@ def test_direct_dependencies_are_exact_and_scoped() -> None:
         for right in list(project["optional-dependencies"].values())[index + 1 :]
         for requirement in set(left) & set(right)
     }
-    assert overlaps == {"colorama==0.4.6"}
-    assert "colorama==0.4.6" in project["optional-dependencies"]["test"]
-    assert "colorama==0.4.6" in project["optional-dependencies"]["package"]
+    assert {_requirement_name(requirement) for requirement in overlaps} == {"colorama"}
+    test_colorama = next(
+        requirement
+        for requirement in project["optional-dependencies"]["test"]
+        if _requirement_name(requirement) == "colorama"
+    )
+    package_colorama = next(
+        requirement
+        for requirement in project["optional-dependencies"]["package"]
+        if _requirement_name(requirement) == "colorama"
+    )
+    assert test_colorama == package_colorama
     assert any(item.startswith("mypy==") for item in project["optional-dependencies"]["dev"])
     assert not any(item.startswith("mypy==") for item in project["optional-dependencies"]["test"])
 

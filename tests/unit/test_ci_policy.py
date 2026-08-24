@@ -49,14 +49,13 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         "distribution:",
         "dependency-review:",
         "codeql:",
-        "version:",
     ):
         assert job in ci
     for contract in (
         "make ci PY=python",
-        'python: "3.13"',
-        'python: "3.14"',
-        "ubuntu-24.04-arm",
+        "python-version: ${{ matrix.python }}",
+        "platform: linux",
+        "arch: arm64",
         "windows-latest",
         "make test-service-installer",
         "name: Live protocols",
@@ -65,7 +64,7 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         "actions/dependency-review-action@",
         "github/codeql-action/init@",
         "github/codeql-action/analyze@",
-        "make standalone checksums smoke-standalone verify-release",
+        "make standalone checksums smoke-standalone PY=python",
     ):
         assert contract in ci
     assert "security-events: write" in ci
@@ -78,16 +77,17 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
 
 
-def test_live_ci_uses_pinned_ephemeral_joplin_binary() -> None:
+def test_live_ci_uses_checksum_verified_ephemeral_joplin_binary() -> None:
     runtime = (ROOT / "tests_live" / "ephemeral_joplin.py").read_text(encoding="utf-8")
     live_tests = "\n".join(
         path.read_text(encoding="utf-8") for path in (ROOT / "tests_live").glob("test_*.py")
     )
-    assert 'JOPLIN_VERSION = "3.6.15"' in runtime
+    assert re.search(r'^JOPLIN_VERSION = "[^"]+"$', runtime, re.MULTILINE)
     assert "Joplin-{JOPLIN_VERSION}.deb" in runtime
-    assert (
-        'JOPLIN_DEB_SHA256 = "c9fc77c077f1c81c581324dfdd4cc785307ea3c5b5f19ceecf9ee20fa78ac792"'
-        in runtime
+    assert re.search(
+        r'^JOPLIN_DEB_SHA256 = "[0-9a-f]{64}"$',
+        runtime,
+        re.MULTILINE,
     )
     assert 'TemporaryDirectory(prefix="jms-live-joplin-", dir="/tmp")' in runtime
     assert "dpkg-deb" in runtime
@@ -97,13 +97,23 @@ def test_live_ci_uses_pinned_ephemeral_joplin_binary() -> None:
     assert 'REPO / "token"' not in live_tests
 
 
-def test_version_job_compares_exact_base_and_head() -> None:
+def test_ci_leaves_release_version_policy_to_release_workflow() -> None:
     ci = _workflow("ci.yml")
-    assert "github.event.pull_request.base.sha" in ci
-    assert "github.event.pull_request.head.repo.full_name" in ci
-    assert "github.event.pull_request.head.sha" in ci
-    assert "unpublished_base_version" in ci
-    assert "python scripts/check_version_increment.py --base-version" in ci
+    release = _workflow("release.yml")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "\n  version:\n" not in ci
+    assert "Version increment" not in ci
+    assert "check_version_increment.py" not in ci
+    assert "verify-release" not in ci
+    for target in ("check", "ci"):
+        declaration = re.search(
+            rf"^{target}:[^\n]*(?:\\\n\t[^\n]*)*",
+            makefile,
+            re.MULTILINE,
+        )
+        assert declaration is not None
+        assert "verify-release" not in declaration.group()
+    assert "make verify-release" in release
 
 
 def test_dependency_submission_is_a_separate_trusted_write_boundary() -> None:
@@ -141,6 +151,25 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "scripts/normalize_sdist.py" in makefile
 
 
+def test_published_version_is_a_noop_on_later_main_commits() -> None:
+    release = _workflow("release.yml")
+    github_state = release.split("const commit = await taggedCommit();", 1)[1].split(
+        "const project = process.env.PYPI_PROJECT;",
+        1,
+    )[0]
+    release_required = github_state.index("if (!existing || existing.data.draft)")
+    target_conflict = github_state.index("if (commit && commit !== context.sha)")
+    assert release_required < target_conflict
+    assert 'core.setOutput("release_required", "false")' in github_state
+
+    pypi_missing = release.split("if (pypi.status === 404)", 1)[1].split(
+        "if (!pypi.ok)",
+        1,
+    )[0]
+    assert "if (commit && commit !== context.sha)" in pypi_missing
+    assert 'core.setOutput("pypi_required", "true")' in pypi_missing
+
+
 def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
     release = _workflow("release.yml")
     assert "pypi_required" in release
@@ -152,7 +181,7 @@ def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
     assert "verify_pypi_release.py --dist-dir dist" in release
     assert "environment:\n      name: pypi" in release
     assert release.count("id-token: write") == 1
-    assert "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33" in release
+    assert "pypa/gh-action-pypi-publish@" in release
     assert "packages-dir: dist" in release
     assert 'attestations: "true"' in release
     assert "needs.publish-pypi.result == 'success'" in release

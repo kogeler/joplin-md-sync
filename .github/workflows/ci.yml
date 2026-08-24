@@ -11,12 +11,6 @@ on:
       - main
   workflow_call:
   workflow_dispatch:
-    inputs:
-      base_ref:
-        description: Base branch or commit for the version comparison
-        required: true
-        default: main
-        type: string
 
 permissions:
   contents: read
@@ -140,7 +134,7 @@ jobs:
 
       - name: Run package tests and metadata checks
         shell: bash
-        run: make test verify-release PY=python
+        run: make test PY=python
 
       - name: Run headless service installer tests
         if: matrix.platform == 'linux'
@@ -183,7 +177,7 @@ jobs:
 
       - name: Build and smoke-test native executable
         shell: bash
-        run: make standalone checksums smoke-standalone verify-release PY=python
+        run: make standalone checksums smoke-standalone PY=python
 
       - name: Upload smoke-tested native executable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -258,79 +252,3 @@ jobs:
         uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           category: .github/workflows/codeql.yml:analyze/language:${{ matrix.language }}
-
-  version:
-    name: Version increment
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    steps:
-      - name: Check out base version
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: >-
-            ${{
-              github.event.pull_request.base.sha ||
-              github.event.before ||
-              inputs.base_ref
-            }}
-          path: base
-          persist-credentials: false
-
-      - name: Check out proposed version
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          path: source
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Resolve unpublished same-version recovery baseline
-        id: release-baseline
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          VERSION_PATH: source/.version
-        with:
-          script: |
-            const fs = await import("node:fs/promises");
-            const version = (await fs.readFile(process.env.VERSION_PATH, "utf8")).trim();
-            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
-              throw new Error(".version is not a stable semantic version");
-            }
-            try {
-              await github.rest.repos.getReleaseByTag({
-                ...context.repo,
-                tag: `v${version}`,
-              });
-              core.setOutput("unpublished_base_version", "");
-              return;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-            let latestVersion = "0.0.0";
-            try {
-              const latest = await github.rest.repos.getLatestRelease({ ...context.repo });
-              latestVersion = latest.data.tag_name.replace(/^v/, "");
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(latestVersion)) {
-              throw new Error("latest published release is not a stable vX.Y.Z tag");
-            }
-            core.setOutput("unpublished_base_version", latestVersion);
-
-      - name: Require synchronized version increase
-        working-directory: source
-        env:
-          UNPUBLISHED_BASE_VERSION: ${{ steps.release-baseline.outputs.unpublished_base_version }}
-        run: |
-          base_version="$(tr -d '\r\n' < ../base/.version)"
-          current_version="$(tr -d '\r\n' < .version)"
-          if [[ "$current_version" == "$base_version" && -n "$UNPUBLISHED_BASE_VERSION" ]]; then
-            base_version="$UNPUBLISHED_BASE_VERSION"
-          fi
-          python scripts/check_version_increment.py --base-version "$base_version"

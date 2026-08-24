@@ -29,7 +29,7 @@ a repository credential or a pre-existing Joplin process or profile.
 **Evidence:**
 
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
-- [`test_live_ci_uses_pinned_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_pinned_ephemeral_joplin_binary`
+- [`test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`
 - [`test_supported_platform_names`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneNameTest::test_supported_platform_names`
 
 ### `CIR-003` - Write permissions are confined to dedicated jobs
@@ -63,19 +63,23 @@ reject missing or oversized managed release content.
 - [`test_skips_empty_unreleased_and_preserves_manual_body`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_skips_empty_unreleased_and_preserves_manual_body`
 - [`test_rejects_missing_release_entries`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_rejects_missing_release_entries`
 
-### `CIR-005` - Release version has one human-maintained owner
+### `CIR-005` - Release metadata is verified only at publication
 
 **Contract:** Root `.version` MUST be canonical stable SemVer and the only
 human-maintained version. Package metadata MUST read it dynamically and the
-agent manifest MUST match. A release-bearing change MUST increase the exact
-base version and provide a matching non-empty dated changelog section.
+agent manifest MUST match. Ordinary tests MUST NOT compare the current project
+version with a base revision or duplicate mutable project, dependency, tool,
+runtime, or action version values. Reusable CI MUST NOT require a project
+version increment or run release metadata verification. Synthetic version
+fixtures and public protocol or schema version assertions MAY be used when the
+version itself is product behavior. Release metadata, tags, artifact versions,
+and publication state MUST be validated by the dedicated release workflow
+before publication.
 
 **Evidence:**
 
-- [`test_version_file_is_single_source`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_version_file_is_single_source`
-- [`test_manifest_matches_version_file`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_manifest_matches_version_file`
-- [`test_pyproject_reads_version_dynamically`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_pyproject_reads_version_dynamically`
-- [`test_version_job_compares_exact_base_and_head`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_compares_exact_base_and_head`
+- [`test_ci_leaves_release_version_policy_to_release_workflow`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_leaves_release_version_policy_to_release_workflow`
+- [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
 
 ### `CIR-006` - Publication reuses gated artifacts and never rewrites conflict
 
@@ -85,12 +89,15 @@ publication jobs run. The GitHub publish job MUST create or resume an exact
 draft Release, combine the shared Python distributions with the smoke-tested
 platform artifacts, verify the full inventory and checksums, upload each exact
 asset through GitHub's release upload endpoint with response verification, and
-publish. Matching publication MUST be a read-only no-op; conflicting tags,
-targets, metadata, or assets MUST fail without moving or replacing history.
+publish. A later main commit that retains a version already published in both
+destinations MUST be a read-only no-op and MUST NOT retarget its release tag.
+When publication is still required, conflicting tags, targets, metadata, or
+assets MUST fail without moving or replacing history.
 
 **Evidence:**
 
 - [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
+- [`test_published_version_is_a_noop_on_later_main_commits`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_published_version_is_a_noop_on_later_main_commits`
 - [`test_requires_all_standalones_when_requested`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneInventoryTest::test_requires_all_standalones_when_requested`
 - [`test_uses_only_the_exact_current_changelog_section`](../../tests/unit/test_release_notes.py) - `tests/unit/test_release_notes.py::test_uses_only_the_exact_current_changelog_section`
 
