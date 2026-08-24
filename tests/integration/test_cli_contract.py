@@ -5,9 +5,12 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
-from tests.helpers import TOKEN, WorkspaceTestCase, run_cli
+from joplin_md_sync import OUTPUT_SCHEMA_VERSION  # noqa: E402
+from tests.helpers import TOKEN, WorkspaceTestCase, run_cli  # noqa: E402
 
 
 class JsonContractTest(WorkspaceTestCase):
@@ -24,7 +27,7 @@ class JsonContractTest(WorkspaceTestCase):
             "workspace",
         ):
             self.assertIn(key, result.json, key)
-        self.assertEqual(result.json["schema_version"], 1)
+        self.assertEqual(result.json["schema_version"], OUTPUT_SCHEMA_VERSION)
 
     def test_json_is_deterministic(self):
         self.init_and_pull()
@@ -69,7 +72,7 @@ class JsonContractTest(WorkspaceTestCase):
                 "gpt-actions export-openapi",
             ],
         )
-        self.assertEqual(result.json["output_schema_version"], 1)
+        self.assertEqual(result.json["output_schema_version"], OUTPUT_SCHEMA_VERSION)
         self.assertEqual(
             result.json["exit_codes"],
             {

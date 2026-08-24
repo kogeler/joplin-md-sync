@@ -35,9 +35,9 @@ sys.path.insert(0, str(SRC))
 
 from joplin_md_sync.api import JoplinClient  # noqa: E402
 from joplin_md_sync.config import build_client  # noqa: E402
+from joplin_md_sync.mcp_server import MCP_PROTOCOL_VERSION  # noqa: E402
 from tests_live.ephemeral_joplin import running_joplin  # noqa: E402
 
-MCP_PROTOCOL_VERSION = "2025-06-18"
 EXPECTED_MCP_TOOLS = {
     "joplin_list_notebooks",
     "joplin_get_notebook",

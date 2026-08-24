@@ -19,17 +19,18 @@ permissions and concurrency behavior.
 ### `CIR-002` - Quality, compatibility, and distribution remain visible gates
 
 **Contract:** Reusable CI MUST run the complete Linux quality contract through
-`make ci`, separately test supported Python 3.13/3.14 and Linux AMD64/ARM64 and
-Windows AMD64 compatibility, run Linux installer tests, run the complete live
-protocol suite on Linux AMD64 against a checksum-verified ephemeral Joplin
-Desktop 3.6.15 profile, and build and smoke each supported native distribution.
-Coverage MUST remain blocking at the reviewed floor. The live job MUST NOT use
-a repository credential or a pre-existing Joplin process or profile.
+`make ci`, separately test every runtime and platform in the supported CI
+matrix, run Linux installer tests, run the complete live protocol suite on
+Linux AMD64 against the checksum-verified ephemeral Joplin Desktop build owned
+by the live-test runtime, and build and smoke each supported native
+distribution. Coverage MUST remain blocking at the reviewed floor. The live
+job MUST NOT use a repository credential or a pre-existing Joplin process or
+profile.
 
 **Evidence:**
 
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
-- [`test_live_ci_uses_pinned_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_pinned_ephemeral_joplin_binary`
+- [`test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`
 - [`test_supported_platform_names`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneNameTest::test_supported_platform_names`
 
 ### `CIR-003` - Write permissions are confined to dedicated jobs
@@ -166,3 +167,21 @@ publication continues.
 - [`test_normalization_makes_equivalent_sdist_archives_byte_identical`](../../tests/unit/test_normalize_sdist.py) - `tests/unit/test_normalize_sdist.py::test_normalization_makes_equivalent_sdist_archives_byte_identical`
 - [`test_pypi_readme_uses_only_portable_absolute_links`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_readme_uses_only_portable_absolute_links`
 - [`test_pypi_metadata_exposes_public_project_routes`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_metadata_exposes_public_project_routes`
+
+### `CIR-012` - Mutable pins have one executable owner
+
+**Contract:** Concrete project, dependency, runtime, protocol, schema,
+external-tool, action commit, and checksum values MUST be owned by the
+executable configuration that consumes them. Tests MUST NOT compare behavior
+or repository configuration with duplicated concrete version literals. They
+MUST instead use the owning production constant, derive expectations from
+synthetic inputs, or verify version-independent structure and relationships.
+CI version increment and release consistency enforcement MUST remain blocking.
+
+**Evidence:**
+
+- [`test_tests_do_not_duplicate_owned_version_pins`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_tests_do_not_duplicate_owned_version_pins`
+- [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
+- [`test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`
+- [`test_version_job_compares_exact_base_and_head`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_compares_exact_base_and_head`
+- [`test_direct_dependencies_are_exact_and_scoped`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_scoped`

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
@@ -13,6 +15,56 @@ SHA_REFERENCE = re.compile(r"^[^@]+@[0-9a-f]{40}$")
 
 def _workflow(name: str) -> str:
     return (WORKFLOWS / name).read_text(encoding="utf-8")
+
+
+def _assigned_string(path: Path, name: str) -> str:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == name
+        ):
+            value = ast.literal_eval(node.value)
+            assert isinstance(value, str), (path, name)
+            return value
+    raise AssertionError((path, name))
+
+
+def test_tests_do_not_duplicate_owned_version_pins() -> None:
+    ci = _workflow("ci.yml")
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    live_runtime = ROOT / "tests_live" / "ephemeral_joplin.py"
+    owned = {
+        (ROOT / ".version").read_text(encoding="utf-8").strip(),
+        _assigned_string(ROOT / "src" / "joplin_md_sync" / "mcp_server.py", "MCP_PROTOCOL_VERSION"),
+        _assigned_string(ROOT / "src" / "joplin_md_sync" / "gpt_openapi.py", "OPENAPI_VERSION"),
+        _assigned_string(live_runtime, "JOPLIN_VERSION"),
+        _assigned_string(live_runtime, "JOPLIN_DEB_SHA256"),
+        *(
+            reference
+            for reference in ACTION_REFERENCE.findall(
+                "\n".join(path.read_text(encoding="utf-8") for path in WORKFLOWS.glob("*.yml"))
+            )
+            if not reference.startswith("./")
+        ),
+        *(
+            requirement
+            for group in project["optional-dependencies"].values()
+            for requirement in group
+        ),
+        *re.findall(r'^\s+python(?:-version)?:\s+"([^"]+)"$', ci, re.MULTILINE),
+    }
+    test_paths = [
+        *sorted((ROOT / "tests").rglob("*.py")),
+        *sorted((ROOT / "tests_live").glob("test_*.py")),
+        *sorted((ROOT / "scripts" / "joplin_terminal_service" / "tests").glob("test_*.py")),
+    ]
+    for path in test_paths:
+        content = path.read_text(encoding="utf-8")
+        duplicated = sorted(value for value in owned if value and value in content)
+        assert not duplicated, (path, duplicated)
 
 
 def test_workflow_set_is_event_driven_and_every_action_is_sha_pinned() -> None:
@@ -54,9 +106,9 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         assert job in ci
     for contract in (
         "make ci PY=python",
-        'python: "3.13"',
-        'python: "3.14"',
-        "ubuntu-24.04-arm",
+        "python-version: ${{ matrix.python }}",
+        "platform: linux",
+        "arch: arm64",
         "windows-latest",
         "make test-service-installer",
         "name: Live protocols",
@@ -78,16 +130,17 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
 
 
-def test_live_ci_uses_pinned_ephemeral_joplin_binary() -> None:
+def test_live_ci_uses_checksum_verified_ephemeral_joplin_binary() -> None:
     runtime = (ROOT / "tests_live" / "ephemeral_joplin.py").read_text(encoding="utf-8")
     live_tests = "\n".join(
         path.read_text(encoding="utf-8") for path in (ROOT / "tests_live").glob("test_*.py")
     )
-    assert 'JOPLIN_VERSION = "3.6.15"' in runtime
+    assert re.search(r'^JOPLIN_VERSION = "[^"]+"$', runtime, re.MULTILINE)
     assert "Joplin-{JOPLIN_VERSION}.deb" in runtime
-    assert (
-        'JOPLIN_DEB_SHA256 = "c9fc77c077f1c81c581324dfdd4cc785307ea3c5b5f19ceecf9ee20fa78ac792"'
-        in runtime
+    assert re.search(
+        r'^JOPLIN_DEB_SHA256 = "[0-9a-f]{64}"$',
+        runtime,
+        re.MULTILINE,
     )
     assert 'TemporaryDirectory(prefix="jms-live-joplin-", dir="/tmp")' in runtime
     assert "dpkg-deb" in runtime
@@ -152,7 +205,7 @@ def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
     assert "verify_pypi_release.py --dist-dir dist" in release
     assert "environment:\n      name: pypi" in release
     assert release.count("id-token: write") == 1
-    assert "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33" in release
+    assert "pypa/gh-action-pypi-publish@" in release
     assert "packages-dir: dist" in release
     assert 'attestations: "true"' in release
     assert "needs.publish-pypi.result == 'success'" in release

@@ -94,12 +94,13 @@ class ParserTests(unittest.TestCase):
                 self.assertIn(expected, help_text)
 
     def test_upgrade_accepts_independent_version_overrides(self) -> None:
+        requested_version = "3.7.1"
         args = installer.build_parser({"HOME": "/tmp/home"}).parse_args(
-            ["--upgrade", "--joplin-version", "3.7.1"]
+            ["--upgrade", "--joplin-version", requested_version]
         )
         installer.validate_args(args)
         self.assertTrue(args.upgrade)
-        self.assertEqual(args.joplin_version, "3.7.1")
+        self.assertEqual(args.joplin_version, requested_version)
         self.assertEqual(args.joplin_md_sync_version, "latest")
 
     def test_unreleased_mcp_version_name_is_not_supported(self) -> None:
@@ -1322,6 +1323,8 @@ class DryRunTests(unittest.TestCase):
 
     def test_upgrade_updates_both_without_resolving_sync_secrets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
+            joplin_version = "3.6.2"
+            mcp_version = "1.2.0"
             root = Path(temporary)
             env = {
                 "HOME": str(root / "home"),
@@ -1332,9 +1335,9 @@ class DryRunTests(unittest.TestCase):
                 [
                     "--upgrade",
                     "--joplin-version",
-                    "3.6.2",
+                    joplin_version,
                     "--joplin-md-sync-version",
-                    "1.2.0",
+                    mcp_version,
                     "--joplin-prefix",
                     str(root / "prefix"),
                     "--profile-dir",
@@ -1357,10 +1360,10 @@ class DryRunTests(unittest.TestCase):
                 mock.patch.object(installer, "service_active", return_value=False),
                 mock.patch.object(installer, "systemctl_command"),
                 mock.patch.object(
-                    installer, "install_or_update_joplin", return_value="3.6.2"
+                    installer, "install_or_update_joplin", return_value=joplin_version
                 ) as update_joplin,
                 mock.patch.object(
-                    installer, "install_or_update_mcp", return_value="1.2.0"
+                    installer, "install_or_update_mcp", return_value=mcp_version
                 ) as update_mcp,
                 mock.patch.object(installer, "configure_profile") as configure,
                 mock.patch.object(installer, "bootstrap_e2ee") as bootstrap,
@@ -1370,9 +1373,9 @@ class DryRunTests(unittest.TestCase):
                 tool.runner,
                 dependencies,
                 tool.paths,
-                "3.6.2",
+                joplin_version,
             )
-            update_mcp.assert_called_once_with(tool.runner, tool.paths, "1.2.0")
+            update_mcp.assert_called_once_with(tool.runner, tool.paths, mcp_version)
             configure.assert_not_called()
             bootstrap.assert_not_called()
             prompt.assert_not_called()
@@ -1566,6 +1569,8 @@ class ServiceLifecycleTests(unittest.TestCase):
 
     def test_upgrade_resolves_both_latest_versions_before_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
+            joplin_version = "3.9.0"
+            mcp_version = "2.0.0"
             root = Path(temporary)
             env = {
                 "HOME": str(root / "home"),
@@ -1593,16 +1598,18 @@ class ServiceLifecycleTests(unittest.TestCase):
             )
             with (
                 mock.patch.object(installer, "check_dependencies", return_value=dependencies),
-                mock.patch.object(installer, "resolve_latest_version", return_value="3.9.0"),
-                mock.patch.object(installer, "resolve_latest_mcp_version", return_value="2.0.0"),
+                mock.patch.object(installer, "resolve_latest_version", return_value=joplin_version),
+                mock.patch.object(
+                    installer, "resolve_latest_mcp_version", return_value=mcp_version
+                ),
                 mock.patch.object(installer, "load_mcp_auth_token", return_value=None),
                 mock.patch.object(installer, "service_active", return_value=False),
                 mock.patch.object(installer, "systemctl_command"),
                 mock.patch.object(
-                    installer, "install_or_update_joplin", return_value="3.9.0"
+                    installer, "install_or_update_joplin", return_value=joplin_version
                 ) as update_joplin,
                 mock.patch.object(
-                    installer, "install_or_update_mcp", return_value="2.0.0"
+                    installer, "install_or_update_mcp", return_value=mcp_version
                 ) as update_mcp,
             ):
                 tool.run()
@@ -1610,9 +1617,9 @@ class ServiceLifecycleTests(unittest.TestCase):
                 tool.runner,
                 dependencies,
                 tool.paths,
-                "3.9.0",
+                joplin_version,
             )
-            update_mcp.assert_called_once_with(tool.runner, tool.paths, "2.0.0")
+            update_mcp.assert_called_once_with(tool.runner, tool.paths, mcp_version)
 
 
 class DependencyTests(unittest.TestCase):
@@ -1640,10 +1647,13 @@ class DependencyTests(unittest.TestCase):
             self.assertTrue(dependencies.node.is_symlink())
             self.assertEqual(runner.run.call_args_list[0].args[0][0], node_alias.absolute())
 
-    def test_python_313_warns_but_is_not_rejected(self) -> None:
+    def test_older_supported_python_warns_but_is_not_rejected(self) -> None:
+        recommended = installer.RECOMMENDED_PYTHON
+        older = (recommended[0], recommended[1] - 1, 5)
+        node_version = "22.0.0"
         runner = mock.Mock()
         runner.run.side_effect = [
-            subprocess.CompletedProcess([], 0, "v22.0.0\n", ""),
+            subprocess.CompletedProcess([], 0, f"v{node_version}\n", ""),
             subprocess.CompletedProcess([], 0, "10.0.0\n", ""),
         ]
         programs = {
@@ -1653,21 +1663,31 @@ class DependencyTests(unittest.TestCase):
             "loginctl": "/usr/bin/loginctl",
         }
         with (
-            mock.patch.object(installer.sys, "version_info", (3, 13, 5)),
-            mock.patch.object(installer.sys, "version", "3.13.5 (test)"),
+            mock.patch.object(installer.sys, "version_info", older),
+            mock.patch.object(
+                installer.sys,
+                "version",
+                ".".join(str(part) for part in older) + " (test)",
+            ),
             mock.patch.object(installer.shutil, "which", side_effect=programs.get),
             self.assertLogs(installer.LOG, level="WARNING") as logs,
         ):
             dependencies = installer.check_dependencies(runner)
-        self.assertEqual(dependencies.node_version, "22.0.0")
-        self.assertIn("Python 3.14 is recommended", "\n".join(logs.output))
+        self.assertEqual(dependencies.node_version, node_version)
+        self.assertIn(
+            f"Python {recommended[0]}.{recommended[1]} is recommended",
+            "\n".join(logs.output),
+        )
 
 
 class NpmTests(unittest.TestCase):
     def test_parse_installed_version(self) -> None:
+        version = "3.6.2"
         self.assertEqual(
-            installer.parse_npm_version('{"dependencies":{"joplin":{"version":"3.6.2"}}}'),
-            "3.6.2",
+            installer.parse_npm_version(
+                json.dumps({"dependencies": {"joplin": {"version": version}}})
+            ),
+            version,
         )
         self.assertIsNone(installer.parse_npm_version("{}"))
         self.assertIsNone(installer.parse_npm_version("not-json"))
@@ -1685,6 +1705,7 @@ class NpmTests(unittest.TestCase):
 
     def test_install_uses_isolated_global_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
+            version = "3.6.2"
             root = Path(temporary)
             env = {"HOME": str(root)}
             args = installer.build_parser(env).parse_args(["--joplin-prefix", str(root / ".local")])
@@ -1695,18 +1716,18 @@ class NpmTests(unittest.TestCase):
             runner = mock.Mock()
             runner.run.return_value = subprocess.CompletedProcess([], 0, "", "")
             with (
-                mock.patch.object(installer, "resolve_latest_version", return_value="3.6.2"),
+                mock.patch.object(installer, "resolve_latest_version", return_value=version),
                 mock.patch.object(installer, "_safe_launcher_state", return_value="missing"),
                 mock.patch.object(
                     installer,
                     "installed_joplin_version",
-                    side_effect=[None, None, "3.6.2"],
+                    side_effect=[None, None, version],
                 ),
                 mock.patch.object(installer, "smoke_test_joplin"),
                 mock.patch.object(installer, "install_launcher"),
             ):
                 actual = installer.install_or_update_joplin(runner, dependencies, paths, "latest")
-            self.assertEqual(actual, "3.6.2")
+            self.assertEqual(actual, version)
             runner.run.assert_called_once_with(
                 [
                     dependencies.npm,
@@ -1714,7 +1735,7 @@ class NpmTests(unittest.TestCase):
                     "--global",
                     "--prefix",
                     paths.npm_prefix,
-                    "joplin@3.6.2",
+                    f"joplin@{version}",
                 ],
                 timeout=installer.NPM_TIMEOUT,
             )
@@ -1831,12 +1852,13 @@ else:
         self.assertFalse(self.paths.mcp_binary.exists())
 
     def test_latest_release_tag_is_validated(self) -> None:
+        version = "2.3.4"
         with mock.patch.object(
             installer,
             "fetch_release_bytes",
-            return_value=b'{"tag_name":"v2.3.4"}',
+            return_value=json.dumps({"tag_name": f"v{version}"}).encode(),
         ):
-            self.assertEqual(installer.resolve_latest_mcp_version(), "2.3.4")
+            self.assertEqual(installer.resolve_latest_mcp_version(), version)
         with (
             mock.patch.object(
                 installer,

@@ -22,6 +22,7 @@ from joplin_md_sync.gpt_actions import (
     GptActionsTransport,
 )
 from joplin_md_sync.mcp_server import (
+    MCP_PROTOCOL_VERSION,
     BearerTokenSource,
     McpDispatcher,
     McpHttpServer,
@@ -314,7 +315,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
                     "Accept": "application/json, text/event-stream",
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
-                    "MCP-Protocol-Version": "2025-06-18",
+                    "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
                 },
             )
             try:
