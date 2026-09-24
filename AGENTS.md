@@ -11,8 +11,9 @@ replace those contracts.
 - CPython 3.13 or 3.14 on Windows or Linux for source, wheel, and zipapp use.
 - Joplin Desktop running locally with Web Clipper enabled, normally on port
   `41184`.
-- The Joplin Web Clipper token, supplied through `JOPLIN_TOKEN`, a protected
-  token file, or the required local `mcp stdio --token` argument.
+- The Joplin Web Clipper token, supplied through exactly one of `JOPLIN_TOKEN`
+  or a private token file (mode `0600`, or an owner-only Windows ACL). Local
+  `mcp stdio` also keeps a compatibility `--token` argument.
 
 Native release executables include Python.
 
@@ -112,10 +113,13 @@ joplin-md-sync mcp serve --token-file /protected/joplin-token
 
 A local IDE can instead launch the release executable over stdio while Joplin
 Desktop is already running. Configure its process argument vector with
-`mcp stdio --token TOKEN`; add `--port PORT` only when Joplin does not use the
-default `41184`. Treat the IDE configuration as a credential-bearing file and
-do not type this form into shell history. This mode opens no MCP, Actions,
-health, or readiness port and needs no bearer credential for those interfaces.
+`mcp stdio --token-file /absolute/path/to/joplin-token`, pointing at a private
+`0600` file, or pass `mcp stdio` alone and export `JOPLIN_TOKEN` to the process;
+use exactly one of the two, because both together are rejected. Add
+`--port PORT` only when Joplin does not use the default `41184`. The older
+`mcp stdio --token TOKEN` form still works but exposes the token in the IDE
+configuration and the process list. This mode opens no MCP, Actions, health, or
+readiness port and needs no bearer credential for those interfaces.
 
 Setup and operation:
 
@@ -158,8 +162,9 @@ Review [Conflict handling](docs/user/CONFLICTS.md) before selecting a side.
 - Never resolve a conflict by manipulating its bundle directly.
 - Never access Joplin's database, profile, or sync target directly.
 - Never put Joplin, MCP, Actions, sync, or encryption credentials in Git,
-  chat, logs, or interactive shell arguments. The only process-argument
-  exception is the IDE-managed local `mcp stdio --token` contract above.
+  chat, logs, or process arguments. Configure local `mcp stdio` with
+  `--token-file` or `JOPLIN_TOKEN`; its `--token` form exists only for older
+  IDE configurations.
 - Never expose the Joplin Data API to a public network.
 - Do not interleave direct MCP/Actions writes with unpushed Markdown edits.
 

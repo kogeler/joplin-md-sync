@@ -35,15 +35,17 @@ tag, trash, and restore current Joplin objects without a Markdown workspace.
 
 ## MCP
 
-`joplin-md-sync mcp stdio --token TOKEN` lets a local editor launch the native
-executable directly, while `joplin-md-sync mcp serve` exposes Streamable HTTP
-at `http://127.0.0.1:8765/mcp`. Neither requires a workspace or uses the base
-snapshot.
+`joplin-md-sync mcp stdio --token-file PATH` lets a local editor launch the
+native executable directly, while `joplin-md-sync mcp serve` exposes Streamable
+HTTP at `http://127.0.0.1:8765/mcp`. Neither requires a workspace or uses the
+base snapshot.
 
 The stdio process opens no listener and needs no MCP or Actions bearer token;
-its required `--token` is only the upstream Joplin Web Clipper credential.
-`mcp serve` retains the existing HTTP, authorization, Origin, and optional
-Actions behavior.
+it only needs the upstream Joplin Web Clipper token, from a protected
+`--token-file` or from `JOPLIN_TOKEN`, never both. The compatibility `--token`
+argument still works but exposes the token in the process list. `mcp serve`
+retains the existing HTTP, authorization, Origin, and optional Actions
+behavior.
 
 MCP calls operate on current Joplin state immediately. Reads retry bounded
 availability failures. Writes are sent once and are never automatically

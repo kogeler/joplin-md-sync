@@ -1,4 +1,6 @@
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -99,13 +101,42 @@ class ResolveTokenTest(unittest.TestCase):
         with self.assertRaises(AuthError):
             resolve_token(None, env={})
 
-    def test_token_file_beats_env(self):
-        import tempfile
+    def _protected_token_file(self, directory: str, content: str) -> Path:
+        path = Path(directory) / "joplin-token"
+        path.write_bytes(content.encode("ascii"))
+        if os.name == "posix":
+            path.chmod(0o600)
+        return path
 
-        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
-            fh.write("file-token\n")
-        self.assertEqual(resolve_token(fh.name, env={"JOPLIN_TOKEN": "env-token"}), "file-token")
-        Path(fh.name).unlink()
+    def test_token_file_is_read_through_the_protected_reader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self._protected_token_file(directory, " file-token \n")
+            self.assertEqual(resolve_token(str(path), env={}), "file-token")
+            self.assertEqual(resolve_token(str(path), env={"JOPLIN_TOKEN": "  "}), "file-token")
+            if os.name == "posix":
+                path.chmod(0o644)
+                with self.assertRaisesRegex(AuthError, "group or others"):
+                    resolve_token(str(path), env={})
+
+    def test_token_file_and_env_together_are_a_conflict_before_reading(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(config_mod, "read_protected_token_line") as read,
+        ):
+            path = self._protected_token_file(directory, "file-token\n")
+            with self.assertRaises(AuthError) as raised:
+                resolve_token(str(path), env={"JOPLIN_TOKEN": "env-token"})
+        read.assert_not_called()
+        message = str(raised.exception)
+        self.assertIn("(--token-file)", message)
+        self.assertIn("JOPLIN_TOKEN", message)
+        self.assertNotIn("file-token", message)
+        self.assertNotIn("env-token", message)
+
+    def test_blank_env_counts_as_unset(self):
+        for blank in ("", "   "):
+            with self.subTest(blank=blank), self.assertRaises(AuthError):
+                resolve_token(None, env={"JOPLIN_TOKEN": blank})
 
 
 if __name__ == "__main__":

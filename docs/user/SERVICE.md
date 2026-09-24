@@ -604,7 +604,12 @@ $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes); $rng.Dispose()
 $token = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
 [IO.File]::WriteAllText("$dir\gpt-actions-token", $token)
-icacls "$dir\gpt-actions-token" /inheritance:r /grant:r "${env:USERNAME}:(R)"
+foreach ($name in "joplin-token", "gpt-actions-token", "mcp-token") {
+  $file = Join-Path $dir $name
+  if (Test-Path -LiteralPath $file) {
+    icacls $file /inheritance:r /grant:r "${env:USERNAME}:(R)" | Out-Null
+  }
+}
 
 .\examples\windows\install-service-task.ps1 `
   -Executable "$env:USERPROFILE\.local\bin\joplin-md-sync.exe" `
@@ -613,8 +618,11 @@ icacls "$dir\gpt-actions-token" /inheritance:r /grant:r "${env:USERNAME}:(R)"
   -McpAuthTokenFile "$env:APPDATA\joplin-md-sync\mcp-token"
 ```
 
-Restrict all token files to the current account with Windows ACLs. Omit
-`-McpAuthTokenFile` to leave MCP authentication disabled. Remove the task with
+Each token file holds one line and is restricted to the current account by the
+loop above; create `joplin-token` with the Joplin Web Clipper token and, when
+used, `mcp-token` the same way before running it. joplin-md-sync rejects a
+token file that another account can read or change, or that another account
+owns. Omit `-McpAuthTokenFile` to leave MCP authentication disabled. Remove the task with
 `Unregister-ScheduledTask -TaskName joplin-md-sync -Confirm:$false`.
 
 ## Updating and rollback

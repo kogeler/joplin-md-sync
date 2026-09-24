@@ -8,8 +8,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [1.7.0] - 2026-09-24
 
+### Added
+
+- Let `mcp stdio` read its Joplin token from a protected `--token-file PATH`
+  or from `JOPLIN_TOKEN`, so IDE configurations no longer have to place the
+  token in the process argument vector. `capabilities` advertises this as
+  `mcp_stdio_token_file`.
+
 ### Changed
 
+- Take the Joplin token from exactly one source in every command:
+  `--token-file` and a non-empty `JOPLIN_TOKEN` together now fail with an
+  error naming both sources instead of the file silently winning, and an empty
+  `JOPLIN_TOKEN` counts as unset. For `mcp stdio` the compatibility `--token`
+  is mutually exclusive with `--token-file` and follows the same rule; existing
+  `--token` configurations keep working. To migrate, unset `JOPLIN_TOKEN`
+  wherever a command also receives `--token-file`.
 - Keep CI version increment and release consistency enforcement blocking while
   removing duplicated concrete version, action, and checksum literals from
   test expectations.
@@ -37,6 +51,27 @@ All notable changes to this project are documented here. The format follows
 
 - Stop publishing the internal `dev`, `test`, `package`, and `docs` extras in
   package metadata; those tool sets are repository-only locks.
+
+### Security
+
+- Read every Joplin token file, for all commands, with the same protected
+  reader as the MCP and GPT Actions bearer files: a bounded single-line regular
+  file opened without following symlinks and owned by the current user with no
+  group or other access on POSIX. Rejections never echo the file content, and
+  tokens from the file or environment are redacted like `--token`. To migrate,
+  run `chmod 600` on an existing Joplin token file.
+- Enforce Windows ACLs for Joplin, MCP, and GPT Actions token files: the owner
+  must be the current user, SYSTEM, or Administrators, and no other account may
+  read, change, or re-permission the file. To migrate, restrict each token file
+  with `icacls FILE /inheritance:r /grant:r "%USERNAME%:(R)"`.
+- Recommend `--token-file` in every stdio configuration example; `--token`
+  exposes the token to the process list and to agents that receive the
+  editor's MCP configuration.
+
+### Fixed
+
+- Redact registered tokens from logged exception tracebacks and stack traces
+  on stderr and in `--log-file`, not only from log messages.
 
 ## [1.6.0] - 2026-08-22
 

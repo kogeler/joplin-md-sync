@@ -40,18 +40,32 @@ feature, schema, and exit-code surface.
 
 **Contract:** Joplin connection resolution MUST apply CLI options before
 environment variables, workspace configuration, the loopback default, and
-loopback discovery. Token-file input MUST override `JOPLIN_TOKEN`; raw token
-values MUST NOT be accepted as CLI arguments except that the local-only
-`mcp stdio` transport MUST require `--token`. Its Joplin `--port` MUST default
-to `41184` without discovery. Zero or multiple discovered Clipper services
-MUST fail unambiguously.
+loopback discovery. Every command MUST take the Joplin token from exactly one
+source: `--token-file PATH` or a non-blank `JOPLIN_TOKEN`; a blank
+`JOPLIN_TOKEN` MUST count as unset. The local-only `mcp stdio` transport MAY
+additionally accept the compatibility `--token TOKEN`, mutually exclusive with
+`--token-file`; no other command MAY accept a raw token argument. A
+command-line source together with a non-blank `JOPLIN_TOKEN` MUST fail before
+any token file is read or Joplin is contacted, naming both sources without
+choosing one, and no configured source MUST fail with a hint naming both
+paths. The `mcp stdio` Joplin `--port` MUST default to `41184` without
+discovery. Zero or multiple discovered Clipper services MUST fail
+unambiguously.
 
 **Evidence:**
 
 - [`test_cli_beats_everything`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveBaseUrlTest::test_cli_beats_everything`
 - [`test_env_base_url_beats_env_port_and_workspace`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveBaseUrlTest::test_env_base_url_beats_env_port_and_workspace`
-- [`test_token_file_beats_env`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveTokenTest::test_token_file_beats_env`
-- [`test_token_is_required_and_joplin_port_defaults_to_41184`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_token_is_required_and_joplin_port_defaults_to_41184`
+- [`test_token_file_and_env_together_are_a_conflict_before_reading`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveTokenTest::test_token_file_and_env_together_are_a_conflict_before_reading`
+- [`test_blank_env_counts_as_unset`](../../tests/unit/test_config.py) - `tests/unit/test_config.py::ResolveTokenTest::test_blank_env_counts_as_unset`
+- [`test_token_file_and_environment_are_one_source_for_workspace_commands`](../../tests/integration/test_cli_contract.py) - `tests/integration/test_cli_contract.py::TokenSafetyTest::test_token_file_and_environment_are_one_source_for_workspace_commands`
+- [`test_token_options_are_optional_exclusive_and_port_defaults_to_41184`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_token_options_are_optional_exclusive_and_port_defaults_to_41184`
+- [`test_command_line_and_environment_sources_conflict_before_serving`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_command_line_and_environment_sources_conflict_before_serving`
+- [`test_missing_token_names_both_sources_and_blank_environment_is_unset`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_missing_token_names_both_sources_and_blank_environment_is_unset`
+- [`test_token_file_and_environment_each_serve_joplin_tool_calls`](../../tests/integration/test_mcp_stdio.py) - `tests/integration/test_mcp_stdio.py::McpStdioCliTest::test_token_file_and_environment_each_serve_joplin_tool_calls`
+- [`test_each_single_source_supplies_the_trimmed_token`](../../tests/unit/test_stdio_token.py) - `tests/unit/test_stdio_token.py::test_each_single_source_supplies_the_trimmed_token`
+- [`test_command_line_and_environment_together_are_a_conflict`](../../tests/unit/test_stdio_token.py) - `tests/unit/test_stdio_token.py::test_command_line_and_environment_together_are_a_conflict`
+- [`test_blank_environment_counts_as_unset`](../../tests/unit/test_stdio_token.py) - `tests/unit/test_stdio_token.py::test_blank_environment_counts_as_unset`
 - [`test_no_service_is_unambiguous_error`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::DiscoveryTest::test_no_service_is_unambiguous_error`
 - [`test_multiple_services_is_unambiguous_error`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::DiscoveryTest::test_multiple_services_is_unambiguous_error`
 

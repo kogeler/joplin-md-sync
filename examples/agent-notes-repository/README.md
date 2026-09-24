@@ -71,12 +71,14 @@ $token = Read-Host -MaskInput "Joplin Web Clipper token"
   $token + [Environment]::NewLine
 )
 Remove-Variable token
+icacls .secrets\joplin-token /inheritance:r /grant:r "${env:USERNAME}:(R)" | Out-Null
 ```
 
 The `.secrets/` directory is ignored by Git. After creating it and before any
 later commit, verify that `git status --short --ignored` reports it with `!!`,
-never as an untracked or staged file. On a shared computer, also restrict the
-Windows ACL to your account.
+never as an untracked or staged file. joplin-md-sync rejects a token file that
+other accounts can read or change: mode `0600` on Linux, and on Windows the
+`icacls` command above restricts it to your account.
 
 ## 4. Install the local standalone
 

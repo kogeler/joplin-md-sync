@@ -14,24 +14,41 @@ sync workspace or reads or writes `.joplin-sync/`.
 ### Local stdio
 
 Use stdio when the MCP client and Joplin Desktop run on the same machine. Give
-the IDE the native executable path and these arguments:
+the IDE the native executable path and point `--token-file` at a private file
+that holds the Joplin Web Clipper token:
 
 ```json
 {
   "mcpServers": {
     "joplin": {
       "command": "/absolute/path/to/joplin-md-sync-linux-amd64",
-      "args": ["mcp", "stdio", "--token", "<Joplin Web Clipper token>"]
+      "args": ["mcp", "stdio", "--token-file", "/home/USER/.config/joplin-md-sync/token"]
     }
   }
 }
 ```
 
-On Windows, use the absolute path to
-`joplin-md-sync-windows-amd64.exe`. `--token` is mandatory. Add
-`"--port", "41185"` to `args` when Joplin uses a non-default port; otherwise
-the process connects to `127.0.0.1:41184`. Joplin must already be running with
-Web Clipper enabled.
+Create the file once, outside synchronized folders, so that only you can read
+it (directory `0700`, file `0600`) and the token never reaches shell history:
+
+```bash
+install -d -m 0700 ~/.config/joplin-md-sync
+(umask 077; read -rs -p 'Joplin token: ' token &&
+  printf '%s\n' "$token" > ~/.config/joplin-md-sync/token)
+```
+
+On Windows, use the absolute path to `joplin-md-sync-windows-amd64.exe` and a
+token file that only your account can access, for example in your user
+profile after `icacls FILE /inheritance:r /grant:r "%USERNAME%:(R)"`. Add `"--port", "41185"` to `args` when
+Joplin uses a non-default port; otherwise the process connects to
+`127.0.0.1:41184`. Joplin must already be running with Web Clipper enabled.
+
+A launcher that exports environment variables can instead set `JOPLIN_TOKEN`
+and pass `["mcp", "stdio"]` without a token option. Use exactly one source: a
+command-line option together with a non-empty `JOPLIN_TOKEN` stops with a
+configuration error instead of choosing one. The
+[CLI reference](CLI.md#mcp-stdio-token-file-path-token-token-port-port)
+lists the file checks and error cases.
 
 The IDE launches one process, writes newline-delimited JSON-RPC to stdin, and
 reads JSON-RPC from stdout. Closing stdin stops the process. No TCP MCP port,
@@ -39,10 +56,12 @@ MCP bearer credential, or Markdown workspace is involved. It also exposes no
 GPT Actions, health, or readiness HTTP routes, so their bearer options are not
 accepted. Diagnostics remain on stderr.
 
-The Joplin token is stored in the IDE configuration and appears in the local
-process argument vector. Restrict access to that configuration and avoid
-typing this form into an interactive shell. This raw-token form is supported
-only by `mcp stdio`; other commands retain the token-file/environment policy.
+Existing configurations with `"--token", "<Joplin Web Clipper token>"` keep
+working, but that form stores the token in the IDE configuration, shows it in
+the local process list, and some editors copy it into the command lines of the
+agents they start. Move such configurations to `--token-file`. The raw-token
+form is supported only by `mcp stdio`; other commands keep the
+token-file/environment policy.
 
 ### Streamable HTTP
 
@@ -196,7 +215,7 @@ clients send `Authorization: Bearer <secret>`. Missing or invalid credentials
 return `401`. The file must be a protected, current-user-owned regular file
 containing one URL-safe Base64 token that encodes at least 32 bytes;
 generate it with `secrets.token_urlsafe(32)`. Symlinks, weak or oversized
-tokens, insecure POSIX modes, non-ASCII headers, and duplicate Authorization
-headers are rejected. Browser-originated requests are also checked against the
+tokens, insecure POSIX modes or Windows ACLs, non-ASCII headers, and duplicate
+Authorization headers are rejected. Browser-originated requests are also checked against the
 allowed Origin set. See [Joplin API Service](SERVICE.md) for secure token
 creation, listener binding, and operational commands.

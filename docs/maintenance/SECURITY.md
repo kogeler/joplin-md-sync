@@ -25,8 +25,12 @@ quarantine to keep local failures inspectable.
 
 ## Trust boundaries
 
-- The local CLI trusts its process environment and explicitly selected token
-  file, but never the note content it reads.
+- The local CLI trusts its process environment and one explicitly selected
+  token source, but never the note content it reads. A token file is trusted
+  only after the shared protected reader confirms that no other account can
+  read, change, or own it (POSIX mode and owner, or the Windows owner and ACL);
+  a token file combined with `JOPLIN_TOKEN` is refused rather than resolved by
+  precedence.
 - The MCP and Actions listener authenticates callers independently from the
   private Joplin API credential.
 - The reverse proxy terminates public TLS; it does not make the Joplin Data API

@@ -11,11 +11,16 @@ from tests_live.ephemeral_joplin import EphemeralJoplin, RunningJoplin, set_runn
 
 @pytest.fixture(scope="session", autouse=True)
 def ephemeral_joplin() -> Iterator[RunningJoplin]:
-    instance = EphemeralJoplin()
-    try:
-        runtime = instance.start()
-        set_running_joplin(runtime)
-        yield runtime
-    finally:
-        set_running_joplin(None)
-        instance.stop()
+    # Live tests use only the ephemeral profile; an exported developer token or
+    # address would otherwise conflict with its token file or redirect calls.
+    with pytest.MonkeyPatch.context() as environment:
+        for name in ("JOPLIN_TOKEN", "JOPLIN_BASE_URL", "JOPLIN_PORT"):
+            environment.delenv(name, raising=False)
+        instance = EphemeralJoplin()
+        try:
+            runtime = instance.start()
+            set_running_joplin(runtime)
+            yield runtime
+        finally:
+            set_running_joplin(None)
+            instance.stop()

@@ -21,9 +21,12 @@ secret into chat:
    log the value.
 5. Verify `.secrets/joplin-token` is ignored by Git before proceeding.
 
-Pass the credential as `--token-file ./.secrets/joplin-token`. Never put a
-token in a shell argument, environment file, tracked config, commit, issue,
-chat message, or generated report. The `.secrets/` directory is outside the
+Pass the credential as `--token-file ./.secrets/joplin-token`. The tool
+accepts the file only when no other account can read or change it (mode `0600`
+on Linux, the `icacls` step from `README.md` on Windows) and `JOPLIN_TOKEN` is
+not also set; both sources together are rejected. Never put a token in a shell
+argument, environment file, tracked config, commit, issue, chat message, or
+generated report. The `.secrets/` directory is outside the
 sync workspace (`./notes`) and ignored by the repository.
 
 Joplin Desktop must remain running for online CLI or MCP operations.

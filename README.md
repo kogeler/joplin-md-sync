@@ -110,17 +110,34 @@ and point an MCP-capable editor at the downloaded native executable:
   "mcpServers": {
     "joplin": {
       "command": "/absolute/path/to/joplin-md-sync-linux-amd64",
-      "args": ["mcp", "stdio", "--token", "<Joplin Web Clipper token>"]
+      "args": ["mcp", "stdio", "--token-file", "/home/USER/.config/joplin-md-sync/token"]
     }
   }
 }
 ```
 
+Store the token once in a private file outside synchronized folders. The
+directory is `0700`, the file `0600`, and the token is read without echo or
+shell history:
+
+```bash
+install -d -m 0700 ~/.config/joplin-md-sync
+(umask 077; read -rs -p 'Joplin token: ' token &&
+  printf '%s\n' "$token" > ~/.config/joplin-md-sync/token)
+```
+
+A launcher that exports environment variables can set `JOPLIN_TOKEN` instead
+and pass neither token option. Use exactly one source: a command-line option
+together with a non-empty `JOPLIN_TOKEN` is rejected. The older
+`"--token", "<token>"` arguments still work for existing configurations, but
+they place the token in the IDE configuration, in the process list, and in any
+agent command line that forwards the MCP configuration.
+
 The local stdio process connects to Joplin on port `41184` by default; add
 `"--port", "PORT"` to the arguments when Joplin uses another local port. For
 a long-running or remote adapter, install the package and start Streamable HTTP
 instead. Stdio opens no MCP or Actions port and therefore needs no bearer token
-for those interfaces; `--token` authenticates only to Joplin:
+for those interfaces; its Joplin token authenticates only to Joplin:
 
 ```bash
 pipx install "joplin-md-sync==1.7.0"
@@ -163,9 +180,10 @@ or the
 ## Control and failure behavior
 
 - The Joplin Data API remains private on loopback in the headless topology.
-- Joplin, MCP, and Actions credentials are distinct and normally read from
-  protected files or the environment. Local `mcp stdio` deliberately requires
-  its Joplin token in the IDE-managed argument vector.
+- Joplin, MCP, and Actions credentials are distinct and read from protected
+  files or the environment. Local `mcp stdio` takes its Joplin token from a
+  protected `--token-file` or `JOPLIN_TOKEN`; the compatibility `--token`
+  argument exposes it in the process list.
 - Direct API writes are sent once. An ambiguous timeout is reported instead of
   being replayed and possibly duplicated.
 - Creating an occupied notebook, note, tag, or resource identity returns an
