@@ -47,10 +47,12 @@ planner has matched objects.
 Useful focused commands:
 
 ```bash
-venv-test/bin/python -m pytest -q tests/unit/test_planner.py
-venv-test/bin/python -m pytest -q tests/integration/test_push_pull.py
-venv-test/bin/python -m pytest -q tests/integration/test_races_recovery.py
-venv-test/bin/python -m pytest -q tests/unit/test_documentation_contracts.py
+make venv-test
+python="$(python3 -I scripts/venv_root.py)/venv-test/bin/python"
+"$python" -m pytest -q tests/unit/test_planner.py
+"$python" -m pytest -q tests/integration/test_push_pull.py
+"$python" -m pytest -q tests/integration/test_races_recovery.py
+"$python" -m pytest -q tests/unit/test_documentation_contracts.py
 ```
 
 The user-facing operating procedures are in

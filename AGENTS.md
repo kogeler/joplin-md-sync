@@ -19,9 +19,9 @@ Native release executables include Python.
 ## Install
 
 ```bash
-python -m pip install "joplin-md-sync==1.6.0"
+python -m pip install "joplin-md-sync==1.7.0"
 # or:
-pipx install "joplin-md-sync==1.6.0"
+pipx install "joplin-md-sync==1.7.0"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```
@@ -59,6 +59,14 @@ Development procedures are in
 [Dependency maintenance](docs/maintenance/DEPENDENCIES.md), and releases in
 [Releases](docs/maintenance/RELEASES.md). The root `.version` file is the human
 maintained version source.
+
+Make keeps every environment under `.venvs/<key>/`, private to the current
+machine and user, so one checkout on a shared or network drive works from
+several hosts. Direct Python pins live only in the `requirements-*.in`
+Dependabot inputs; `make lock` regenerates their `requirements-*.txt` hash
+locks, which are never hand-edited. Ordinary changes add notes under
+`## [Unreleased]` in `CHANGELOG.md` and keep `.version`; only deliberate
+release preparation advances it.
 
 ## Safe Markdown workflow
 

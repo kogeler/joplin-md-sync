@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check that the working tree version is newer than a Git base revision."""
+"""Check that the working tree version is newer than a Git base revision.
+
+An ordinary change may instead keep a current version that is already
+published; its notes accumulate under the changelog's Unreleased section until
+a deliberate release advances the version.
+"""
 
 from __future__ import annotations
 
@@ -40,15 +45,27 @@ def main() -> int:
     base = parser.add_mutually_exclusive_group(required=True)
     base.add_argument("--base-ref", help="Git revision to compare against")
     base.add_argument("--base-version", help="Exact semantic version to compare against")
+    base.add_argument(
+        "--published-version",
+        help="Already published version that an ordinary change keeps unchanged",
+    )
     args = parser.parse_args()
 
     try:
         current_text = (REPO / ".version").read_text(encoding="utf-8").strip()
+        current = parse_version(current_text, "current .version")
+        if args.published_version is not None:
+            if current != parse_version(args.published_version, "published version"):
+                raise ValueError(
+                    ".version must equal the already published version for an unreleased "
+                    f"change: current {current_text}, published {args.published_version}"
+                )
+            print(f"ok .version {current_text} is already published; no increment required")
+            return 0
         base_text = (
             read_base_version(args.base_ref) if args.base_ref is not None else args.base_version
         )
         assert base_text is not None
-        current = parse_version(current_text, "current .version")
         base_version = parse_version(base_text, "base version")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))

@@ -54,51 +54,73 @@ stored credential.
 ### `CIR-004` - PR-body automation treats head content as data
 
 **Contract:** PR-body automation MUST be the sole `pull_request_target`
-boundary, execute only trusted default-branch code, read a bounded head
-changelog through the API as inert data, preserve manual body content, and
-reject missing or oversized managed release content.
+boundary, run only when a pull request changes `CHANGELOG.md`, grant
+pull-request write only to its job, execute only trusted default-branch code,
+read a bounded head changelog through the API as inert data, and mirror the
+newest populated section, normally `Unreleased`, without requiring a version
+change. It MUST replace only its single marker-delimited block, preserve manual
+body content, refuse a concurrently changed body, and reject malformed markers,
+missing entries, or oversized content.
 
 **Evidence:**
 
 - [`test_pr_body_is_the_only_pull_request_target_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pr_body_is_the_only_pull_request_target_write_boundary`
+- [`test_prefers_populated_unreleased_without_a_version_change`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_prefers_populated_unreleased_without_a_version_change`
 - [`test_skips_empty_unreleased_and_preserves_manual_body`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_skips_empty_unreleased_and_preserves_manual_body`
 - [`test_rejects_missing_release_entries`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_rejects_missing_release_entries`
+- [`test_rejects_malformed_or_reserved_markers`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_rejects_malformed_or_reserved_markers`
+- [`test_rejects_an_oversized_existing_body`](../../tests/unit/test_pr_body.py) - `tests/unit/test_pr_body.py::test_rejects_an_oversized_existing_body`
 
 ### `CIR-005` - Release version has one human-maintained owner
 
 **Contract:** Root `.version` MUST be canonical stable SemVer and the only
 human-maintained version. Package metadata MUST read it dynamically and the
-agent manifest MUST match. A release-bearing change MUST increase the exact
-base version and provide a matching non-empty dated changelog section.
+agent manifest MUST match. An ordinary change MAY keep a current version that
+is already published as a non-draft, non-prerelease GitHub Release and record
+its notes under `CHANGELOG.md` `## [Unreleased]`. A release-bearing change MUST
+increase the exact base version, a change that keeps a not yet published base
+version MUST exceed the latest published release, and the release MUST provide
+a matching non-empty dated changelog section.
 
 **Evidence:**
 
+- [`test_cli_accepts_an_unchanged_published_version_only`](../../tests/unit/test_version_increment.py) - `tests/unit/test_version_increment.py::VersionIncrementTest::test_cli_accepts_an_unchanged_published_version_only`
+- [`test_cli_accepts_an_explicit_older_base_version`](../../tests/unit/test_version_increment.py) - `tests/unit/test_version_increment.py::VersionIncrementTest::test_cli_accepts_an_explicit_older_base_version`
 - [`test_version_file_is_single_source`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_version_file_is_single_source`
 - [`test_manifest_matches_version_file`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_manifest_matches_version_file`
 - [`test_pyproject_reads_version_dynamically`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_pyproject_reads_version_dynamically`
 - [`test_version_job_compares_exact_base_and_head`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_compares_exact_base_and_head`
+- [`test_version_job_accepts_published_maintenance_and_requires_other_increases`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_accepts_published_maintenance_and_requires_other_increases`
 
 ### `CIR-006` - Publication reuses gated artifacts and never rewrites conflict
 
 **Contract:** A not-yet-published version on main MUST pass reusable CI before
 its Python distributions are reproducibly built once, install-smoked, and its
-publication jobs run. The GitHub publish job MUST create or resume an exact
-draft Release, combine the shared Python distributions with the smoke-tested
-platform artifacts, verify the full inventory and checksums, upload each exact
-asset through GitHub's release upload endpoint with response verification, and
+publication jobs run. Release need MUST come from exact external publication
+state, not from changed paths or a `.version` diff: when both destinations
+already hold the current version, every later main push MUST skip reusable CI
+and all publication jobs, and the published release MUST be matched at its own
+tag even after main has advanced. Such a push MUST NOT build or publish its own
+commit for a version whose GitHub Release is already published at another
+commit. The GitHub publish job MUST create or resume an exact draft Release,
+combine the shared Python distributions with the smoke-tested platform
+artifacts, verify the full inventory and checksums, upload each exact asset
+through GitHub's release upload endpoint with response verification, and
 publish. Matching publication MUST be a read-only no-op; conflicting tags,
 targets, metadata, or assets MUST fail without moving or replacing history.
 
 **Evidence:**
 
 - [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
+- [`test_published_release_makes_later_main_pushes_a_no_op`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_published_release_makes_later_main_pushes_a_no_op`
 - [`test_requires_all_standalones_when_requested`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneInventoryTest::test_requires_all_standalones_when_requested`
 - [`test_uses_only_the_exact_current_changelog_section`](../../tests/unit/test_release_notes.py) - `tests/unit/test_release_notes.py::test_uses_only_the_exact_current_changelog_section`
 
 ### `CIR-007` - Dependency submission is trusted-main-only
 
 **Contract:** Dependency submission MUST trigger only on direct main push,
-build four validated lock manifests offline, validate the expected repository
+build four validated lock manifests offline from the locks and their
+requirements inputs, validate the expected repository
 and payload shape, and submit with only its job-scoped standard token. Pull
 requests and reusable release invocation MUST not enter this write boundary.
 

@@ -3,15 +3,31 @@
 # Releases
 
 Release guarantees are defined by
-[`CIR-005` through `CIR-008` and `CIR-011`](../contracts/CI_RELEASES.md) and the
+[`CIR-004` through `CIR-008` and `CIR-011`](../contracts/CI_RELEASES.md) and the
 [dependency contract](../contracts/DEPENDENCIES.md). This page describes the
 maintainer procedure without redefining those guarantees.
+
+## Between releases
+
+After a release, `.version` stays at the published value. Ordinary pull
+requests, including Dependabot updates, add their user-visible notes to the
+existing `## [Unreleased]` section of `CHANGELOG.md` and keep `.version`
+unchanged. Any number of merged pull requests can share that section; a merge
+does not imply a release. CI accepts the unchanged version only while it is
+already published as a GitHub Release, and requires a higher version otherwise.
+
+When a pull request changes `CHANGELOG.md`, the PR-body workflow copies the
+newest populated level-two section, normally `## [Unreleased]`, into one
+marker-delimited block of the pull-request description. Text outside that
+block stays contributor-owned; do not edit or duplicate the marker lines.
 
 ## Prepare
 
 1. Update `.version` to the intended SemVer value.
 2. Update `agent-manifest.json` to the same value.
-3. Add the matching top entry to `CHANGELOG.md` with user-visible changes.
+3. Move the accumulated `## [Unreleased]` notes into a new dated
+   `## [X.Y.Z] - YYYY-MM-DD` section directly below it and keep the empty
+   `## [Unreleased]` heading for later work.
 4. Update versioned installation examples when the release should become the
    documented stable version.
 5. Refresh direct dependencies and locks when dependency updates are included.
@@ -39,14 +55,20 @@ Trusted Publishing. It then combines the same Python distributions with the
 remaining artifacts and creates the `vX.Y.Z` tag through the exact-target
 GitHub Release.
 
-A matching publication in both destinations is a no-op. If only PyPI is
+The workflow decides from that external state on every direct `main` push, not
+from changed paths or a `.version` diff. A matching publication in both
+destinations is a no-op that skips the CI gate and all publication jobs, even
+after later unreleased merges have moved `main` past the release tag; the
+existing release is then checked against its own tagged commit. If only PyPI is
 complete, the workflow verifies rebuilt distribution sizes and hashes against
 PyPI before recovering GitHub publication. A recoverable matching GitHub draft
 may be completed; conflicting package files, tags, release metadata, targets,
-or published assets stop the workflow for inspection. Confirm the PyPI wheel,
-sdist, and provenance plus the GitHub release body, complete asset inventory,
-and checksums after publication. The documentation site is deployed separately
-from the default branch by the Pages workflow.
+or published assets stop the workflow for inspection. A published GitHub
+Release whose PyPI version is missing also stops any push other than its tagged
+commit, so a later `main` commit is never uploaded under that version. Confirm
+the PyPI wheel, sdist, and provenance plus the GitHub release body, complete
+asset inventory, and checksums after publication. The documentation site is
+deployed separately from the default branch by the Pages workflow.
 
 ## Post-release
 

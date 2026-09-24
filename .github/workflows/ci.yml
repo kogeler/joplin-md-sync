@@ -45,9 +45,13 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: |
+            requirements-dev.in
             requirements-dev.txt
+            requirements-test.in
             requirements-test.txt
+            requirements-package.in
             requirements-package.txt
+            requirements-docs.in
             requirements-docs.txt
 
       - name: Run the Make CI contract
@@ -80,7 +84,9 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements-test.txt
+          cache-dependency-path: |
+            requirements-test.in
+            requirements-test.txt
 
       - name: Verify headless desktop prerequisites
         run: |
@@ -136,7 +142,9 @@ jobs:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.python_arch }}
           cache: pip
-          cache-dependency-path: requirements-test.txt
+          cache-dependency-path: |
+            requirements-test.in
+            requirements-test.txt
 
       - name: Run package tests and metadata checks
         shell: bash
@@ -179,7 +187,9 @@ jobs:
           python-version: "3.14"
           architecture: ${{ matrix.python_arch }}
           cache: pip
-          cache-dependency-path: requirements-package.txt
+          cache-dependency-path: |
+            requirements-package.in
+            requirements-package.txt
 
       - name: Build and smoke-test native executable
         shell: bash
@@ -219,9 +229,13 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: |
+            requirements-dev.in
             requirements-dev.txt
+            requirements-test.in
             requirements-test.txt
+            requirements-package.in
             requirements-package.txt
+            requirements-docs.in
             requirements-docs.txt
 
       - name: Audit exact locks for fork fallback
@@ -289,7 +303,7 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Resolve unpublished same-version recovery baseline
+      - name: Resolve publication state of the proposed version
         id: release-baseline
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -297,40 +311,51 @@ jobs:
         with:
           script: |
             const fs = await import("node:fs/promises");
+            const stable = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
             const version = (await fs.readFile(process.env.VERSION_PATH, "utf8")).trim();
-            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
+            if (!stable.test(version)) {
               throw new Error(".version is not a stable semantic version");
             }
+            let publishedCurrent = false;
             try {
-              await github.rest.repos.getReleaseByTag({
+              const current = await github.rest.repos.getReleaseByTag({
                 ...context.repo,
                 tag: `v${version}`,
               });
-              core.setOutput("unpublished_base_version", "");
-              return;
+              publishedCurrent = !current.data.draft && !current.data.prerelease;
             } catch (error) {
               if (error.status !== 404) throw error;
             }
-            let latestVersion = "0.0.0";
-            try {
-              const latest = await github.rest.repos.getLatestRelease({ ...context.repo });
-              latestVersion = latest.data.tag_name.replace(/^v/, "");
-            } catch (error) {
-              if (error.status !== 404) throw error;
+            let latestVersion = "";
+            if (!publishedCurrent) {
+              latestVersion = "0.0.0";
+              try {
+                const latest = await github.rest.repos.getLatestRelease({ ...context.repo });
+                latestVersion = latest.data.tag_name.replace(/^v/, "");
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+              if (!stable.test(latestVersion)) {
+                throw new Error("latest published release is not a stable vX.Y.Z tag");
+              }
             }
-            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(latestVersion)) {
-              throw new Error("latest published release is not a stable vX.Y.Z tag");
-            }
+            core.setOutput("published_current_version", String(publishedCurrent));
             core.setOutput("unpublished_base_version", latestVersion);
 
-      - name: Require synchronized version increase
+      # Ordinary changes may keep an already published version while Unreleased
+      # notes accumulate. A changed or unpublished version must still advance.
+      - name: Require an increase for a changed or unpublished version
         working-directory: source
         env:
+          PUBLISHED_CURRENT_VERSION: ${{ steps.release-baseline.outputs.published_current_version }}
           UNPUBLISHED_BASE_VERSION: ${{ steps.release-baseline.outputs.unpublished_base_version }}
         run: |
           base_version="$(tr -d '\r\n' < ../base/.version)"
           current_version="$(tr -d '\r\n' < .version)"
-          if [[ "$current_version" == "$base_version" && -n "$UNPUBLISHED_BASE_VERSION" ]]; then
-            base_version="$UNPUBLISHED_BASE_VERSION"
+          if [[ "$current_version" != "$base_version" ]]; then
+            python scripts/check_version_increment.py --base-version "$base_version"
+          elif [[ "$PUBLISHED_CURRENT_VERSION" != "true" ]]; then
+            python scripts/check_version_increment.py --base-version "$UNPUBLISHED_BASE_VERSION"
+          else
+            python scripts/check_version_increment.py --published-version "$current_version"
           fi
-          python scripts/check_version_increment.py --base-version "$base_version"

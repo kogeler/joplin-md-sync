@@ -6,11 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-24
+
 ### Changed
 
 - Keep CI version increment and release consistency enforcement blocking while
   removing duplicated concrete version, action, and checksum literals from
   test expectations.
+- Move every exact direct tool pin into four native `requirements-*.in`
+  pip-compile inputs so Dependabot updates each input together with its
+  generated hash lock, exclude `pyproject.toml` from Dependabot's pip
+  manifests, and keep the local resolver on Dependabot's pip and pip-tools
+  pair.
+- Make `make freeze-check` recompile each input constrained by its committed
+  lock, so newer upstream releases no longer fail CI as lock drift.
+- Let ordinary pull requests keep an already published `.version` and
+  accumulate notes under `Unreleased`. A changed or still unpublished version
+  must continue to advance.
+- Refresh the managed pull-request description only when `CHANGELOG.md`
+  changes, and grant pull-request write only to that job.
+- Treat a complete existing release as a no-op for later `main` pushes even
+  after `main` has moved past its tag, and refuse to publish a later commit
+  under a version whose GitHub Release is already published.
+- Keep all Make environments under `.venvs/<key>/`, keyed by a hash of the OS
+  machine ID and local user, so one checkout on a shared or network drive works
+  from several machines. `make clean` removes only the current host's
+  environments.
+
+### Removed
+
+- Stop publishing the internal `dev`, `test`, `package`, and `docs` extras in
+  package metadata; those tool sets are repository-only locks.
 
 ## [1.6.0] - 2026-08-22
 

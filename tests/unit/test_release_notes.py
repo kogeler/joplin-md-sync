@@ -42,4 +42,10 @@ def test_committed_release_metadata_produces_notes(tmp_path: Path) -> None:
     output = tmp_path / "notes.md"
     result = _run(ROOT, output)
     assert result.returncode == 0, result.stderr
-    assert "Add a local MCP stdio transport" in output.read_text(encoding="utf-8")
+    version = (ROOT / ".version").read_text(encoding="utf-8").strip()
+    notes = output.read_text(encoding="utf-8")
+    body, _, link = notes.rpartition("\n\nFull changelog: ")
+    assert link == f"https://github.com/kogeler/joplin-md-sync/blob/v{version}/CHANGELOG.md\n"
+    assert body.strip()
+    assert any(line.startswith("- ") for line in body.splitlines())
+    assert not any(line.startswith("## ") for line in body.splitlines())

@@ -16,8 +16,9 @@ def _run(tmp_path: Path, changelog: str, body: str = "") -> tuple[int, str, str]
     changelog_path = tmp_path / "CHANGELOG.md"
     body_path = tmp_path / "body.md"
     output = tmp_path / "output.md"
-    changelog_path.write_text(changelog, encoding="utf-8")
-    body_path.write_text(body, encoding="utf-8")
+    # Write exact bytes so CRLF fixtures stay CRLF on Windows as well.
+    changelog_path.write_bytes(changelog.encode("utf-8"))
+    body_path.write_bytes(body.encode("utf-8"))
     result = subprocess.run(
         [
             sys.executable,
@@ -68,3 +69,47 @@ def test_rejects_missing_release_entries(tmp_path: Path) -> None:
     assert code == 1
     assert output == ""
     assert "bullet entry" in error
+
+
+def test_prefers_populated_unreleased_without_a_version_change(tmp_path: Path) -> None:
+    code, output, error = _run(
+        tmp_path,
+        (
+            "# Changelog\r\n\r\n## [Unreleased]\r\n\r\n### Changed\r\n\r\n- Pending.\r\n\r\n"
+            "## [1.2.3] - 2026-08-21\r\n\r\n- Published.\r\n"
+        ),
+        "Manual context.\n",
+    )
+    assert code == 0, error
+    assert output == (
+        f"Manual context.\n\n{START}\n## [Unreleased]\n\n### Changed\n\n- Pending.\n{END}\n"
+    )
+
+
+def test_rejects_malformed_or_reserved_markers(tmp_path: Path) -> None:
+    changelog = "# Changelog\n\n## [Unreleased]\n\n- Fresh.\n"
+    for body in (
+        f"Manual.\n\n{START}\n",
+        f"{END}\n\n{START}\n",
+        f"{START}\n{END}\n{START}\n{END}\n",
+    ):
+        code, output, error = _run(tmp_path, changelog, body)
+        assert code == 1
+        assert output == ""
+        assert "invalid managed markers" in error
+
+    code, output, error = _run(tmp_path, f"# Changelog\n\n## [Unreleased]\n\n- {START}\n")
+    assert code == 1
+    assert output == ""
+    assert "reserved marker" in error
+
+
+def test_rejects_an_oversized_existing_body(tmp_path: Path) -> None:
+    code, output, error = _run(
+        tmp_path,
+        "# Changelog\n\n## [Unreleased]\n\n- Fresh.\n",
+        "x" * 65_537,
+    )
+    assert code == 1
+    assert output == ""
+    assert "size limit" in error

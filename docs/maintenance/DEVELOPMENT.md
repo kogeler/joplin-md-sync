@@ -19,6 +19,19 @@ Use the Make targets rather than installing an ad hoc tool set:
 | `make venv-docs` | Documentation environment |
 | `make venv-lock` | Isolated resolver bootstrap |
 
+Every environment lives under `.venvs/<key>/`, for example
+`.venvs/<key>/venv-test`. `scripts/venv_root.py` derives the key from the OS
+machine identity (`/etc/machine-id` on Linux, the registry `MachineGuid` on
+Windows) and the local user, and prints only a hash of them. One checkout on a
+shared or network drive can therefore be used from several hosts without one
+host reusing or deleting another host's interpreter links and binaries. Without
+a valid machine identity Make stops instead of falling back to a shared
+directory.
+
+`make clean` removes only the current host's environments. Environments of
+other hosts and legacy root-level `venv*` directories from older checkouts are
+left untouched; delete an obsolete one manually.
+
 ## Daily workflow
 
 1. Read the affected contract assertions and their evidence tests.

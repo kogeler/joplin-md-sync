@@ -18,24 +18,36 @@ EXE :=
 PLATFORM := linux
 endif
 
+DEVELOPMENT_INPUT := requirements-dev.in
+TEST_INPUT := requirements-test.in
+PACKAGE_INPUT := requirements-package.in
+DOCS_INPUT := requirements-docs.in
 DEVELOPMENT_LOCK := requirements-dev.txt
 TEST_LOCK := requirements-test.txt
 PACKAGE_LOCK := requirements-package.txt
 DOCS_LOCK := requirements-docs.txt
 COMPILE := --quiet --strip-extras --allow-unsafe --generate-hashes
 LOCK_UPGRADE ?=
+# Keep pip and pip-tools on the pair Dependabot's pip-compile updater uses, so
+# its lock updates and local regeneration resolve identically.
 LOCK_BOOTSTRAP := pip==26.2.1 setuptools==84.0.0 pip-tools==7.6.1 \
 	build==1.5.0 click==8.4.2 packaging==26.3 pyproject-hooks==1.2.0 wheel==0.48.0
 
 ARCH ?= $(shell $(PY) -c "from scripts.build_standalone import standalone_architecture; print(standalone_architecture())" 2>/dev/null)
 STANDALONE := dist/joplin-md-sync-$(PLATFORM)-$(ARCH)$(EXE)
-VENV := venv
-VENV_DEV := venv-dev
-VENV_DOCS := venv-docs
-VENV_LOCK := venv-lock
-VENV_PACKAGE := venv-package
-VENV_SMOKE := venv-smoke
-VENV_TEST := venv-test
+# Environments are private to one OS machine identity and local user, so one
+# checkout on a shared or network drive can serve several hosts.
+VENV_ROOT := $(shell $(PY) -I scripts/venv_root.py)
+ifeq ($(VENV_ROOT),)
+$(error Cannot select machine-specific environments with '$(PY) -I scripts/venv_root.py'; it needs a working Python and a valid OS machine ID)
+endif
+VENV := $(VENV_ROOT)/venv
+VENV_DEV := $(VENV_ROOT)/venv-dev
+VENV_DOCS := $(VENV_ROOT)/venv-docs
+VENV_LOCK := $(VENV_ROOT)/venv-lock
+VENV_PACKAGE := $(VENV_ROOT)/venv-package
+VENV_SMOKE := $(VENV_ROOT)/venv-smoke
+VENV_TEST := $(VENV_ROOT)/venv-test
 PYTHON := $(VENV)/$(BIN)/python
 PYTHON_DEV := $(VENV_DEV)/$(BIN)/python
 PYTHON_DOCS := $(VENV_DOCS)/$(BIN)/python
@@ -140,15 +152,15 @@ $(DEPS_LOCK_STAMP): $(PYTHON_LOCK) Makefile
 
 venv-lock: $(DEPS_LOCK_STAMP) ## isolated exact-pinned pip-compile resolver
 
-lock: venv-lock ## regenerate all four hash-verified dependency locks
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) --extra=dev \
-		--output-file=$(DEVELOPMENT_LOCK) pyproject.toml
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) --extra=test \
-		--output-file=$(TEST_LOCK) pyproject.toml
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) --extra=package \
-		--output-file=$(PACKAGE_LOCK) pyproject.toml
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) --extra=docs \
-		--output-file=$(DOCS_LOCK) pyproject.toml
+lock: venv-lock ## regenerate all four hash locks from their requirements inputs
+	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
+		--output-file=$(DEVELOPMENT_LOCK) $(DEVELOPMENT_INPUT)
+	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
+		--output-file=$(TEST_LOCK) $(TEST_INPUT)
+	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
+		--output-file=$(PACKAGE_LOCK) $(PACKAGE_INPUT)
+	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
+		--output-file=$(DOCS_LOCK) $(DOCS_INPUT)
 
 refresh-dependencies: ## re-resolve all locks after updating direct pins
 	$(MAKE) lock LOCK_UPGRADE=--upgrade
@@ -157,14 +169,14 @@ freeze: refresh-dependencies ## compatibility alias for refresh-dependencies
 
 freeze-check: venv-lock ## reject lock drift without upgrading dependencies
 	@temporary="$$(mktemp -d)"; trap 'find "$$temporary" -depth -delete' EXIT; \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --extra=dev \
-			--output-file="$$temporary/development.txt" pyproject.toml; \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --extra=test \
-			--output-file="$$temporary/test.txt" pyproject.toml; \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --extra=package \
-			--output-file="$$temporary/package.txt" pyproject.toml; \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --extra=docs \
-			--output-file="$$temporary/docs.txt" pyproject.toml; \
+		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(DEVELOPMENT_LOCK) \
+			--output-file="$$temporary/development.txt" $(DEVELOPMENT_INPUT); \
+		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(TEST_LOCK) \
+			--output-file="$$temporary/test.txt" $(TEST_INPUT); \
+		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(PACKAGE_LOCK) \
+			--output-file="$$temporary/package.txt" $(PACKAGE_INPUT); \
+		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(DOCS_LOCK) \
+			--output-file="$$temporary/docs.txt" $(DOCS_INPUT); \
 		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(DEVELOPMENT_LOCK)) \
 			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/development.txt"); \
 		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(TEST_LOCK)) \
@@ -325,8 +337,10 @@ smoke: package smoke-artifacts ## build and exercise all current-platform artifa
 verify-release: ## verify version metadata and optional release tag/inventory
 	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG)) $(if $(REQUIRE_ALL_STANDALONES),--require-all-standalones)
 
-clean: ## remove generated environments, artifacts, and caches
+clean: ## remove this host's environments, generated artifacts, and caches
 	rm -rf $(VENV) $(VENV_DEV) $(VENV_TEST) $(VENV_PACKAGE) $(VENV_DOCS) $(VENV_LOCK) $(VENV_SMOKE) \
 		dist build site $(ARTIFACTS) src/*.egg-info .mypy_cache .ruff_cache \
 		.pytest_cache .coverage htmlcov
-	find . -name __pycache__ -type d -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null || true
+	rmdir $(VENV_ROOT) .venvs 2>/dev/null || true
+	find . \( -path ./.git -o -path ./.venvs -o -path './venv*' -o -path ./.venv \) -prune \
+		-o -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true

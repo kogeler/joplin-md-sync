@@ -1,0 +1,12 @@
+# Copyright (c) 2026 kogeler
+# SPDX-License-Identifier: MIT
+#
+# Direct cross-platform test tools at their latest stable compatible releases.
+# `make lock` compiles the complete hash lock into requirements-test.txt.
+# pip-compile evaluates platform markers on its Linux host. Keep the latest
+# Windows console dependency explicit so this lock is installable there.
+
+colorama==0.4.6
+pytest==9.1.1
+pytest-cov==7.1.0
+pytest-xdist==3.8.0

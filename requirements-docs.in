@@ -1,0 +1,7 @@
+# Copyright (c) 2026 kogeler
+# SPDX-License-Identifier: MIT
+#
+# Direct documentation tools at their latest stable compatible releases.
+# `make lock` compiles the complete hash lock into requirements-docs.txt.
+
+mkdocs-material==9.7.7
