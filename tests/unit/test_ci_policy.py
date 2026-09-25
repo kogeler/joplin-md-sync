@@ -274,15 +274,20 @@ def test_published_release_makes_later_main_pushes_a_no_op() -> None:
     trigger = release.split("\npermissions:", 1)[0]
     assert "paths:" not in trigger
     state = release.split("\n  release-state:\n", 1)[1].split("\n  ci:\n", 1)[0]
-    assert "const published = Boolean(existing && !existing.data.draft);" in state
+    assert "const published = Boolean(existing);" in state
+    assert "listReleases" not in state
     assert "if (!published && commit && commit !== context.sha)" in state
     assert "Published release ${tagName} has no tag" in state
     assert "commit !== existing.data.target_commitish" in state
-    assert "if (published && commit !== context.sha)" in state
+    published = state.index("if (published) {")
+    assert state.index('core.setOutput("pypi_required", "false");', published) < state.index(
+        "return;", published
+    )
+    assert state.index("return;", published) < state.index("https://pypi.org/pypi/")
     gate = release.split("\n  ci:\n", 1)[1].split("\n  build-python-distributions:", 1)[0]
     assert "needs: release-state" in gate
-    assert "needs.release-state.outputs.release_required == 'true'" in gate
-    assert "needs.release-state.outputs.pypi_required == 'true'" in gate
+    assert "if: needs.release-state.outputs.release_required == 'true'" in gate
+    assert "pypi_required" not in gate
 
 
 def test_dependency_submission_is_a_separate_trusted_write_boundary() -> None:
@@ -324,20 +329,24 @@ def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
     release = _workflow("release.yml")
     assert "pypi_required" in release
     assert "https://pypi.org/pypi/" in release
-    assert "file.yanked !== false" in release
+    assert "already exists; skipping PyPI" in release
     assert "build-python-distributions:" in release
     assert "publish-pypi:" in release
     assert "name: python-distributions" in release
-    assert "verify_pypi_release.py --dist-dir dist" in release
     assert "environment:\n      name: pypi" in release
     assert release.count("id-token: write") == 1
     assert "pypa/gh-action-pypi-publish@" in release
     assert "packages-dir: dist" in release
     assert 'attestations: "true"' in release
-    assert "needs.publish-pypi.result == 'success'" in release
-    assert release.index("Publish with PyPI Trusted Publishing") < release.index(
-        "Create exact-version release and upload assets"
+    pypi_job = release.split("\n  publish-pypi:\n", 1)[1]
+    assert "needs:\n      - release-state\n      - publish\n" in pypi_job
+    assert "if: needs.release-state.outputs.pypi_required == 'true'" in pypi_job
+    assert release.index("Create exact-version release and upload assets") < release.index(
+        "Publish with PyPI Trusted Publishing"
     )
+    publish_job = release.split("\n  publish:\n", 1)[1].split("\n  publish-pypi:\n", 1)[0]
+    assert "publish-pypi" not in publish_job
+    assert "github.rest.repos.deleteRelease" in publish_job
     assert "skip-existing" not in release
     assert "PYPI_TOKEN" not in release
     assert "password:" not in release

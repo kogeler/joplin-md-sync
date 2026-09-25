@@ -94,20 +94,20 @@ a matching non-empty dated changelog section.
 
 ### `CIR-006` - Publication reuses gated artifacts and never rewrites conflict
 
-**Contract:** A not-yet-published version on main MUST pass reusable CI before
-its Python distributions are reproducibly built once, install-smoked, and its
-publication jobs run. Release need MUST come from exact external publication
-state, not from changed paths or a `.version` diff: when both destinations
-already hold the current version, every later main push MUST skip reusable CI
+**Contract:** A version whose GitHub Release is not yet published MUST pass
+reusable CI on main before its Python distributions are reproducibly built
+once, install-smoked, and published. Release need MUST come from exact
+external publication state, not from changed paths or a `.version` diff: once
+the GitHub Release is published, every later main push MUST skip reusable CI
 and all publication jobs, and the published release MUST be matched at its own
-tag even after main has advanced. Such a push MUST NOT build or publish its own
-commit for a version whose GitHub Release is already published at another
-commit. The GitHub publish job MUST create or resume an exact draft Release,
-combine the shared Python distributions with the smoke-tested platform
-artifacts, verify the full inventory and checksums, upload each exact asset
-through GitHub's release upload endpoint with response verification, and
-publish. Matching publication MUST be a read-only no-op; conflicting tags,
-targets, metadata, or assets MUST fail without moving or replacing history.
+tag even after main has advanced. The GitHub publish job MUST publish first: it
+MUST create or resume an exact draft Release, combine the shared Python
+distributions with the smoke-tested platform artifacts, verify the full
+inventory and checksums, upload each exact asset through GitHub's release
+upload endpoint with response verification, and publish. An unpublished draft
+left by an earlier attempt at another commit MUST be replaced rather than block
+the release. Conflicting tags, published targets, metadata, or assets MUST fail
+without moving or replacing history.
 
 **Evidence:**
 
@@ -170,22 +170,18 @@ to every pull-request change.
 
 ### `CIR-011` - PyPI publication is secretless, exact, and recoverable
 
-**Contract:** Release state MUST independently inspect the exact current
-version in PyPI and GitHub Releases. A missing PyPI version MUST publish only
-the gated wheel and sdist through the `pypi` GitHub Environment, PyPI Trusted
-Publishing, a job-scoped OIDC token, and the SHA-pinned official PyPA action;
-stored credentials and blind duplicate skipping are forbidden. GitHub MUST
-receive the same workflow artifact only after PyPI succeeds. If PyPI already
-contains the version while GitHub publication still needs recovery, the local
-file names, sizes, and SHA-256 digests MUST exactly match PyPI before GitHub
-publication continues.
+**Contract:** Because PyPI files are immutable, PyPI MUST be published only
+after the GitHub Release of the same run succeeds, with the same gated wheel
+and sdist workflow artifact, through the `pypi` GitHub Environment, PyPI
+Trusted Publishing, a job-scoped OIDC token, and the SHA-pinned official PyPA
+action; stored credentials and the publisher's blind duplicate skipping are
+forbidden. Release state MUST inspect the exact current version in PyPI before
+that step: an existing PyPI version MUST be kept and its publication skipped,
+and a missing version MUST be published.
 
 **Evidence:**
 
 - [`test_pypi_publication_uses_oidc_and_verified_shared_artifacts`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pypi_publication_uses_oidc_and_verified_shared_artifacts`
-- [`test_accepts_exact_local_and_pypi_distribution_inventory`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_accepts_exact_local_and_pypi_distribution_inventory`
-- [`test_rejects_a_local_distribution_that_differs_from_pypi`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_rejects_a_local_distribution_that_differs_from_pypi`
-- [`test_rejects_an_unexpected_or_yanked_pypi_distribution`](../../tests/unit/test_pypi_release.py) - `tests/unit/test_pypi_release.py::test_rejects_an_unexpected_or_yanked_pypi_distribution`
 - [`test_normalization_makes_equivalent_sdist_archives_byte_identical`](../../tests/unit/test_normalize_sdist.py) - `tests/unit/test_normalize_sdist.py::test_normalization_makes_equivalent_sdist_archives_byte_identical`
 - [`test_pypi_readme_uses_only_portable_absolute_links`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_readme_uses_only_portable_absolute_links`
 - [`test_pypi_metadata_exposes_public_project_routes`](../../tests/unit/test_pypi_metadata.py) - `tests/unit/test_pypi_metadata.py::test_pypi_metadata_exposes_public_project_routes`

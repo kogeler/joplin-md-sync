@@ -78,6 +78,9 @@ jobs:
               return object.sha;
             }
 
+            // Only a published release counts; a draft from a failed attempt is
+            // replaced by the publish job. Unreleased changes merge while .version
+            // keeps the published value, so a release is matched at its own tag.
             let existing;
             try {
               existing = await github.rest.repos.getReleaseByTag({
@@ -87,30 +90,15 @@ jobs:
             } catch (error) {
               if (error.status !== 404) throw error;
             }
-            if (!existing) {
-              const releases = await github.paginate(github.rest.repos.listReleases, {
-                ...context.repo,
-                per_page: 100,
-              });
-              const draft = releases.find(
-                (candidate) => candidate.tag_name === tagName && candidate.draft,
-              );
-              if (draft) existing = { data: draft };
-            }
-            // Unreleased changes merge while .version keeps the published value,
-            // so a complete release is matched at its own tag, not at this push.
             const commit = await taggedCommit();
-            const published = Boolean(existing && !existing.data.draft);
+            const published = Boolean(existing);
             if (!published && commit && commit !== context.sha) {
               throw new Error(`Tag ${tagName} already points to ${commit}`);
             }
             if (published && !commit) {
               throw new Error(`Published release ${tagName} has no tag`);
             }
-            if (!published) {
-              core.notice(`Release ${tagName} is not published; running release gates`);
-              core.setOutput("release_required", "true");
-            } else {
+            if (published) {
               if (
                 existing.data.tag_name !== tagName ||
                 existing.data.name !== tagName ||
@@ -121,7 +109,11 @@ jobs:
               }
               core.notice(`GitHub Release ${existing.data.html_url} already exists`);
               core.setOutput("release_required", "false");
+              core.setOutput("pypi_required", "false");
+              return;
             }
+            core.notice(`Release ${tagName} is not published; running release gates`);
+            core.setOutput("release_required", "true");
 
             const project = process.env.PYPI_PROJECT;
             const pypi = await fetch(
@@ -129,62 +121,21 @@ jobs:
               { headers: { accept: "application/json" } },
             );
             if (pypi.status === 404) {
-              if (published && commit !== context.sha) {
-                throw new Error(
-                  `GitHub release ${tagName} is published at ${commit} while PyPI ` +
-                  `${project} ${version} is missing; refusing to build ${context.sha}`,
-                );
-              }
-              core.notice(`PyPI ${project} ${version} is not published; running release gates`);
+              core.notice(`PyPI ${project} ${version} is not published; it follows GitHub`);
               core.setOutput("pypi_required", "true");
               return;
             }
             if (!pypi.ok) {
               throw new Error(`PyPI state request failed with HTTP ${pypi.status}`);
             }
-            const metadata = await pypi.json();
-            const normalize = (value) => value.toLowerCase().replace(/[-_.]+/g, "-");
-            if (
-              !metadata.info ||
-              typeof metadata.info.name !== "string" ||
-              normalize(metadata.info.name) !== normalize(project) ||
-              metadata.info.version !== version ||
-              !Array.isArray(metadata.urls)
-            ) {
-              throw new Error(`PyPI ${project} ${version} returned conflicting metadata`);
-            }
-            const expectedFiles = new Map([
-              [`joplin_md_sync-${version}-py3-none-any.whl`, "bdist_wheel"],
-              [`joplin_md_sync-${version}.tar.gz`, "sdist"],
-            ]);
-            if (metadata.urls.length !== expectedFiles.size) {
-              throw new Error(`PyPI ${project} ${version} has an unexpected file inventory`);
-            }
-            for (const file of metadata.urls) {
-              if (
-                expectedFiles.get(file.filename) !== file.packagetype ||
-                !Number.isInteger(file.size) ||
-                file.size <= 0 ||
-                !file.digests ||
-                !/^[0-9a-f]{64}$/.test(file.digests.sha256) ||
-                file.yanked !== false
-              ) {
-                throw new Error(`PyPI ${project} ${version} has an invalid file: ${file.filename}`);
-              }
-              expectedFiles.delete(file.filename);
-            }
-            if (expectedFiles.size !== 0) {
-              throw new Error(`PyPI ${project} ${version} is missing expected files`);
-            }
-            core.notice(`PyPI ${project} ${version} already exists`);
+            // PyPI files are immutable: an existing version is kept and not re-published.
+            core.notice(`PyPI ${project} ${version} already exists; skipping PyPI`);
             core.setOutput("pypi_required", "false");
 
   ci:
     name: CI gate
     needs: release-state
-    if: >-
-      needs.release-state.outputs.release_required == 'true' ||
-      needs.release-state.outputs.pypi_required == 'true'
+    if: needs.release-state.outputs.release_required == 'true'
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read
@@ -218,10 +169,6 @@ jobs:
       - name: Build and smoke-test wheel and sdist
         run: make build smoke-wheel smoke-sdist PY=python
 
-      - name: Verify existing PyPI files match the rebuilt distributions
-        if: needs.release-state.outputs.pypi_required == 'false'
-        run: python .github/scripts/verify_pypi_release.py --dist-dir dist
-
       - name: Upload verified Python distributions
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -233,46 +180,12 @@ jobs:
           compression-level: 0
           retention-days: 1
 
-  publish-pypi:
-    name: Publish Python distributions to PyPI
-    needs:
-      - release-state
-      - ci
-      - build-python-distributions
-    if: needs.release-state.outputs.pypi_required == 'true'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    environment:
-      name: pypi
-      url: https://pypi.org/project/joplin-md-sync/
-    permissions:
-      id-token: write
-    steps:
-      - name: Download verified Python distributions
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: python-distributions
-          path: dist
-
-      - name: Publish with PyPI Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
-        with:
-          packages-dir: dist
-          attestations: "true"
-
   publish:
     name: Publish GitHub release
     needs:
       - release-state
-      - ci
       - build-python-distributions
-      - publish-pypi
-    if: >-
-      always() &&
-      needs.release-state.outputs.release_required == 'true' &&
-      needs.ci.result == 'success' &&
-      needs.build-python-distributions.result == 'success' &&
-      (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped')
+    if: needs.release-state.outputs.release_required == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
@@ -366,16 +279,27 @@ jobs:
               );
               if (draft) release = { data: draft };
             }
-            if (release) {
-              if (
-                !release.data.draft ||
+            if (release && !release.data.draft) {
+              throw new Error(`Release ${tagName} is already published`);
+            }
+            if (
+              release && (
                 release.data.name !== tagName ||
                 release.data.body !== body ||
                 release.data.target_commitish !== target ||
                 release.data.prerelease
-              ) {
-                throw new Error(`Existing release ${tagName} is not a recoverable matching draft`);
-              }
+              )
+            ) {
+              // A draft left by a failed attempt at another commit is private and
+              // untagged, so it is replaced instead of blocking this release.
+              await github.rest.repos.deleteRelease({
+                ...context.repo,
+                release_id: release.data.id,
+              });
+              core.notice(`Replaced stale draft ${tagName} for ${release.data.target_commitish}`);
+              release = undefined;
+            }
+            if (release) {
               const existingAssets = await github.paginate(github.rest.repos.listReleaseAssets, {
                 ...context.repo,
                 release_id: release.data.id,
@@ -432,3 +356,30 @@ jobs:
               prerelease: false,
             });
             core.notice(`Published ${published.data.html_url}`);
+
+  publish-pypi:
+    name: Publish Python distributions to PyPI
+    needs:
+      - release-state
+      - publish
+    # PyPI files are immutable, so PyPI is published only after the GitHub Release.
+    if: needs.release-state.outputs.pypi_required == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/joplin-md-sync/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download verified Python distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist
+          attestations: "true"
