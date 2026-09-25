@@ -7,8 +7,8 @@
 # host. Keep the Windows console and PyInstaller dependencies explicit so this
 # lock is installable there.
 
-build==1.5.0
+build==1.6.1
 colorama==0.4.6
 pefile==2024.8.26
-pyinstaller==6.22.2
+pyinstaller==6.22.3
 pywin32-ctypes==0.2.3
