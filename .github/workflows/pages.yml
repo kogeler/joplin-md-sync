@@ -10,6 +10,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "requirements-docs.in"
       - "requirements-docs.txt"
       - "Makefile"
       - ".github/workflows/pages.yml"
@@ -20,6 +21,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
+      - "requirements-docs.in"
       - "requirements-docs.txt"
       - "Makefile"
       - ".github/workflows/pages.yml"
@@ -51,7 +53,9 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements-docs.txt
+          cache-dependency-path: |
+            requirements-docs.in
+            requirements-docs.txt
 
       - name: Build and audit generated site
         env:

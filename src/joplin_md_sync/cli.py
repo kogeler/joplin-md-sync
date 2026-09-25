@@ -29,7 +29,7 @@ from joplin_md_sync import (
 )
 from joplin_md_sync.api import DEFAULT_PORT, JoplinClient
 from joplin_md_sync.canonical import canonicalize_tags
-from joplin_md_sync.config import build_client, resolve_token
+from joplin_md_sync.config import build_client, resolve_stdio_token, resolve_token
 from joplin_md_sync.diff import (
     filter_note,
     items_json,
@@ -67,12 +67,20 @@ _REDACT_TOKENS: list[str] = []
 
 
 class _RedactionFilter(logging.Filter):
+    """Mask registered tokens in the message, exception traceback, and stack."""
+
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        for token in _REDACT_TOKENS:
-            if token and token in msg:
-                record.msg = msg.replace(token, "***")
-                record.args = ()
+        redacted = _redact(msg)
+        if redacted != msg:
+            record.msg = redacted
+            record.args = ()
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = _redact(record.exc_text)
+        if record.stack_info:
+            record.stack_info = _redact(record.stack_info)
         return True
 
 
@@ -319,13 +327,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="timeout per Joplin discovery port (default: 0.25)",
     )
 
-    ms = msub.add_parser("stdio", help="serve MCP over stdio for a local client")
+    ms = msub.add_parser(
+        "stdio",
+        help="serve MCP over stdio for a local client",
+        description=(
+            "Serve MCP over stdio. Give the Joplin Web Clipper token through exactly one "
+            "source: --token-file (recommended), the compatibility --token, or the "
+            "JOPLIN_TOKEN environment variable. A command-line source together with a "
+            "non-empty JOPLIN_TOKEN is an error."
+        ),
+    )
     _add_logging_args(ms)
-    ms.add_argument(
+    token_source = ms.add_mutually_exclusive_group()
+    token_source.add_argument(
+        "--token-file",
+        metavar="PATH",
+        help="protected file holding the Joplin Web Clipper token (recommended)",
+    )
+    token_source.add_argument(
         "--token",
-        required=True,
         metavar="TOKEN",
-        help="Joplin Web Clipper token (required for local stdio mode)",
+        help="Joplin Web Clipper token as an argument (compatibility; visible to other processes)",
     )
     ms.add_argument(
         "--port",
@@ -521,6 +543,7 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "permanent_deletion": False,
             "mcp_streamable_http": True,
             "mcp_stdio": True,
+            "mcp_stdio_token_file": True,
             "mcp_optional_bearer_auth": True,
             "mcp_notebook_tag_resource_crud": True,
             "mcp_html_and_binary_note_content": True,
@@ -1263,11 +1286,9 @@ def _cmd_mcp_stdio(args: argparse.Namespace) -> CommandOutput:
     from joplin_md_sync.mcp_service import JoplinMcpService
     from joplin_md_sync.mcp_stdio import serve_mcp_stdio
 
-    token = args.token.strip()
-    if token:
+    token = resolve_stdio_token(args.token, args.token_file)
+    if token not in _REDACT_TOKENS:
         _REDACT_TOKENS.append(token)
-    if not token:
-        raise errors.AuthError("--token must contain a Joplin Web Clipper token")
     if not 1 <= args.port <= 65535:
         raise UnsafeOperationError("--port must be between 1 and 65535")
     if args.timeout <= 0:

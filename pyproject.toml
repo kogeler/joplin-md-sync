@@ -23,35 +23,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
 ]
-# Runtime dependency policy is owned by docs/contracts/DEPENDENCIES.md.
+# Runtime dependency policy is owned by docs/contracts/DEPENDENCIES.md. Internal
+# tool versions live in requirements-*.in and their generated hash locks.
 dependencies = []
-
-[project.optional-dependencies]
-# Direct tools track their latest stable compatible releases and use exact pins.
-# pip-compile resolves their transitive dependencies into separate hash locks so
-# a platform-specific tool limitation does not force a repository-wide downgrade.
-dev = [
-    "bandit[toml]==1.9.4",
-    "mypy==2.3.1",
-    "pip-audit==2.10.1",
-    "ruff==0.16.4",
-]
-test = [
-    # pip-compile evaluates platform markers on its Linux host. Keep the latest
-    # Windows console dependency explicit so this lock is installable there.
-    "colorama==0.4.6",
-    "pytest==9.1.1",
-    "pytest-cov==7.1.0",
-    "pytest-xdist==3.8.0",
-]
-package = [
-    "build==1.5.0",
-    "colorama==0.4.6",
-    "pefile==2024.8.26",
-    "pyinstaller==6.22.2",
-    "pywin32-ctypes==0.2.3",
-]
-docs = ["mkdocs-material==9.7.7"]
 
 [project.urls]
 Homepage = "https://joplin-mcp.romancello.net/"

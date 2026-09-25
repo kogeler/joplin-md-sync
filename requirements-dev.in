@@ -1,0 +1,10 @@
+# Copyright (c) 2026 kogeler
+# SPDX-License-Identifier: MIT
+#
+# Direct Linux quality tools at their latest stable compatible releases.
+# `make lock` compiles the complete hash lock into requirements-dev.txt.
+
+bandit[toml]==1.9.4
+mypy==2.3.1
+pip-audit==2.10.1
+ruff==0.16.4

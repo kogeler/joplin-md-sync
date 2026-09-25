@@ -97,11 +97,17 @@ jobs:
               );
               if (draft) existing = { data: draft };
             }
+            // Unreleased changes merge while .version keeps the published value,
+            // so a complete release is matched at its own tag, not at this push.
             const commit = await taggedCommit();
-            if (commit && commit !== context.sha) {
+            const published = Boolean(existing && !existing.data.draft);
+            if (!published && commit && commit !== context.sha) {
               throw new Error(`Tag ${tagName} already points to ${commit}`);
             }
-            if (!existing || existing.data.draft) {
+            if (published && !commit) {
+              throw new Error(`Published release ${tagName} has no tag`);
+            }
+            if (!published) {
               core.notice(`Release ${tagName} is not published; running release gates`);
               core.setOutput("release_required", "true");
             } else {
@@ -123,6 +129,12 @@ jobs:
               { headers: { accept: "application/json" } },
             );
             if (pypi.status === 404) {
+              if (published && commit !== context.sha) {
+                throw new Error(
+                  `GitHub release ${tagName} is published at ${commit} while PyPI ` +
+                  `${project} ${version} is missing; refusing to build ${context.sha}`,
+                );
+              }
               core.notice(`PyPI ${project} ${version} is not published; running release gates`);
               core.setOutput("pypi_required", "true");
               return;
@@ -199,7 +211,9 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements-package.txt
+          cache-dependency-path: |
+            requirements-package.in
+            requirements-package.txt
 
       - name: Build and smoke-test wheel and sdist
         run: make build smoke-wheel smoke-sdist PY=python

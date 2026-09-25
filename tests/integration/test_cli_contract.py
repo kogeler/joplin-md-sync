@@ -1,6 +1,7 @@
 """Agent output contract: deterministic JSON, exit codes, security properties."""
 
 import json
+import os
 import sys
 from pathlib import Path
 from unittest import mock
@@ -275,7 +276,9 @@ class TokenSafetyTest(WorkspaceTestCase):
 
     def test_token_file_option(self):
         token_file = self.root.parent / "token.txt"
-        token_file.write_text(TOKEN + "\n", encoding="utf-8")
+        token_file.write_bytes(f"{TOKEN}\n".encode("ascii"))
+        if os.name == "posix":
+            token_file.chmod(0o600)
         result = run_cli(
             "init", "--root", str(self.root), env={"JOPLIN_BASE_URL": self.server.base_url}
         )
@@ -290,6 +293,54 @@ class TokenSafetyTest(WorkspaceTestCase):
             env={"JOPLIN_BASE_URL": self.server.base_url},
         )
         self.assertEqual(result.exit_code, 0, result.stdout)
+
+    def test_token_file_and_environment_are_one_source_for_workspace_commands(self):
+        token_file = self.root.parent / "token.txt"
+        token_file.write_bytes(b"file-secret-0123456789\n")
+        if os.name == "posix":
+            token_file.chmod(0o600)
+        result = run_cli(
+            "init", "--root", str(self.root), env={"JOPLIN_BASE_URL": self.server.base_url}
+        )
+        self.assertEqual(result.exit_code, 0)
+        result = run_cli(
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
+            "--token-file",
+            str(token_file),
+            env=self.env,
+        )
+        self.assertEqual(result.exit_code, 4)
+        self.assertIn("(--token-file)", result.json["error"])
+        self.assertIn("JOPLIN_TOKEN", result.json["error"])
+        for output in (result.stdout, result.stderr):
+            self.assertNotIn(TOKEN, output)
+            self.assertNotIn("file-secret", output)
+
+    def test_insecure_token_file_is_rejected_for_workspace_commands(self):
+        if os.name != "posix":
+            self.skipTest("POSIX permission bits")
+        token_file = self.root.parent / "token.txt"
+        token_file.write_bytes(f"{TOKEN}\n".encode("ascii"))
+        token_file.chmod(0o644)
+        result = run_cli(
+            "init", "--root", str(self.root), env={"JOPLIN_BASE_URL": self.server.base_url}
+        )
+        self.assertEqual(result.exit_code, 0)
+        result = run_cli(
+            "pull",
+            "--root",
+            str(self.root),
+            "--json",
+            "--token-file",
+            str(token_file),
+            env={"JOPLIN_BASE_URL": self.server.base_url},
+        )
+        self.assertEqual(result.exit_code, 4)
+        self.assertIn("must not be accessible by group or others", result.json["error"])
+        self.assertNotIn(TOKEN, result.stdout + result.stderr)
 
 
 class SecurityScanTest(WorkspaceTestCase):

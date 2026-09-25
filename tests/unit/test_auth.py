@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,10 +13,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from joplin_md_sync.auth import (
     MAX_BEARER_TOKEN_CHARS,
+    WINDOWS_ADMINISTRATORS_SID,
+    WINDOWS_OWNER_RIGHTS_SID,
+    WINDOWS_SYSTEM_SID,
     BearerTokenError,
+    WindowsAce,
     accepts_bearer_token,
     read_protected_bearer_token,
     validate_bearer_token,
+    windows_acl_problem,
 )
 from joplin_md_sync.errors import AuthError
 from joplin_md_sync.gpt_actions import ActionsTokenSource
@@ -99,3 +105,60 @@ def test_mcp_source_rejects_insecure_permissions_and_symlinks(tmp_path: Path) ->
     symlink.symlink_to(target)
     with pytest.raises(AuthError, match="regular file"):
         BearerTokenSource(symlink)
+
+
+USER_SID = "S-1-5-21-1000-2000-3000-1001"
+OTHER_SID = "S-1-5-21-1000-2000-3000-1002"
+EVERYONE_SID = "S-1-1-0"
+FULL_CONTROL = 0x001F01FF
+READ_ATTRIBUTES_AND_SYNCHRONIZE = 0x0010_0080
+
+
+def _allow(sid: str, mask: int = FULL_CONTROL, flags: int = 0) -> WindowsAce:
+    return WindowsAce(ace_type=0x00, flags=flags, mask=mask, sid=sid)
+
+
+PRIVATE_DACL = (
+    _allow(WINDOWS_SYSTEM_SID),
+    _allow(WINDOWS_ADMINISTRATORS_SID),
+    _allow(WINDOWS_OWNER_RIGHTS_SID),
+    _allow(USER_SID),
+)
+
+
+def test_windows_acl_accepts_private_files_owned_by_trusted_principals() -> None:
+    for owner in (USER_SID, WINDOWS_SYSTEM_SID, WINDOWS_ADMINISTRATORS_SID):
+        assert windows_acl_problem(owner, PRIVATE_DACL, USER_SID) is None
+    assert windows_acl_problem(USER_SID, (), USER_SID) is None
+    harmless = (
+        # Inherit-only entries do not apply to the file itself.
+        _allow(EVERYONE_SID, flags=0x08),
+        # A deny entry never grants access.
+        WindowsAce(ace_type=0x01, flags=0, mask=FULL_CONTROL, sid=EVERYONE_SID),
+        # Reading attributes does not expose the secret.
+        _allow(OTHER_SID, mask=READ_ATTRIBUTES_AND_SYNCHRONIZE),
+    )
+    assert windows_acl_problem(USER_SID, PRIVATE_DACL + harmless, USER_SID) is None
+
+
+def test_windows_acl_rejects_foreign_owner_and_other_account_access() -> None:
+    for owner in (OTHER_SID, EVERYONE_SID, WINDOWS_OWNER_RIGHTS_SID):
+        assert windows_acl_problem(owner, PRIVATE_DACL, USER_SID) == "owner"
+    assert windows_acl_problem(USER_SID, None, USER_SID) == "access"
+    for sensitive in (0x1, 0x2, 0x4, 0x0004_0000, 0x0008_0000, 0x1000_0000, 0x4000_0000):
+        dacl = (*PRIVATE_DACL, _allow(OTHER_SID, mask=sensitive))
+        assert windows_acl_problem(USER_SID, dacl, USER_SID) == "access", hex(sensitive)
+    for unevaluable in (
+        WindowsAce(ace_type=0x05, flags=0, mask=0, sid=None),
+        WindowsAce(ace_type=0x00, flags=0, mask=FULL_CONTROL, sid=None),
+    ):
+        assert windows_acl_problem(USER_SID, (*PRIVATE_DACL, unevaluable), USER_SID) == "access"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real Windows ACL enforcement")
+def test_windows_token_file_rejects_access_for_other_accounts(tmp_path: Path) -> None:
+    path = protected_file(tmp_path / "token")
+    assert read_protected_bearer_token(path, label="test") == TOKEN
+    subprocess.run(["icacls", str(path), "/grant", "*S-1-1-0:(R)"], check=True, capture_output=True)
+    with pytest.raises(BearerTokenError, match="must not be accessible by other accounts"):
+        read_protected_bearer_token(path, label="test")

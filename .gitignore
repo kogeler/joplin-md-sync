@@ -11,6 +11,9 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+# Machine- and user-scoped Make environments
+.venvs/
+# Legacy root-level environments created before machine scoping
 .venv/
 venv/
 venv-dev/
@@ -34,4 +37,5 @@ htmlcov/
 .ruff_cache/
 .pytest_cache/
 
-plans
+/plans/
+/tmp/

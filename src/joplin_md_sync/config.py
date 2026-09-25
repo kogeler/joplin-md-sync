@@ -8,9 +8,11 @@ settings; every layer stays overridable.
 
 Normal connection resolution intentionally does not accept a raw CLI token
 (it would leak into the process list and shell history): use ``JOPLIN_TOKEN``
-or ``--token-file PATH``. The separate local ``mcp stdio`` process contract
-requires its own raw ``--token`` argument and does not call this resolver. The
-token is never stored in the workspace.
+or ``--token-file PATH``, never both. The token file must be protected: a
+bounded single-line regular file that only the current user can access. The
+local ``mcp stdio`` process additionally accepts the compatibility ``--token``
+argument under the same exactly-one-source rule. The token is never stored in
+the workspace.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from joplin_md_sync.api import (
     is_loopback_url,
     ping_url,
 )
+from joplin_md_sync.auth import ProtectedFileError, read_protected_token_line
 from joplin_md_sync.errors import ApiError, AuthError, UnsafeOperationError
 
 ENV_TOKEN = "JOPLIN_TOKEN"
@@ -41,23 +44,73 @@ class ConnectionSettings:
     timeout: float = 30.0
 
 
-def resolve_token(token_file: str | None, env: Mapping[str, str] | None = None) -> str:
-    env = os.environ if env is None else env
-    if token_file:
-        path = Path(token_file)
-        if not path.is_file():
-            raise AuthError(f"token file not found: {path}")
-        token = path.read_text(encoding="utf-8").strip()
-        if not token:
-            raise AuthError(f"token file is empty: {path}")
-        return token
-    token = (env.get(ENV_TOKEN) or "").strip()
+def _source_conflict(option: str) -> AuthError:
+    return AuthError(
+        f"Joplin token given both on the command line ({option}) and in "
+        f"{ENV_TOKEN}; use exactly one"
+    )
+
+
+def _environment_token(env: Mapping[str, str]) -> str:
+    """Return a non-blank ``JOPLIN_TOKEN``; blank values count as unset."""
+    return (env.get(ENV_TOKEN) or "").strip()
+
+
+def read_protected_joplin_token(path: Path) -> str:
+    """Read the Joplin token from a protected single-line file."""
+    try:
+        raw = read_protected_token_line(path, label="Joplin")
+    except ProtectedFileError as exc:
+        raise AuthError(str(exc)) from None
+    try:
+        token = raw.decode("ascii").strip()
+    except UnicodeDecodeError:
+        raise AuthError(f"Joplin token file must contain ASCII text: {path}") from None
     if not token:
+        raise AuthError(f"Joplin token file is empty: {path}")
+    return token
+
+
+def resolve_token(token_file: str | None, env: Mapping[str, str] | None = None) -> str:
+    """Return the Joplin token from exactly one configured source.
+
+    ``--token-file`` and a non-blank ``JOPLIN_TOKEN`` are alternatives.
+    Configuring both is an error, checked before the file is read, so neither
+    source silently wins. The file is read through the protected reader.
+    """
+    env = os.environ if env is None else env
+    env_token = _environment_token(env)
+    if token_file is not None:
+        if env_token:
+            raise _source_conflict("--token-file")
+        return read_protected_joplin_token(Path(token_file))
+    if not env_token:
         raise AuthError(
             "no Joplin token configured; set JOPLIN_TOKEN or pass --token-file PATH "
             "(Joplin: Tools > Options > Web Clipper > Advanced options)"
         )
-    return token
+    return env_token
+
+
+def resolve_stdio_token(
+    token: str | None,
+    token_file: str | None,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Return the ``mcp stdio`` token, which also accepts a raw ``--token``.
+
+    The raw argument is one more command-line alternative under the same
+    exactly-one-source rule as ``resolve_token``.
+    """
+    env = os.environ if env is None else env
+    if token is None:
+        return resolve_token(token_file, env)
+    if _environment_token(env):
+        raise _source_conflict("--token")
+    value = token.strip()
+    if not value:
+        raise AuthError("--token must contain a Joplin Web Clipper token")
+    return value
 
 
 def resolve_base_url(

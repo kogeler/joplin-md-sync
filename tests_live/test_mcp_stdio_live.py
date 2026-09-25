@@ -31,7 +31,7 @@ def _cli_command() -> list[str]:
 
 
 class LiveMcpStdioTest(unittest.TestCase):
-    def test_stdio_process_reads_running_joplin(self) -> None:
+    def _exchange(self, token_source: str) -> None:
         runtime = running_joplin()
         token = runtime.token_file.read_text(encoding="utf-8").strip()
         api = build_client(
@@ -78,13 +78,19 @@ class LiveMcpStdioTest(unittest.TestCase):
         env["PYTHONPATH"] = (
             str(SRC) if not existing_pythonpath else str(SRC) + os.pathsep + existing_pythonpath
         )
+        token_arguments: list[str] = []
+        if token_source == "--token":
+            token_arguments = ["--token", token]
+        elif token_source == "--token-file":
+            token_arguments = ["--token-file", str(runtime.token_file)]
+        else:
+            env["JOPLIN_TOKEN"] = token
         process = subprocess.Popen(
             [
                 *_cli_command(),
                 "mcp",
                 "stdio",
-                "--token",
-                token,
+                *token_arguments,
                 "--port",
                 str(split.port),
                 "--retry-timeout",
@@ -116,6 +122,15 @@ class LiveMcpStdioTest(unittest.TestCase):
         result = responses[2]["result"]
         self.assertFalse(result["isError"], result["structuredContent"])
         self.assertIn("notebooks", result["structuredContent"])
+
+    def test_stdio_process_reads_running_joplin(self) -> None:
+        self._exchange("--token")
+
+    def test_stdio_process_reads_protected_token_file(self) -> None:
+        self._exchange("--token-file")
+
+    def test_stdio_process_reads_environment_token(self) -> None:
+        self._exchange("JOPLIN_TOKEN")
 
 
 if __name__ == "__main__":

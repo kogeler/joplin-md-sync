@@ -7,12 +7,9 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
-LOCKS = (
-    "requirements-dev.txt",
-    "requirements-test.txt",
-    "requirements-package.txt",
-    "requirements-docs.txt",
-)
+AUDIENCES = ("dev", "test", "package", "docs")
+LOCKS = tuple(f"requirements-{audience}.txt" for audience in AUDIENCES)
+INPUTS = tuple(f"requirements-{audience}.in" for audience in AUDIENCES)
 EXACT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9._,-]+\])?==[^\s;]+$")
 
 
@@ -20,33 +17,46 @@ def _requirement_name(requirement: str) -> str:
     return requirement.partition("==")[0].partition("[")[0].lower()
 
 
+def _input_requirements(audience: str) -> list[str]:
+    content = (ROOT / f"requirements-{audience}.in").read_text(encoding="utf-8")
+    return [
+        line.strip()
+        for line in content.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+
 def test_direct_dependencies_are_exact_and_scoped() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["dependencies"] == []
-    assert set(project["optional-dependencies"]) == {"dev", "test", "package", "docs"}
-    for group in project["optional-dependencies"].values():
+    assert "optional-dependencies" not in project
+    assert {path.name for path in ROOT.glob("requirements*.in")} == set(INPUTS)
+    groups = {audience: _input_requirements(audience) for audience in AUDIENCES}
+    for group in groups.values():
         assert group
         assert all(EXACT.fullmatch(requirement) for requirement in group)
+        names = [_requirement_name(requirement) for requirement in group]
+        assert len(names) == len(set(names))
     overlaps = {
         requirement
-        for index, left in enumerate(project["optional-dependencies"].values())
-        for right in list(project["optional-dependencies"].values())[index + 1 :]
+        for index, left in enumerate(groups.values())
+        for right in list(groups.values())[index + 1 :]
         for requirement in set(left) & set(right)
     }
     assert {_requirement_name(requirement) for requirement in overlaps} == {"colorama"}
     test_colorama = next(
         requirement
-        for requirement in project["optional-dependencies"]["test"]
+        for requirement in groups["test"]
         if _requirement_name(requirement) == "colorama"
     )
     package_colorama = next(
         requirement
-        for requirement in project["optional-dependencies"]["package"]
+        for requirement in groups["package"]
         if _requirement_name(requirement) == "colorama"
     )
     assert test_colorama == package_colorama
-    assert any(item.startswith("mypy==") for item in project["optional-dependencies"]["dev"])
-    assert not any(item.startswith("mypy==") for item in project["optional-dependencies"]["test"])
+    assert any(item.startswith("mypy==") for item in groups["dev"])
+    assert not any(item.startswith("mypy==") for item in groups["test"])
 
 
 def test_all_committed_locks_are_pip_compile_hash_locks() -> None:
@@ -60,6 +70,12 @@ def test_all_committed_locks_are_pip_compile_hash_locks() -> None:
         assert pins
         assert content.count("--hash=sha256:") >= len(pins)
         assert all(line.endswith(" \\") for line in pins)
+        command = next(
+            line for line in content.splitlines() if line.startswith("#    pip-compile ")
+        )
+        assert f"--output-file={name} " in command
+        assert command.endswith(" " + name.removesuffix(".txt") + ".in")
+        assert "--extra" not in command
 
 
 def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
@@ -67,6 +83,7 @@ def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
     assert makefile.count("--require-hashes") >= 4
     assert "--only-binary=:all:" in makefile
     assert "piptools compile $(COMPILE)" in makefile
+    assert "--extra=" not in makefile
     assert "freeze-check:" in makefile
     assert "lock-platform-check:" in makefile
     assert "--platform win_amd64" in makefile
@@ -76,6 +93,15 @@ def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
     assert "dependency-snapshot:" in makefile
     for lock in LOCKS:
         assert lock in makefile
+    for dependency_input in INPUTS:
+        assert f":= {dependency_input}\n" in makefile
+    freeze = makefile.split("freeze-check:", 1)[1].split("lock-platform-check:", 1)[0]
+    for variable in ("DEVELOPMENT", "TEST", "PACKAGE", "DOCS"):
+        assert f"--constraint=$({variable}_LOCK)" in freeze
+        assert f"$({variable}_INPUT);" in freeze
+    bootstrap = makefile.split("LOCK_BOOTSTRAP :=", 1)[1].split("\n\n", 1)[0].split()
+    assert any(re.fullmatch(r"pip==[^\s=]+", item) for item in bootstrap)
+    assert any(re.fullmatch(r"pip-tools==[^\s=]+", item) for item in bootstrap)
     audit = makefile.split("audit:", 1)[1].split("dependency-snapshot:", 1)[0]
     for variable in ("DEVELOPMENT_LOCK", "TEST_LOCK", "PACKAGE_LOCK", "DOCS_LOCK"):
         assert f"--requirement $({variable})" in audit
@@ -84,6 +110,7 @@ def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
 def test_dependabot_updates_python_and_actions_as_groups() -> None:
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
     assert "package-ecosystem: pip" in config
+    assert "exclude-paths:\n      - pyproject.toml" in config
     assert "package-ecosystem: github-actions" in config
     assert config.count("interval: weekly") == 2
     assert "python-dependencies:" in config

@@ -1,7 +1,11 @@
 # Copyright (c) 2026 kogeler
 # SPDX-License-Identifier: MIT
 
-"""Build GitHub dependency-submission manifests from all committed hash locks."""
+"""Build GitHub dependency-submission manifests from all committed hash locks.
+
+Each lock is cross-checked against the exact direct pins of its same-stem
+requirements input.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +24,8 @@ DIRECT_REQUIREMENT = re.compile(
     r"^([A-Za-z0-9][A-Za-z0-9._-]*)"
     r"(?:\[[A-Za-z0-9._-]+(?:,[A-Za-z0-9._-]+)*\])?==([^\s;]+)$"
 )
+INPUT_COMMENT = re.compile(r"(?:^|\s)#.*$")
+AUDIENCES = ("dev", "test", "package", "docs")
 
 
 class SnapshotError(ValueError):
@@ -30,7 +36,8 @@ def _normalize_package(name: str) -> str:
     return re.sub(r"[-_.]+", "-", name).casefold()
 
 
-def _load_project(path: Path) -> dict[str, object]:
+def _validate_project(path: Path) -> None:
+    """Reject package metadata that duplicates or adds dependency versions."""
     try:
         document = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as err:
@@ -38,28 +45,45 @@ def _load_project(path: Path) -> dict[str, object]:
     project = document.get("project")
     if not isinstance(project, dict):
         raise SnapshotError(f"{path}: missing [project] table")
-    return project
+    if project.get("dependencies") != []:
+        raise SnapshotError(
+            "pyproject.toml: runtime dependencies require a dedicated reviewed lock policy"
+        )
+    if "optional-dependencies" in project:
+        raise SnapshotError(
+            "pyproject.toml: tool dependency versions must exist only in requirements inputs"
+        )
 
 
-def _direct_requirements(requirements: object, *, source: str) -> dict[str, str]:
-    if not isinstance(requirements, list) or not all(
-        isinstance(requirement, str) for requirement in requirements
-    ):
-        raise SnapshotError(f"{source}: dependencies must be an array of strings")
+def _input_requirements(path: Path) -> dict[str, str]:
+    """Return exact direct pins from one independent requirements input."""
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError as err:
+        raise SnapshotError(f"cannot read {path}: {err}") from err
 
     direct: dict[str, str] = {}
-    for requirement in requirements:
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        requirement = INPUT_COMMENT.sub("", line).strip()
+        if not requirement:
+            continue
+        if requirement.startswith("-"):
+            raise SnapshotError(
+                f"{path}:{line_number}: an independent input cannot include files or options"
+            )
         match = DIRECT_REQUIREMENT.fullmatch(requirement)
         if match is None:
-            raise SnapshotError(f"{source}: dependency must be one exact PyPI pin: {requirement}")
+            raise SnapshotError(f"{path}:{line_number}: dependency must be one exact PyPI pin")
         name = _normalize_package(match.group(1))
         if name in direct:
-            raise SnapshotError(f"{source}: duplicate direct dependency: {name}")
+            raise SnapshotError(f"{path}: duplicate direct dependency: {name}")
         direct[name] = match.group(2)
+    if not direct:
+        raise SnapshotError(f"{path}: input contains no direct dependency pins")
     return direct
 
 
-def _read_lock(path: Path, *, allow_empty: bool) -> dict[str, str]:
+def _read_lock(path: Path) -> dict[str, str]:
     try:
         content = path.read_text(encoding="utf-8")
     except OSError as err:
@@ -107,7 +131,7 @@ def _read_lock(path: Path, *, allow_empty: bool) -> dict[str, str]:
             raise SnapshotError(f"{path}:{line_number}: duplicate package pin: {current_name}")
 
     finish_pin()
-    if not pins and not allow_empty:
+    if not pins:
         raise SnapshotError(f"{path}: lock contains no package pins")
     return pins
 
@@ -118,7 +142,7 @@ def _resolved_dependencies(
     direct: dict[str, str],
     scope: str,
 ) -> dict[str, dict[str, str]]:
-    pins = _read_lock(path, allow_empty=not direct)
+    pins = _read_lock(path)
     missing = sorted(set(direct) - set(pins))
     if missing:
         raise SnapshotError(f"{path}: direct dependencies missing from lock: {', '.join(missing)}")
@@ -140,39 +164,17 @@ def _resolved_dependencies(
 
 
 def build_manifests(root: Path) -> dict[str, dict[str, object]]:
-    project = _load_project(root / "pyproject.toml")
-    runtime = _direct_requirements(project.get("dependencies"), source="pyproject.toml")
-    if runtime:
-        raise SnapshotError(
-            "pyproject.toml: runtime dependencies require a dedicated reviewed lock policy"
-        )
-    optional = project.get("optional-dependencies")
-    expected_groups = {"dev", "test", "package", "docs"}
-    if not isinstance(optional, dict) or set(optional) != expected_groups:
-        raise SnapshotError(
-            "pyproject.toml: expected exactly the dev, test, package, and docs optional groups"
-        )
-    direct_by_group = {
-        group: _direct_requirements(
-            optional[group],
-            source=f"pyproject.toml [project.optional-dependencies].{group}",
-        )
-        for group in expected_groups
-    }
-    definitions = (
-        ("requirements-dev.txt", runtime | direct_by_group["dev"], "development"),
-        ("requirements-test.txt", runtime | direct_by_group["test"], "development"),
-        ("requirements-package.txt", runtime | direct_by_group["package"], "development"),
-        ("requirements-docs.txt", runtime | direct_by_group["docs"], "development"),
-    )
-    return {
-        name: {
+    _validate_project(root / "pyproject.toml")
+    manifests: dict[str, dict[str, object]] = {}
+    for audience in AUDIENCES:
+        name = f"requirements-{audience}.txt"
+        direct = _input_requirements(root / f"requirements-{audience}.in")
+        manifests[name] = {
             "name": name,
             "file": {"source_location": name},
-            "resolved": _resolved_dependencies(root / name, direct=direct, scope=scope),
+            "resolved": _resolved_dependencies(root / name, direct=direct, scope="development"),
         }
-        for name, direct, scope in definitions
-    }
+    return manifests
 
 
 def _build_parser() -> argparse.ArgumentParser:

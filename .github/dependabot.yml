@@ -3,6 +3,9 @@
 
 version: 2
 updates:
+  # The requirements-*.in files own direct versions and pip-compile owns their
+  # same-stem hash locks. pyproject.toml holds only package metadata and the
+  # manually maintained build-backend pin, so it is excluded from pip manifests.
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -11,6 +14,8 @@ updates:
       time: "05:00"
       timezone: Europe/Helsinki
     open-pull-requests-limit: 5
+    exclude-paths:
+      - pyproject.toml
     groups:
       python-dependencies:
         patterns:

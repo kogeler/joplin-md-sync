@@ -16,6 +16,14 @@ Global conventions:
   Without any of them (and without env/workspace overrides) the built-in
   default `http://127.0.0.1:41184` is used when it answers `/ping`, with a
   fallback scan of ports 41184-41194. Only the token must be configured.
+- The Joplin token comes from exactly one source: `--token-file PATH` or the
+  `JOPLIN_TOKEN` environment variable. Setting both is an error that names
+  both sources; an empty `JOPLIN_TOKEN` counts as unset. The token file must
+  be private: one line in a regular file (not a symlink) owned by you, with
+  mode `0600` on Linux, and on Windows owned by you with no access for other
+  accounts, for example after
+  `icacls FILE /inheritance:r /grant:r "%USERNAME%:(R)"`. Files that others
+  can read or change are rejected without echoing their content.
 - Workspace commands take `--root PATH` (default: current directory).
 - `--help` prints the parser reference; top-level `--version` prints the package
   version without the richer `version` command envelope.
@@ -32,7 +40,7 @@ owned by [`CLI-001`](../contracts/CLI.md#cli-001-json-output-is-deterministic-an
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.6.0",
+  "tool_version": "1.7.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -117,29 +125,53 @@ validation (exit 3 for a malformed header).
 Downloads every `:/resource-id` referenced by managed notes into
 `.joplin-sync/resources/<id>[.ext]`. Markdown links are never rewritten.
 
-### `mcp stdio --token TOKEN [--port PORT]`
+### `mcp stdio [--token-file PATH | --token TOKEN] [--port PORT]`
 
 Runs a local MCP server over stdin/stdout for an IDE or agent that launches the
 executable directly. Joplin Desktop must already be running locally with Web
-Clipper enabled. `--token TOKEN` is required, and `--port PORT` selects its
-Data API port on `127.0.0.1` (default `41184`). No network MCP listener or
-Markdown workspace is created.
+Clipper enabled. `--port PORT` selects its Data API port on `127.0.0.1`
+(default `41184`). No network MCP listener or Markdown workspace is created.
+
+The Joplin token comes from exactly one of two paths:
+
+- the command line: `--token-file PATH`, the recommended form, or the
+  compatibility `--token TOKEN`; the two options are mutually exclusive;
+- the `JOPLIN_TOKEN` environment variable, for launchers that export it.
+
+A command-line option together with a non-empty `JOPLIN_TOKEN` is a
+configuration error that names both sources; neither silently wins, and the
+check runs before the file is read or Joplin is contacted. An empty or
+whitespace-only `JOPLIN_TOKEN` counts as unset. With no source the command
+fails and names both paths. These errors exit with code `4` and write only to
+stderr, so the protocol stream on stdout stays clean.
+
+`--token-file PATH` follows the same private-file rules as every other command:
+a regular file, not a symlink, holding one line with the token, mode `0600` on
+Linux or restricted to your account on Windows. Oversized, empty, multi-line,
+or non-ASCII files are rejected without echoing their content. Create it once
+outside synchronized folders:
+
+```bash
+install -d -m 0700 ~/.config/joplin-md-sync
+(umask 077; read -rs -p 'Joplin token: ' token &&
+  printf '%s\n' "$token" > ~/.config/joplin-md-sync/token)
+```
+
+`--token TOKEN` remains for existing IDE configurations only. IDE configuration
+persists command arguments, other processes of the same user can list them,
+and some editors forward the MCP configuration to agents on their command
+lines, so prefer the token file.
 
 This mode does not expose `/mcp`, GPT Actions, `/healthz`, or `/readyz` and
 does not accept `--auth-token-file`, `--gpt-actions`, or
 `--gpt-actions-token-file`. Those bearer credentials protect HTTP interfaces
-that do not exist in stdio mode; only the required Joplin `--token` is used.
+that do not exist in stdio mode; only the Joplin token is used.
 
 The optional `--timeout SECONDS`, `--retry-timeout SECONDS`, and
 `--retry-delay SECONDS` settings have the same call behavior as `mcp serve`.
 The process reads one JSON-RPC message per stdin line, writes only JSON-RPC to
 stdout, and exits when the client closes stdin. `--verbose`, `--quiet`, and
 `--log-file PATH` affect diagnostics on stderr or in the selected log file.
-
-The raw-token flag is deliberately limited to this local launch mode. IDE
-configuration normally persists command arguments, and other processes owned
-by the same user may be able to inspect them. Protect the configuration as a
-credential and do not paste the command into shell history.
 
 ### `mcp serve [connection and server options]`
 
@@ -185,8 +217,9 @@ split by purpose between [MCP API](MCP_API.md) and
 [Joplin API Service](SERVICE.md).
 
 Actions-only options are rejected unless `--gpt-actions` is present. The
-Actions token file is required, re-read on each request, protected by strict
-POSIX permissions, and must differ from the Joplin and MCP credentials.
+Actions token file is required, re-read on each request, protected like every
+token file (POSIX mode or Windows ACL), and must differ from the Joplin and MCP
+credentials.
 
 ### `gpt-actions export-openapi --server-url URL --output PATH`
 
