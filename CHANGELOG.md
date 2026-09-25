@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Publish the GitHub Release before PyPI, whose file names can never be reused,
+  and skip PyPI when it already holds the version. A release interrupted before
+  or during GitHub publication, for example because a workflow change reached
+  `main` meanwhile, now leaves nothing public and is retried from the next
+  `main` commit; an unpublished draft from the failed attempt is replaced.
+
 ## [1.7.0] - 2026-09-24
 
 ### Added

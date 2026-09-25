@@ -49,26 +49,25 @@ their smoke checks. Never edit generated checksums or release notes.
 
 Merge or push the reviewed release commit to `main`. Do not create or move the
 version tag manually. The main-branch release workflow checks whether the exact
-version is already published independently in PyPI and GitHub Releases, reuses
-the CI gate, builds wheel and sdist once, and publishes them through PyPI
-Trusted Publishing. It then combines the same Python distributions with the
-remaining artifacts and creates the `vX.Y.Z` tag through the exact-target
-GitHub Release.
+version already has a published GitHub Release, reuses the CI gate, builds
+wheel and sdist once, and combines them with the remaining artifacts in the
+`vX.Y.Z` GitHub Release first. Only after that release succeeds does it publish
+the same wheel and sdist through PyPI Trusted Publishing, because PyPI never
+accepts a file name again once it was used.
 
 The workflow decides from that external state on every direct `main` push, not
-from changed paths or a `.version` diff. A matching publication in both
-destinations is a no-op that skips the CI gate and all publication jobs, even
-after later unreleased merges have moved `main` past the release tag; the
-existing release is then checked against its own tagged commit. If only PyPI is
-complete, the workflow verifies rebuilt distribution sizes and hashes against
-PyPI before recovering GitHub publication. A recoverable matching GitHub draft
-may be completed; conflicting package files, tags, release metadata, targets,
-or published assets stop the workflow for inspection. A published GitHub
-Release whose PyPI version is missing also stops any push other than its tagged
-commit, so a later `main` commit is never uploaded under that version. Confirm
-the PyPI wheel, sdist, and provenance plus the GitHub release body, complete
-asset inventory, and checksums after publication. The documentation site is
-deployed separately from the default branch by the Pages workflow.
+from changed paths or a `.version` diff. A published GitHub Release makes every
+later push a no-op, even after unreleased merges have moved `main` past its
+tag. Until then, each push retries the whole release from its own commit: a
+failure before or during GitHub publication leaves nothing public, and an
+unpublished draft from the failed attempt is replaced. When PyPI already holds
+the version, for example after an earlier interrupted release, the PyPI step is
+skipped and the existing files stay as they are. If the PyPI step fails after
+the GitHub Release was published, re-run that failed job while the run's
+artifacts are still available. Confirm the GitHub release body, complete asset
+inventory, and checksums plus the PyPI wheel, sdist, and provenance after
+publication. The documentation site is deployed separately from the default
+branch by the Pages workflow.
 
 ## Post-release
 
