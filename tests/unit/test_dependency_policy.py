@@ -90,6 +90,8 @@ def test_make_installs_locks_with_hashes_and_checks_drift() -> None:
     assert '--python-version "$$version"' in makefile
     ci = makefile.split("ci:", 1)[1].split("build:", 1)[0]
     assert "lock-platform-check" in ci
+    assert "test-dependency-updates" in ci
+    assert re.search(r"^DEPENDABOT_IMAGE := \S+@sha256:[0-9a-f]{64}$", makefile, re.MULTILINE)
     assert "dependency-snapshot:" in makefile
     for lock in LOCKS:
         assert lock in makefile
@@ -112,6 +114,11 @@ def test_dependabot_updates_python_and_actions_as_groups() -> None:
     assert "package-ecosystem: pip" in config
     assert "exclude-paths:\n      - pyproject.toml" in config
     assert "package-ecosystem: github-actions" in config
-    assert config.count("interval: weekly") == 2
+    assert "interval: daily" in config
+    assert "interval: weekly" in config
+    assert "dependency-type: all" in config
+    assert config.count("open-pull-requests-limit: 1") == 2
+    assert config.count("rebase-strategy: auto") == 2
     assert "python-dependencies:" in config
     assert "github-actions:" in config
+    assert config.count("applies-to: security-updates") == 2

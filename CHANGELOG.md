@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Maintain the complete Python dependency graph through one daily Dependabot
+  version-update group, including transitive packages across all four audience
+  locks. Keep one open version-update PR per ecosystem, automatically rebase
+  bot branches, and explicitly group security updates separately for Python
+  and GitHub Actions.
+- Run offline acceptance with an immutable upstream Dependabot pip updater in
+  Linux CI. Exercise real direct and shared transitive updates, security
+  grouping, repeatability, hash-verified installation, and incompatible graphs
+  using synthetic wheels; keep CI as a validator rather than another writer
+  of bot branches.
+
+### Security
+
+- Regenerate all four dependency locks through the normal whole-graph refresh,
+  removing vulnerable transitive versions that blocked otherwise unrelated
+  Dependabot pull requests.
+
 ### Fixed
 
 - Publish the GitHub Release before PyPI, whose file names can never be reused,

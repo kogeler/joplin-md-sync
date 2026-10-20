@@ -114,8 +114,16 @@ credentials.
 **Contract:** Dependabot MUST treat the requirements inputs as its pip
 manifests and update each matching generated lock, with `pyproject.toml`
 excluded from its pip manifests. Python and GitHub Actions updates MUST remain
-grouped per ecosystem. A Dependabot update MUST pass the same drift, platform,
-audit, and snapshot gates as a manual update.
+grouped per ecosystem, with separate catch-all groups for version and security
+updates. Python version updates MUST allow both direct and transitive
+dependencies across all four audiences, without a package-name allowlist, and
+run daily. Each ecosystem MUST have at most one open version-update PR and
+automatic rebasing enabled. Dependabot MUST remain the only automatic writer
+of dependency-update branches; CI MUST validate them without rewriting their
+inputs or locks. A Dependabot update MUST pass the same drift, platform,
+audit, snapshot, application, live-protocol, and distribution gates as a manual
+update. Security updates are a separate GitHub queue, so the version-update
+limit MUST NOT be represented as a limit on all security and version PRs.
 
 **Evidence:**
 
@@ -143,3 +151,24 @@ MUST leave other hosts' and legacy root-level environments untouched.
 - [`test_selector_reports_failure_without_identity_or_path_leaks`](../../tests/unit/test_venv_root.py) - `tests/unit/test_venv_root.py::test_selector_reports_failure_without_identity_or_path_leaks`
 - [`test_make_selects_only_this_host_environments_and_fails_closed`](../../tests/unit/test_venv_root.py) - `tests/unit/test_venv_root.py::test_make_selects_only_this_host_environments_and_fails_closed`
 - [`test_make_clean_preserves_other_host_and_legacy_environments`](../../tests/unit/test_venv_root.py) - `tests/unit/test_venv_root.py::test_make_clean_preserves_other_host_and_legacy_environments`
+
+### `DEP-010` - Dependency maintenance has executable acceptance evidence
+
+**Contract:** The Linux CI contract MUST run `make test-dependency-updates`
+using an immutable upstream Dependabot pip-updater image. After image and
+resolver bootstrap, acceptance MUST run without registry or GitHub network
+access, against synthetic installable wheels. It MUST pass the repository's
+actual allow and group rules to the upstream eligibility and grouping code,
+exercise the real parser and file updater for direct updates and, in both
+version and security modes, shared transitive updates, and verify compatibility with
+the production Make lock and freeze targets. Updated locks MUST install with
+hash verification into fresh environments and execute the updated dependency
+chain. A repeated update MUST produce no changes, and incompatible requirements
+MUST fail without changing the original inputs or locks. Local acceptance
+MUST NOT claim to test GitHub's hosted scheduler, PR creation, or rebasing.
+
+**Evidence:**
+
+- [`test_dependabot_updates_the_whole_shared_graph_and_is_idempotent`](../../tests_dependency/test_dependabot.py) - `tests_dependency/test_dependabot.py::test_dependabot_updates_the_whole_shared_graph_and_is_idempotent`
+- [`test_dependabot_updates_direct_input_and_lock_together`](../../tests_dependency/test_dependabot.py) - `tests_dependency/test_dependabot.py::test_dependabot_updates_direct_input_and_lock_together`
+- [`test_dependabot_rejects_incompatible_update_without_modifying_files`](../../tests_dependency/test_dependabot.py) - `tests_dependency/test_dependabot.py::test_dependabot_rejects_incompatible_update_without_modifying_files`

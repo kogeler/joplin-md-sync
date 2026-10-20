@@ -80,6 +80,7 @@ def test_tests_do_not_duplicate_owned_version_pins() -> None:
     test_paths = [
         *sorted((ROOT / "tests").rglob("*.py")),
         *sorted((ROOT / "tests_live").glob("test_*.py")),
+        *sorted((ROOT / "tests_dependency").glob("test_*.py")),
         *sorted((ROOT / "scripts" / "joplin_terminal_service" / "tests").glob("test_*.py")),
     ]
     for path in test_paths:

@@ -72,14 +72,15 @@ PYTEST_XDIST := -n $(TEST_WORKERS) --dist=worksteal
 COVERAGE_MIN ?= 87
 RUFF_OUTPUT_FORMAT ?=
 RUFF_OUTPUT := $(if $(RUFF_OUTPUT_FORMAT),--output-format=$(RUFF_OUTPUT_FORMAT))
-RUFF_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
-PYTHON_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
+RUFF_SOURCES := src tests tests_live tests_dependency scripts .github/scripts docs/site/hooks.py
+PYTHON_SOURCES := src tests tests_live tests_dependency scripts .github/scripts docs/site/hooks.py
 ACTIONLINT_IMAGE := docker.io/rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+DEPENDABOT_IMAGE := ghcr.io/dependabot/dependabot-updater-pip@sha256:27c0028263474e74f78d9254f14cbb82dd094c35666530eb284d8db17096c000
 CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs venv-lock lock refresh-dependencies freeze \
 	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	lock-platform-check test test-full test-live test-live-stdio-standalone test-service-installer audit dependency-snapshot \
+	lock-platform-check test test-full test-dependency-updates test-live test-live-stdio-standalone test-service-installer audit dependency-snapshot \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release clean
@@ -248,6 +249,12 @@ test-live-stdio-standalone: standalone venv-test ## native stdio acceptance agai
 test-service-installer: venv-test ## Linux headless service installer tests
 	$(PYTHON_TEST) -m unittest discover -s scripts/joplin_terminal_service/tests -v
 
+test-dependency-updates: venv-test venv-lock ## offline acceptance with the real Dependabot pip updater (Linux AMD64)
+	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }
+	DEPENDABOT_IMAGE="$(DEPENDABOT_IMAGE)" CONTAINER="$(CONTAINER)" \
+		LOCK_PYTHON="$(abspath $(PYTHON_LOCK))" \
+		$(PYTHON_TEST) -m pytest -q tests_dependency
+
 audit: venv-dev ## audit every non-empty exact dependency lock
 	$(PYTHON_DEV) -m pip_audit --strict --disable-pip \
 		--progress-spinner=off --requirement $(DEVELOPMENT_LOCK)
@@ -275,7 +282,7 @@ release-notes: ## generate the exact current-version GitHub release body
 check: lint typecheck bandit syntax test verify-release dependency-snapshot ## local cross-platform gates
 
 ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
-	freeze-check lock-platform-check docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
+	freeze-check lock-platform-check test-dependency-updates docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
 
 build: venv-package ## reproducibly build wheel and sdist into dist/
 	rm -rf dist build

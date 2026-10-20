@@ -45,6 +45,7 @@ make check
 make ci
 make freeze-check
 make test-service-installer
+make test-dependency-updates
 make test-live
 make package
 make smoke

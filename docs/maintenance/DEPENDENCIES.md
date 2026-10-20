@@ -49,8 +49,12 @@ package, and submission policy in
 
 ## Dependabot
 
-Dependabot reads every `.in` file as a native pip-compile manifest, updates its
-matching `.txt` lock, and groups all Python changes into one pull request.
+Dependabot reads every `.in` file as a native pip-compile manifest and updates
+its matching `.txt` lock. A common `allow: dependency-type: all` rule includes
+every direct and transitive Python dependency, including packages shared by
+several audience locks. Python version updates run daily and form one group
+across all four audiences, with a limit of one open version-update PR. GitHub
+Actions version updates run weekly in their own group and touch separate files.
 `pyproject.toml` is excluded from its pip manifests because it carries no tool
 dependency versions; Dependabot has never managed its build-backend pin, so
 update that pin manually together with the `setuptools` entry of the
@@ -61,6 +65,58 @@ pair as Dependabot's pip-compile updater, which is listed in
 [`python/helpers/requirements.txt`](https://github.com/dependabot/dependabot-core/blob/main/python/helpers/requirements.txt)
 of `dependabot-core`. When Dependabot moves to a newer pair, update the
 bootstrap and reproduce all four locks in the same change.
+
+### Security updates and branch ownership
+
+Enable Dependabot alerts, Dependabot security updates, and grouped security
+updates in the repository's security settings. These settings are external to
+the YAML configuration. The configuration also explicitly groups all Python
+security updates together, and all Actions security updates together, so
+grouping remains reviewable with the code.
+
+GitHub has separate version and security update queues. The one-PR version
+limit does not limit security PRs, and GitHub does not combine a security group
+with a version group. Both queues use the same bot and automatic rebasing.
+After a security PR merges, let Dependabot refresh the version PR and wait for
+CI on its new commits. Changes to the same locks can still require rebasing;
+grouping is not a guarantee against every merge conflict.
+
+Keep Dependabot as the sole automatic writer of update branches. CI checks
+their committed content without running a repair-and-push workflow. Avoid
+manual commits in bot branches, which interfere with automatic branch updates.
+Make any application compatibility changes in a normal PR. For a manual
+dependency update, regenerate the complete affected set from current `main`
+and let the bot refresh its outstanding PR afterward. An incompatible graph
+or failed application test leaves the update blocked for review; merging
+remains a maintainer action.
+
+### Executable acceptance
+
+Run `make test-dependency-updates` on Linux AMD64 with Podman or Docker. It
+uses the upstream pip-updater image pinned by `DEPENDABOT_IMAGE` in the
+Makefile; refresh that digest deliberately when upgrading the acceptance
+runtime, and run the same tests before accepting it. The first run downloads
+the image and bootstraps the locked environments. Test scenarios then run
+with networking disabled, synthetic local wheels, and no GitHub credentials.
+
+The tests pass the repository's actual allow and group rules into Dependabot,
+exercise its parser, requirements updater, and file updater, and verify:
+
+- Direct input and lock updates occur together.
+- Version and security updates include transitive packages in every audience
+  that uses them, including dependencies more than one level deep.
+- Regeneration agrees with `make lock` and `make freeze-check`, and repeating
+  an update does not create more changes.
+- Hash-verified installation into fresh environments executes the updated
+  dependency chain.
+- An incompatible audience rejects the proposed update without rewriting the
+  original files.
+
+These tests cover eligibility, grouping, and file generation. GitHub's hosted
+scheduler, actual PR creation, and rebasing are observable only after the
+configuration reaches the default branch. The normal application, live Joplin,
+platform, distribution, documentation, and vulnerability gates still assess
+each real update in CI.
 
 Dependabot pull requests keep `.version` unchanged and run the same drift,
 platform, audit, and snapshot gates as a manual update.
