@@ -70,6 +70,20 @@ locks, which are never hand-edited. Ordinary changes add notes under
 `## [Unreleased]` in `CHANGELOG.md` and keep `.version`; only deliberate
 release preparation advances it.
 
+### Pull request descriptions
+
+Never manually write or edit a pull request body, including text outside the
+CI-managed changelog block. Do not update it through `gh pr edit`, REST,
+GraphQL, scripts, or any other tool. When creating a PR, leave its body empty
+(`gh pr create --body ""`); do not use `--fill` or generate a description from
+commits.
+
+CI owns description updates through `.github/workflows/pr-body.yml`, using
+`CHANGELOG.md` as the source. To change the generated description, update the
+appropriate changelog section (normally `## [Unreleased]`), commit and push,
+then let CI update the PR. Never copy changelog text into the body yourself or
+edit the managed markers.
+
 ## Safe Markdown workflow
 
 ```bash

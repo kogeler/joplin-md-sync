@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Require agents to leave PR descriptions to CI and update `CHANGELOG.md`
+  instead of manually writing or editing PR bodies, including at creation.
 - Maintain the complete Python dependency graph through one daily Dependabot
   version-update group, including transitive packages across all four audience
   locks. Keep one open version-update PR per ecosystem, automatically rebase
