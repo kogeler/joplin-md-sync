@@ -137,6 +137,7 @@ def _updater(root: Path, env: dict[str, str], scenario: str) -> dict[str, object
             *shlex.split(container),
             "run",
             "--rm",
+            "--pull=never",
             "--user=0",
             "--network=none",
             "--cap-drop=all",

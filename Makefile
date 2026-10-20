@@ -251,6 +251,8 @@ test-service-installer: venv-test ## Linux headless service installer tests
 
 test-dependency-updates: venv-test venv-lock ## offline acceptance with the real Dependabot pip updater (Linux AMD64)
 	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }
+	@$(CONTAINER) image inspect $(DEPENDABOT_IMAGE) >/dev/null 2>&1 || \
+		$(CONTAINER) pull $(DEPENDABOT_IMAGE)
 	DEPENDABOT_IMAGE="$(DEPENDABOT_IMAGE)" CONTAINER="$(CONTAINER)" \
 		LOCK_PYTHON="$(abspath $(PYTHON_LOCK))" \
 		$(PYTHON_TEST) -m pytest -q tests_dependency
