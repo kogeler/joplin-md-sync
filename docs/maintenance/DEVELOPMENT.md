@@ -50,6 +50,7 @@ make typecheck
 make bandit
 make test
 make test-service-installer
+make test-dependency-updates
 make docs-build
 make docs-audit
 make docs-screenshots
@@ -57,8 +58,11 @@ make package
 make smoke
 ```
 
-`make ci` adds coverage, lock drift, strict docs, dependency submission,
-workflow lint, and vulnerability audit. Reusable CI follows that job with a
+`make ci` adds coverage, lock drift, offline acceptance with the real Dependabot
+pip updater, strict docs, dependency submission, workflow lint, and vulnerability
+audit. The updater acceptance requires Linux AMD64 and Podman or Docker; its
+image is downloaded before the offline scenarios run. Reusable CI follows that
+job with a
 separate Linux AMD64 `make test-live` gate. The live target downloads the
 checksum-pinned official Joplin Desktop 3.6.15 Debian binary, extracts it
 without installing system packages, and runs it with Xvfb, `HOME`, XDG paths,
