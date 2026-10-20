@@ -88,7 +88,7 @@ The supported boundaries and deployment choices are documented in
 From a checkout matching the deployed release, run the setup assistant:
 
 ```bash
-git clone --depth 1 --branch v1.7.0 \
+git clone --depth 1 --branch v1.7.1 \
   https://github.com/kogeler/joplin-md-sync.git
 cd joplin-md-sync
 python3 scripts/prepare_chatgpt_action.py
@@ -140,7 +140,7 @@ instead. Stdio opens no MCP or Actions port and therefore needs no bearer token
 for those interfaces; its Joplin token authenticates only to Joplin:
 
 ```bash
-pipx install "joplin-md-sync==1.7.0"
+pipx install "joplin-md-sync==1.7.1"
 export JOPLIN_TOKEN=...
 joplin-md-sync mcp serve
 ```
@@ -205,8 +205,8 @@ operating a Markdown workspace should also follow
 Python installations require CPython 3.13 or 3.14 on Windows or Linux:
 
 ```bash
-python -m pip install "joplin-md-sync==1.7.0"
-# or: pipx install "joplin-md-sync==1.7.0"
+python -m pip install "joplin-md-sync==1.7.1"
+# or: pipx install "joplin-md-sync==1.7.1"
 ```
 
 GitHub Releases also provide a standalone zipapp and native executables that

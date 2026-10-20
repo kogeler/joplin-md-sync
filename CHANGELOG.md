@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-20
+
 ### Changed
 
 - Require agents to leave PR descriptions to CI and update `CHANGELOG.md`
