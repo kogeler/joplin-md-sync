@@ -19,6 +19,7 @@ import pwd
 import re
 import secrets
 import selectors
+import shlex
 import shutil
 import signal
 import stat
@@ -289,15 +290,42 @@ def _env_int(env: Mapping[str, str], name: str, fallback: int) -> int:
         raise ToolError(f"{name} must be an integer, got {raw!r}") from None
 
 
+class InstallerArgumentParser(argparse.ArgumentParser):
+    def parse_args(
+        self, args: Sequence[str] | None = None, namespace: argparse.Namespace | None = None
+    ) -> argparse.Namespace:
+        tokens = list(sys.argv[1:] if args is None else args)
+        result = super().parse_args(tokens, namespace)
+        result.explicit_options = set(result.environment_options)
+        for action in self._actions:
+            if any(token.split("=", 1)[0] in action.option_strings for token in tokens):
+                result.explicit_options.add(action.dest)
+        return result
+
+
 def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParser:
     values = os.environ if env is None else env
-    parser = argparse.ArgumentParser(
+    parser = InstallerArgumentParser(
+        allow_abbrev=False,
         description=(
             "Install an isolated Joplin Terminal with any supported sync target, install "
             "the released joplin-md-sync service with generated Actions and MCP "
             "credentials, create systemd user services, or purge the complete managed "
             "local installation."
-        )
+        ),
+    )
+    parser.set_defaults(
+        environment_options={
+            name
+            for name, variable in (
+                ("api_port", "JOPLIN_API_PORT"),
+                ("mcp_port", "JOPLIN_MCP_PORT"),
+                ("sync_interval", "JOPLIN_SYNC_INTERVAL"),
+                ("profile_dir", "JOPLIN_PROFILE_DIR"),
+                ("joplin_prefix", "JOPLIN_INSTALL_PREFIX"),
+            )
+            if variable in values
+        }
     )
     parser.add_argument(
         "--sync-target",
@@ -314,6 +342,11 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
         "--sync-username",
         default=values.get("JOPLIN_SYNC_USERNAME"),
         help="Nextcloud/WebDAV username, Joplin Server email, or S3 access key",
+    )
+    parser.add_argument(
+        "--sync-username-file",
+        default=values.get("JOPLIN_SYNC_USERNAME_FILE"),
+        help="protected one-line username or S3 access-key file; excludes --sync-username",
     )
     parser.add_argument(
         "--sync-secret-file",
@@ -381,7 +414,8 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     )
     parser.add_argument(
         "--allow-remote-mcp",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help="bind the authenticated combined adapter to 0.0.0.0 instead of loopback",
     )
     parser.add_argument(
@@ -513,12 +547,15 @@ def selected_sync_target(args: argparse.Namespace) -> SyncTargetSpec:
 
 def validate_sync_args(args: argparse.Namespace) -> None:
     target = selected_sync_target(args)
+    if args.sync_username and args.sync_username_file:
+        raise ToolError("use exactly one of --sync-username and --sync-username-file")
+    has_username = bool(args.sync_username or args.sync_username_file)
     if target.location_label and not args.sync_location:
         raise ToolError(
             f"--sync-location or JOPLIN_SYNC_LOCATION is required for {target.label} "
             f"({target.location_label})"
         )
-    if target.username_label and not target.credentials_optional and not args.sync_username:
+    if target.username_label and not target.credentials_optional and not has_username:
         raise ToolError(
             f"--sync-username or JOPLIN_SYNC_USERNAME is required for {target.label} "
             f"({target.username_label})"
@@ -530,9 +567,9 @@ def validate_sync_args(args: argparse.Namespace) -> None:
                 f"non-interactive {target.label} installation"
             )
     if target.credentials_optional:
-        if args.sync_secret_file and not args.sync_username:
+        if args.sync_secret_file and not has_username:
             raise ToolError("WebDAV --sync-secret-file requires --sync-username")
-        if args.non_interactive and args.sync_username and not args.sync_secret_file:
+        if args.non_interactive and has_username and not args.sync_secret_file:
             raise ToolError("non-interactive WebDAV credentials require --sync-secret-file")
     if target.browser_auth or target.saml_auth:
         if args.non_interactive:
@@ -545,11 +582,11 @@ def validate_sync_args(args: argparse.Namespace) -> None:
             raise ToolError("filesystem --sync-location must be an existing directory")
         if not os.access(location, os.W_OK | os.X_OK):
             raise ToolError("filesystem --sync-location must be writable and searchable")
-        if args.sync_username or args.sync_secret_file:
+        if has_username or args.sync_secret_file:
             raise ToolError("filesystem sync does not accept static credentials")
     elif target.target_id in (5, 6, 9, 11):
         validate_http_url(args.sync_location, "--sync-location")
-        if target.target_id == 11 and (args.sync_username or args.sync_secret_file):
+        if target.target_id == 11 and (has_username or args.sync_secret_file):
             raise ToolError("Joplin Server SAML does not accept static credentials")
     elif target.target_id == 8:
         if not args.s3_region:
@@ -557,7 +594,7 @@ def validate_sync_args(args: argparse.Namespace) -> None:
         endpoint = args.s3_endpoint or "https://s3.amazonaws.com/"
         validate_http_url(endpoint, "--s3-endpoint")
     elif (
-        any(value for value in (args.sync_location, args.sync_username, args.sync_secret_file))
+        any(value for value in (args.sync_location, has_username, args.sync_secret_file))
         or args.s3_endpoint is not None
         or args.s3_region is not None
         or args.s3_force_path_style is not None
@@ -646,13 +683,14 @@ class CommandRunner:
         timeout: float = COMMAND_TIMEOUT,
         check: bool = True,
         sensitive_output: bool = False,
+        input_text: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         command = [os.fspath(value) for value in args]
         LOG.debug("running: %s", safe_command(command, secrets))
         try:
             result = subprocess.run(
                 command,
-                stdin=subprocess.DEVNULL,
+                **({"stdin": subprocess.DEVNULL} if input_text is None else {"input": input_text}),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -1565,10 +1603,18 @@ def write_setting(
     *,
     secret: bool = False,
 ) -> None:
+    # Use the supported CLI import interface: even an access key or a username
+    # must not become part of the process argument vector. Import takes typed
+    # JSON, unlike the positional config command which converts CLI strings.
+    typed_value: str | int | bool = value
+    if name in ("sync.target", "sync.interval", "api.port"):
+        typed_value = int(value)
+    elif name.endswith(".forcePathStyle"):
+        typed_value = value == "true"
     runner.run(
-        joplin_command(paths, "config", name, value),
-        secrets=(value,) if secret else (),
-        sensitive_output=secret,
+        joplin_command(paths, "config", "--import"),
+        input_text=json.dumps({name: typed_value}),
+        sensitive_output=True,
     )
 
 
@@ -1673,13 +1719,16 @@ def resolve_sync_configuration(
     getpass_fn: Callable[[str], str] = getpass.getpass,
 ) -> SyncConfiguration:
     target = selected_sync_target(args)
+    username = args.sync_username or ""
+    if args.sync_username_file:
+        username = load_secret_file(args.sync_username_file, "sync username")
+    redactor.add(username)
     settings: list[SyncSetting] = []
     prefix = f"sync.{target.target_id}"
     if target.target_id == 2:
         settings.append(SyncSetting(f"{prefix}.path", str(resolved_path(args.sync_location))))
     elif target.target_id in (5, 6, 9):
         settings.append(SyncSetting(f"{prefix}.path", args.sync_location.rstrip("/")))
-        username = args.sync_username or ""
         settings.append(SyncSetting(f"{prefix}.username", username))
         if target.credentials_optional and not username:
             secret = ""
@@ -1711,7 +1760,7 @@ def resolve_sync_configuration(
                     (args.s3_endpoint or "https://s3.amazonaws.com/").rstrip("/") + "/",
                 ),
                 SyncSetting(f"{prefix}.region", args.s3_region),
-                SyncSetting(f"{prefix}.username", args.sync_username),
+                SyncSetting(f"{prefix}.username", username),
                 SyncSetting(f"{prefix}.password", secret, secret=True),
                 SyncSetting(
                     f"{prefix}.forcePathStyle",
@@ -1767,12 +1816,29 @@ def configure_profile(
 
 def run_sync(runner: CommandRunner, paths: InstallPaths, label: str) -> None:
     LOG.info("%s", label)
-    runner.run_long(
-        joplin_command(paths, "sync"),
-        heartbeat_label=label,
-        timeout=SYNC_TIMEOUT,
-        sensitive_output=True,
-    )
+    # Joplin can return zero even when its synchronizer reports an error. Its
+    # CLI has no structured sync result, so use a known report language only
+    # for this command and restore the operator's locale even on failure.
+    locale = read_setting(runner, paths, "locale").split(" ", 1)[0]
+    if locale != "en_GB":
+        write_setting(runner, paths, "locale", "en_GB")
+    try:
+        result = runner.run_long(
+            joplin_command(paths, "sync"),
+            heartbeat_label=label,
+            timeout=SYNC_TIMEOUT,
+            sensitive_output=True,
+        )
+        report = result.stdout + "\n" + result.stderr
+        if (
+            "Completed:" not in report
+            or "Last error:" in report
+            or "Sync target must be upgraded" in report
+        ):
+            raise ToolError(f"{label} did not complete successfully; service startup is refused")
+    finally:
+        if locale != "en_GB":
+            write_setting(runner, paths, "locale", locale)
 
 
 def run_browser_authenticated_sync(
@@ -2232,7 +2298,7 @@ def install_unit(
     supervisor: Path,
     node_path: Path,
 ) -> bool:
-    extra_write_paths = (
+    extra_write_paths = getattr(args, "extra_write_paths", ()) or (
         (resolved_path(args.sync_location),)
         if args.sync_target == "filesystem" and args.sync_location
         else ()
@@ -2544,6 +2610,81 @@ def dry_run_purge(paths: InstallPaths, env: Mapping[str, str]) -> None:
     LOG.info("dry-run: remote sync data and the user lingering setting would be unchanged")
 
 
+def installed_service_options(paths: InstallPaths) -> dict[str, object]:
+    """Read only our systemd units, never Joplin's profile or credential values."""
+
+    def directive(path: Path, name: str) -> list[str]:
+        lines = [
+            line[len(name) + 1 :]
+            for line in path.read_text().splitlines()
+            if line.startswith(name + "=")
+        ]
+        if len(lines) != 1:
+            raise ToolError(f"cannot recover {name} from installed unit {path}")
+        try:
+            return [value.replace("%%", "%") for value in shlex.split(lines[0])]
+        except ValueError:
+            raise ToolError(f"invalid installed unit {path}") from None
+
+    backend = directive(paths.unit_path, "ExecStart")
+    adapter = directive(paths.adapter_unit_path, "ExecStart")
+
+    def value(command: list[str], option: str) -> str:
+        try:
+            if command.count(option) != 1:
+                raise ValueError
+            return command[command.index(option) + 1]
+        except (IndexError, ValueError):
+            raise ToolError(f"installed units lack an unambiguous {option}") from None
+
+    host = value(adapter, "--host")
+    if host not in ("127.0.0.1", "0.0.0.0") or (
+        (host == "0.0.0.0") != ("--allow-remote-mcp" in adapter)
+    ):
+        raise ToolError("installed adapter has an unsupported listener configuration")
+    try:
+        api_port = int(value(backend, "--api-port"))
+        if api_port != int(value(adapter, "--port")):
+            raise ToolError("installed service API ports disagree")
+        options: dict[str, object] = {
+            "api_port": api_port,
+            "mcp_port": int(value(adapter, "--mcp-port")),
+            "sync_interval": int(value(backend, "--sync-interval")),
+            "profile_dir": value(backend, "--profile-dir"),
+            "joplin_prefix": str(Path(value(backend, "--joplin-path")).parent.parent),
+            "allow_remote_mcp": host == "0.0.0.0",
+        }
+    except ValueError:
+        raise ToolError("installed units contain invalid port or interval values") from None
+    # Preserve filesystem sync sandbox exceptions when regenerating the backend.
+    if any(line.startswith("ReadWritePaths=") for line in paths.unit_path.read_text().splitlines()):
+        protected = {str(options["profile_dir"]), str(Path(value(backend, "--lock-file")).parent)}
+        options["extra_write_paths"] = tuple(
+            Path(path)
+            for path in directive(paths.unit_path, "ReadWritePaths")
+            if path not in protected
+        )
+    else:
+        # Older snap units have no mount namespace. Recover a filesystem
+        # target through the public CLI before enabling the current sandbox.
+        options["recover_filesystem_target"] = True
+    return options
+
+
+def backup_upgrade_files(paths: InstallPaths) -> Path:
+    """Retain executable/service files, not the database or sync credentials."""
+    paths.state_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    backup = Path(tempfile.mkdtemp(prefix="upgrade-backup-", dir=paths.state_dir))
+    for source in (paths.mcp_binary, paths.unit_path, paths.adapter_unit_path, paths.deploy_dir):
+        target = backup / source.name
+        if source.is_dir():
+            shutil.copytree(source, target, symlinks=True)
+        elif source.is_file() or source.is_symlink():
+            shutil.copy2(source, target, follow_symlinks=False)
+    LOG.info("previous executable and service files retained in %s", backup)
+    return backup
+
+
 class Installer:
     def __init__(
         self,
@@ -2559,8 +2700,10 @@ class Installer:
         self.input_fn = input_fn
         self.getpass_fn = getpass_fn
         self.redactor = SecretRedactor() if redactor is None else redactor
+        self.redactor.add(args.sync_username)
         self.runner = CommandRunner(self.redactor, self.env)
         self.paths = build_paths(args, self.env)
+        self._upgrade_changed = False
 
     def _restart_and_smoke(
         self,
@@ -2629,11 +2772,21 @@ class Installer:
             joplin_version,
             mcp_version,
         )
+        self._upgrade_changed = True
         if service_active(self.runner, dependencies.systemctl, ADAPTER_SERVICE_NAME):
             systemctl_command(self.runner, dependencies.systemctl, "stop", ADAPTER_SERVICE_NAME)
         if service_active(self.runner, dependencies.systemctl, SERVICE_NAME):
             systemctl_command(self.runner, dependencies.systemctl, "stop", SERVICE_NAME)
         with ProfileLock(self.paths.lock_file):
+            backup = backup_upgrade_files(self.paths)
+            # npm otherwise overwrites the only copy of the previous executable.
+            # Move only the isolated managed package tree; never copy a profile.
+            if (
+                self.paths.npm_prefix.is_dir()
+                and installed_joplin_version(self.runner, dependencies.npm, self.paths.npm_prefix)
+                != joplin_version
+            ):
+                os.replace(self.paths.npm_prefix, backup / "npm")
             installed_joplin = install_or_update_joplin(
                 self.runner,
                 dependencies,
@@ -2654,6 +2807,20 @@ class Installer:
             )
             configure_mcp_auth_token(self.paths, mcp_auth_token)
             configure_gpt_actions_token(self.paths, gpt_actions_token)
+            if getattr(self.args, "recover_filesystem_target", False):
+                target = read_setting(self.runner, self.paths, "sync.target").split(" ", 1)[0]
+                if target == "2":
+                    self.args.extra_write_paths = (
+                        resolved_path(read_setting(self.runner, self.paths, "sync.2.path")),
+                    )
+            if "api_port" in self.args.explicit_options:
+                write_setting(self.runner, self.paths, "api.port", str(self.args.api_port))
+            if "sync_interval" in self.args.explicit_options:
+                write_setting(
+                    self.runner, self.paths, "sync.interval", str(self.args.sync_interval)
+                )
+            supervisor, _common = deploy_supervisor(self.paths)
+            install_unit(self.paths, self.args, supervisor, dependencies.node)
             install_adapter_unit(self.paths, self.args)
         systemctl_command(self.runner, dependencies.systemctl, "daemon-reload")
         if self.args.no_start_service:
@@ -2663,6 +2830,21 @@ class Installer:
         LOG.info("Joplin Terminal and joplin-md-sync service upgrade completed")
 
     def run(self) -> None:
+        if (
+            self.args.upgrade
+            and self.paths.unit_path.is_file()
+            and self.paths.adapter_unit_path.is_file()
+        ):
+            for name, value in installed_service_options(self.paths).items():
+                if name not in self.args.explicit_options:
+                    setattr(self.args, name, value)
+                elif name in ("profile_dir", "joplin_prefix") and resolved_path(
+                    getattr(self.args, name)
+                ) != resolved_path(str(value)):
+                    raise ToolError(
+                        "--upgrade cannot relocate the installed profile or prefix; use a full installation"
+                    )
+            self.paths = build_paths(self.args, self.env)
         validate_args(self.args)
         if self.args.purge:
             LOG.info("Joplin profile selected for purge: %s", self.paths.profile_dir)
@@ -2699,7 +2881,20 @@ class Installer:
             self.redactor,
         )
         if self.args.upgrade:
-            self._upgrade(dependencies, mcp_auth_token, gpt_actions_token)
+            try:
+                self._upgrade(dependencies, mcp_auth_token, gpt_actions_token)
+            except (ToolError, OSError, KeyboardInterrupt):
+                # A failure of the adapter must not leave the new backend
+                # restarting or modifying a possibly migrated profile.
+                if self._upgrade_changed:
+                    for unit in (ADAPTER_SERVICE_NAME, SERVICE_NAME):
+                        stop_after_startup_failure(self.runner, dependencies.systemctl, unit)
+                    LOG.error(
+                        "upgrade failed; any previous files remain under %s/upgrade-backup-*; "
+                        "services are stopped, profile rollback is never automatic",
+                        self.paths.state_dir,
+                    )
+                raise
             report_service_token_paths(self.paths)
             del mcp_auth_token
             del gpt_actions_token

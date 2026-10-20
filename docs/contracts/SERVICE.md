@@ -48,6 +48,8 @@ from each other and from the Joplin token.
 - [`test_child_environment_removes_every_service_secret`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_child_environment_removes_every_service_secret`
 - [`test_service_tokens_are_generated_and_preserved`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_service_tokens_are_generated_and_preserved`
 - [`test_duplicate_existing_service_tokens_are_rejected`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_duplicate_existing_service_tokens_are_rejected`
+- [`test_settings_use_stdin_not_process_arguments_and_preserve_json_types`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_settings_use_stdin_not_process_arguments_and_preserve_json_types`
+- [`test_s3_access_key_file_is_protected_and_never_a_child_argument`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_s3_access_key_file_is_protected_and_never_a_child_argument`
 
 ### `SVC-004` - Sync targets map to explicit Joplin settings
 
@@ -56,6 +58,9 @@ Joplin setting set. Browser-authorized targets MUST persist and verify browser
 authentication before service start; password-authorized and S3 targets MUST
 require their complete non-interactive credentials. Existing conflicting
 profile configuration MUST require explicit interactive or force approval.
+Initial sync MUST prove a completed report without synchronization errors,
+not merely a zero process exit code. Custom S3 endpoint paths, regions,
+bucket names, credentials, and path-style policy MUST reach the real driver.
 
 **Evidence:**
 
@@ -63,6 +68,8 @@ profile configuration MUST require explicit interactive or force approval.
 - [`test_s3_maps_every_driver_setting`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_s3_maps_every_driver_setting`
 - [`test_browser_sync_requires_persisted_auth_before_verification`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_browser_sync_requires_persisted_auth_before_verification`
 - [`test_noninteractive_conflict_requires_force`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_noninteractive_conflict_requires_force`
+- [`test_sync_rejects_zero_exit_with_error_or_incomplete_report_and_restores_locale`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_sync_rejects_zero_exit_with_error_or_incomplete_report_and_restores_locale`
+- [`test_install_configure_sync_and_download_with_custom_endpoint`](../../scripts/joplin_terminal_service/acceptance/test_s3.py) - `scripts/joplin_terminal_service/acceptance/test_s3.py::RealJoplinS3Tests::test_install_configure_sync_and_download_with_custom_endpoint`
 
 ### `SVC-005` - Release downloads are exact and verified
 
@@ -84,13 +91,20 @@ binaries or malformed release tags. Installation MUST be idempotent.
 independently without re-requesting stored sync secrets, preserve protected
 service tokens, restart both units in dependency order, and require bounded
 Joplin, MCP, and Actions smoke checks. Failed health checks MUST stop the
-restart loop and retain recoverable prior files.
+restart loop of both units and retain recoverable prior executable/service
+files without copying or automatically downgrading a Joplin profile. Upgrade
+MUST preserve installed paths, ports, interval, listener policy and filesystem
+sandbox exceptions unless explicitly overridden, and refresh both units and
+supervisor helpers. Unreadable or inconsistent installed units MUST fail
+before service changes.
 
 **Evidence:**
 
 - [`test_upgrade_updates_both_without_resolving_sync_secrets`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::DryRunTests::test_upgrade_updates_both_without_resolving_sync_secrets`
 - [`test_upgrade_restarts_both_services_and_smokes_both_api_routes`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_restarts_both_services_and_smokes_both_api_routes`
 - [`test_failed_upgrade_healthcheck_stops_restart_loop`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_failed_upgrade_healthcheck_stops_restart_loop`
+- [`test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`
+- [`test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`
 
 ### `SVC-007` - Purge is explicit, scoped, and idempotent
 

@@ -231,6 +231,7 @@ variable.
 | `--sync-target TARGET` | One of `filesystem`, `onedrive`, `nextcloud`, `webdav`, `dropbox`, `s3`, `joplin-server`, `joplin-cloud`, `joplin-server-saml`. Selects the Joplin driver configured by a full installation. | **none**; required except with `--upgrade` or `--purge` | `JOPLIN_SYNC_TARGET` |
 | `--sync-location VALUE` | Existing absolute directory for `filesystem`; bucket name for `s3`; absolute HTTP(S) URL for Nextcloud, WebDAV, Joplin Server, or SAML. URLs may not contain credentials, query strings, or fragments. | **none**; required for those targets | `JOPLIN_SYNC_LOCATION` |
 | `--sync-username VALUE` | Nextcloud or WebDAV username, Joplin Server account email, or S3 access key. It is invalid for browser targets, SAML, and filesystem sync. | **none**; required for Nextcloud, Joplin Server, and S3; optional for WebDAV | `JOPLIN_SYNC_USERNAME` |
+| `--sync-username-file PATH` | Protected one-line username or S3 access-key file. Use this for S3 so the access key never enters shell history or process arguments. Mutually exclusive with `--sync-username` / `JOPLIN_SYNC_USERNAME`. | **none** | `JOPLIN_SYNC_USERNAME_FILE` |
 | `--sync-secret-file PATH` | Reads the Nextcloud/WebDAV/Joplin Server password or S3 secret key from a protected one-line file. The value is never printed or retained in an installer-created password file. | **none**; an interactive full install uses a hidden prompt when the selected target needs a secret | `JOPLIN_SYNC_SECRET_FILE` |
 | `--e2ee-password-file PATH` | Reads the existing Joplin E2EE password from a protected one-line file. It is read only when the synchronized data reports E2EE enabled and the profile has no working key cache. It never enables E2EE or creates a key. | **none**; if needed, interactive mode uses a hidden prompt | `JOPLIN_E2EE_PASSWORD_FILE` |
 | `--s3-endpoint URL` | Absolute HTTP(S) endpoint for AWS S3 or an S3-compatible service. Valid only with `--sync-target s3`. | `https://s3.amazonaws.com/` | `JOPLIN_S3_ENDPOINT` |
@@ -263,7 +264,7 @@ newest stable releases.
 
 | Option | Effect | Default |
 | --- | --- | --- |
-| `--upgrade` | Requires an existing managed installation. Updates Joplin and joplin-md-sync, preserves the profile and service tokens, rewrites the adapter unit if needed, restarts both services, and runs smoke checks. It does not ask for or change sync/E2EE configuration. | disabled |
+| `--upgrade` | Updates both programs, supervisor helpers and both units. Preserves installed paths, ports, listener policy, filesystem sandbox exceptions and service tokens unless explicitly overridden. Retains previous executable/service files. Does not request sync/E2EE secrets. | disabled |
 | `--dry-run` | Validates the selected mode and arguments and prints a redacted plan. It does not prompt, read secret files, download, write, stop, enable, start, or purge anything. | disabled |
 | `--non-interactive` | Prohibits every prompt. Static targets must receive all required public values and secret-file paths. OneDrive, Dropbox, Joplin Cloud, and SAML cannot use this mode. | disabled |
 | `--force-reconfigure` | Allows a full install to replace a conflicting existing sync target or public target setting without asking for confirmation. It does not delete the profile. | disabled |
@@ -271,6 +272,7 @@ newest stable releases.
 | `--no-enable-service` | Installs the units but does not enable automatic startup. Unless `--no-start-service` is also set, the services are still started for the current session and smoke-tested. | services are enabled |
 | `--no-start-service` | Leaves both services stopped after installation or upgrade and skips live API/MCP/Actions smoke tests. Any service stopped for exclusive profile access remains stopped. | services are started/restarted and smoke-tested |
 | `--allow-remote-mcp` | Binds the authenticated combined MCP and Actions listener to `0.0.0.0` instead of `127.0.0.1`. It never exposes the Joplin Data API. Firewall and reverse-proxy policy remain the operator's responsibility. | loopback only |
+| `--no-allow-remote-mcp` | Explicitly returns the adapter to loopback, including when upgrading a remote-MCP installation. | loopback on first install; installed policy preserved on upgrade |
 | `--purge` | Stops and disables both services, then permanently removes only installer-managed local units, binaries, npm tree, profile, tokens, state, and backups. Remote sync data and lingering are unchanged. | disabled |
 | `--yes` | Skips the exact `PURGE` confirmation. Valid only with `--purge`; non-interactive purge requires it. | disabled |
 | `--verbose` | Enables redacted debug logging. Sensitive Joplin command output remains suppressed. | normal informational logging |
@@ -336,7 +338,7 @@ python3 install_joplin_terminal.py --sync-target webdav --sync-location 'https:/
 python3 install_joplin_terminal.py --sync-target joplin-server --sync-location 'https://joplin.example.com' --sync-username 'user@example.com'
 
 # AWS S3; add --s3-endpoint and --s3-force-path-style for compatible services
-python3 install_joplin_terminal.py --sync-target s3 --sync-location notes-bucket --sync-username ACCESS_KEY --s3-region eu-north-1
+python3 install_joplin_terminal.py --sync-target s3 --sync-location notes-bucket --sync-username-file /protected/s3-access-key --s3-region eu-north-1
 
 # Joplin Server with SAML enabled
 python3 install_joplin_terminal.py --sync-target joplin-server-saml --sync-location 'https://joplin.example.com'
@@ -345,6 +347,47 @@ python3 install_joplin_terminal.py --sync-target joplin-server-saml --sync-locat
 Omit `--sync-username` for an anonymous WebDAV endpoint. The remote directory
 or bucket must be the intended Joplin target; compare it with an already
 working Joplin client before the first sync.
+
+### Custom S3-compatible provider
+
+Use an existing private bucket and dedicated S3 credentials with permission
+to list that bucket and read, write, and delete its objects. Store both keys
+in owner-only `0600` one-line files, never in commands, logs, tickets, or chat.
+Supply the endpoint and region specified by your provider, for example:
+
+```bash
+python3 install_joplin_terminal.py \
+  --sync-target s3 \
+  --sync-location YOUR_BUCKET_NAME \
+  --s3-endpoint https://s3.region-1.storage.example.com \
+  --s3-region region-1 \
+  --sync-username-file /protected/s3-access-key \
+  --sync-secret-file /protected/s3-secret-key \
+  --non-interactive
+```
+
+Replace the example endpoint, region, and bucket with your provider's actual
+values. The endpoint is the provider's S3 API address, not a bucket-specific
+URL, console URL, or `s3://` location. Follow the provider's documentation for
+the region value and addressing mode: use `--s3-force-path-style` when required,
+or `--no-s3-force-path-style` for virtual-hosted-style addressing. Path style
+is disabled by default; the required mode varies by provider. See also
+[Joplin's general S3 guide](https://joplinapp.org/help/apps/sync/s3/).
+The installer does not create buckets, change access policies, or disable sync's
+wipe-out fail-safe. Initial sync must report completion without an error;
+Joplin's exit code alone is insufficient. The installer temporarily selects
+English for this report and restores the previous profile locale afterward.
+
+Do not purge an existing sync setup before deciding what data to retain.
+First finish sync on the authoritative client and make a verified JEX export
+through Joplin's supported export command/UI. Retain the old sync-target data
+and local profile until the replacement has been checked. For an intentionally
+fresh setup, select a new dedicated `--profile-dir` and an empty dedicated
+bucket; existing notes are **not** automatically migrated. To preserve notes,
+plan the import/migration and coordinate every other client before changing
+its target. Never copy/edit Joplin's database or sync-target files by hand.
+`--purge` permanently deletes the selected local profile; it is not a
+migration tool.
 
 ### Password files
 
@@ -364,9 +407,10 @@ unset secret
 Pass the file path, run the installer, then remove the temporary file. Joplin
 persists the target credential and unlocked E2EE key cache inside its protected
 profile for unattended restarts. The installer never accepts raw sync or E2EE
-passwords in command-line arguments or environment variables. Joplin's own
-`config` command still receives a static target password as an argument because
-Joplin 3.6.2 provides no secret-stdin interface; installer logs redact it.
+passwords in command-line arguments or environment variables. Settings are
+passed through Joplin's supported `config --import` over stdin as typed JSON.
+Passwords and access keys never enter child process arguments or temporary
+settings files. Sensitive command responses are suppressed.
 
 The Joplin API token, Actions bearer token, and MCP bearer token are separate
 service credentials. The installer generates the Actions and MCP values with
@@ -667,11 +711,23 @@ python3 install_joplin_terminal.py \
 ```
 
 Use `--dry-run` to preview resolution targets without modifying the
-installation. `--no-start-service` deliberately leaves both services stopped
-and skips runtime smoke tests. Custom installations must repeat their original
-`--api-port`, `--mcp-port`, `--joplin-prefix`, `--profile-dir`, and relevant XDG
-overrides so upgrade locates the existing installation and checks the correct
-listeners. `--upgrade` refuses to operate when either installed unit is absent.
+installation. `--no-start-service` leaves both services stopped and skips
+runtime smoke tests. Installed units supply the original ports, interval,
+installation prefix, profile, remote-MCP policy, and filesystem sandbox
+exceptions. Explicit CLI/environment overrides take precedence. Keep the same
+XDG overrides so the installer locates the units and protected credentials.
+Malformed or inconsistent units are refused before services are stopped.
+Profile/prefix relocation requires a full installation, not `--upgrade`.
+
+Upgrade retains the previous adapter executable, both units, and supervisor
+helpers in a private `upgrade-backup-*` directory under managed state. If
+Joplin changes version, its previous isolated npm tree is moved there too.
+Backups survive successful upgrades and are removed by explicit managed
+purge. Installation or smoke-check failure stops both services and logs the
+backup location. The profile is never copied or automatically downgraded:
+Joplin may migrate its schema, so restoring executables is not proof of a
+safe profile rollback. Keep a verified JEX export before deliberate
+downgrades. `--upgrade` refuses when either installed unit is absent.
 
 ## Removal
 

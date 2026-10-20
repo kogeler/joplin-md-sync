@@ -80,7 +80,7 @@ CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/n
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs venv-lock lock refresh-dependencies freeze \
 	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	lock-platform-check test test-full test-dependency-updates test-live test-live-stdio-standalone test-service-installer audit dependency-snapshot \
+	lock-platform-check test test-full test-dependency-updates test-live test-live-stdio-standalone test-service-installer test-service-live audit dependency-snapshot \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release clean
@@ -248,6 +248,13 @@ test-live-stdio-standalone: standalone venv-test ## native stdio acceptance agai
 
 test-service-installer: venv-test ## Linux headless service installer tests
 	$(PYTHON_TEST) -m unittest discover -s scripts/joplin_terminal_service/tests -v
+
+test-service-live: ## real Terminal installation and offline S3 round trip in an isolated container
+	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }
+	$(CONTAINER) build -f scripts/joplin_terminal_service/acceptance/Dockerfile \
+		-t localhost/joplin-service-acceptance scripts/joplin_terminal_service
+	$(CONTAINER) run --rm --network=none \
+		-v "$(CURDIR):/workspace:ro" localhost/joplin-service-acceptance
 
 test-dependency-updates: venv-test venv-lock ## offline acceptance with the real Dependabot pip updater (Linux AMD64)
 	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }

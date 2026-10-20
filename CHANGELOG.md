@@ -21,12 +21,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- Pass Terminal settings, including sync passwords and S3 keys, through
+  Joplin's stdin JSON import instead of child process arguments. Support a
+  protected access-key/username file for unattended S3 setup.
 - Regenerate all four dependency locks through the normal whole-graph refresh,
   removing vulnerable transitive versions that blocked otherwise unrelated
   Dependabot pull requests.
 
 ### Fixed
 
+- Preserve custom headless-service ports, paths, remote-MCP policy and filesystem
+  sandbox exceptions during upgrades; deploy current supervisor helpers and both
+  units, retain prior executable/service files, and stop both services on failure.
+- Reject failed or incomplete initial sync reports even when Joplin exits zero.
+  Add real Terminal installation and signed S3 upload/download acceptance to CI,
+  and document custom S3-compatible providers and safe sync-target replacement
+  boundaries.
 - Publish the GitHub Release before PyPI, whose file names can never be reused,
   and skip PyPI when it already holds the version. A release interrupted before
   or during GitHub publication, for example because a workflow change reached

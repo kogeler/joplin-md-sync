@@ -43,6 +43,7 @@ def test_service_installer_reference_covers_every_environment_override() -> None
         "JOPLIN_SYNC_TARGET",
         "JOPLIN_SYNC_LOCATION",
         "JOPLIN_SYNC_USERNAME",
+        "JOPLIN_SYNC_USERNAME_FILE",
         "JOPLIN_SYNC_SECRET_FILE",
         "JOPLIN_S3_ENDPOINT",
         "JOPLIN_S3_REGION",
