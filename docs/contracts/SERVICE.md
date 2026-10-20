@@ -58,6 +58,10 @@ Joplin setting set. Browser-authorized targets MUST persist and verify browser
 authentication before service start; password-authorized and S3 targets MUST
 require their complete non-interactive credentials. Existing conflicting
 profile configuration MUST require explicit interactive or force approval.
+S3 MUST ask for both missing access and secret keys with hidden interactive
+prompts by default; credential files MUST remain optional and replace only
+their corresponding prompts. Non-interactive mode MUST fail without prompting
+when either credential is absent.
 Initial sync MUST prove a completed report without synchronization errors,
 not merely a zero process exit code. Custom S3 endpoint paths, regions,
 bucket names, credentials, and path-style policy MUST reach the real driver.
@@ -68,6 +72,10 @@ bucket names, credentials, and path-style policy MUST reach the real driver.
 - [`test_s3_maps_every_driver_setting`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_s3_maps_every_driver_setting`
 - [`test_browser_sync_requires_persisted_auth_before_verification`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_browser_sync_requires_persisted_auth_before_verification`
 - [`test_noninteractive_conflict_requires_force`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_noninteractive_conflict_requires_force`
+- [`test_s3_defaults_prompt_for_both_keys_without_echo`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_s3_defaults_prompt_for_both_keys_without_echo`
+- [`test_s3_optional_files_replace_only_their_corresponding_prompts`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_s3_optional_files_replace_only_their_corresponding_prompts`
+- [`test_s3_noninteractive_missing_keys_fails_before_reading_or_prompting`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_s3_noninteractive_missing_keys_fails_before_reading_or_prompting`
+- [`test_custom_s3_example_defaults_to_interactive_credentials`](../../tests/unit/test_service_installer_docs.py) - `tests/unit/test_service_installer_docs.py::test_custom_s3_example_defaults_to_interactive_credentials`
 - [`test_sync_rejects_zero_exit_with_error_or_incomplete_report_and_restores_locale`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_sync_rejects_zero_exit_with_error_or_incomplete_report_and_restores_locale`
 - [`test_install_configure_sync_and_download_with_custom_endpoint`](../../scripts/joplin_terminal_service/acceptance/test_s3.py) - `scripts/joplin_terminal_service/acceptance/test_s3.py::RealJoplinS3Tests::test_install_configure_sync_and_download_with_custom_endpoint`
 

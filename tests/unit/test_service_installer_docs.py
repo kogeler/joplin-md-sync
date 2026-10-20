@@ -2,6 +2,7 @@
 
 import argparse
 import runpy
+import shlex
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +12,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE_DOC = ROOT / "docs" / "user" / "SERVICE.md"
 SERVICE_SCRIPTS = ROOT / "scripts" / "joplin_terminal_service"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
+def test_custom_s3_example_defaults_to_interactive_credentials() -> None:
+    section = SERVICE_DOC.read_text(encoding="utf-8").split("### Custom S3-compatible provider", 1)[
+        1
+    ]
+    command = section.split("```bash\n", 1)[1].split("```", 1)[0]
+    args = _installer_parser().parse_args(shlex.split(command.replace("\\\n", ""))[2:])
+    assert args.sync_target == "s3"
+    assert args.s3_endpoint
+    assert args.s3_region
+    assert args.sync_username is None
+    assert args.sync_username_file is None
+    assert args.sync_secret_file is None
+    assert not args.non_interactive
 
 
 def _installer_parser() -> argparse.ArgumentParser:

@@ -189,10 +189,6 @@ class RealJoplinS3Tests(unittest.TestCase):
                     "s3",
                     "--sync-location",
                     BUCKET,
-                    "--sync-username-file",
-                    str(root / "access-key"),
-                    "--sync-secret-file",
-                    str(root / "secret-key"),
                     "--s3-region",
                     REGION,
                     "--s3-endpoint",
@@ -202,7 +198,6 @@ class RealJoplinS3Tests(unittest.TestCase):
                     str(root / "prefix"),
                     "--profile-dir",
                     str(root / "sender"),
-                    "--non-interactive",
                 ]
             )
             installer.validate_args(args)
@@ -220,7 +215,11 @@ class RealJoplinS3Tests(unittest.TestCase):
             installer.install_or_update_joplin(
                 runner, dependencies, paths, os.environ["JOPLIN_TEST_VERSION"]
             )
-            configuration = installer.resolve_sync_configuration(args, redactor)
+            prompt = mock.Mock(side_effect=[ACCESS_KEY, SECRET_KEY])
+            configuration = installer.resolve_sync_configuration(args, redactor, getpass_fn=prompt)
+            self.assertEqual(
+                prompt.call_args_list, [mock.call("S3 access key: "), mock.call("S3 secret key: ")]
+            )
             installer.configure_profile(runner, paths, args, configuration)
             saved = json.loads(
                 runner.run(installer.joplin_command(paths, "config", "--export")).stdout
@@ -243,6 +242,15 @@ class RealJoplinS3Tests(unittest.TestCase):
                 any(method == "PUT" and key.endswith(".md") for method, key in server.requests)
             )
             args.profile_dir = str(root / "receiver")
+            args.sync_username_file = str(root / "access-key")
+            args.sync_secret_file = str(root / "secret-key")
+            args.non_interactive = True
+            installer.validate_args(args)
+            no_prompt = mock.Mock(side_effect=AssertionError("credential files must skip prompts"))
+            configuration = installer.resolve_sync_configuration(
+                args, redactor, getpass_fn=no_prompt
+            )
+            no_prompt.assert_not_called()
             paths = installer.build_paths(args, env)
             installer.configure_profile(runner, paths, args, configuration)
             with mock.patch.object(installer, "SYNC_TIMEOUT", 90):

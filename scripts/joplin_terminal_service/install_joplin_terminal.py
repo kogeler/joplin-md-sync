@@ -346,7 +346,7 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--sync-username-file",
         default=values.get("JOPLIN_SYNC_USERNAME_FILE"),
-        help="protected one-line username or S3 access-key file; excludes --sync-username",
+        help="optional protected username or S3 access-key file (S3 default: hidden prompt)",
     )
     parser.add_argument(
         "--sync-secret-file",
@@ -555,9 +555,14 @@ def validate_sync_args(args: argparse.Namespace) -> None:
             f"--sync-location or JOPLIN_SYNC_LOCATION is required for {target.label} "
             f"({target.location_label})"
         )
-    if target.username_label and not target.credentials_optional and not has_username:
+    if (
+        target.username_label
+        and not target.credentials_optional
+        and not has_username
+        and (target.target_id != 8 or args.non_interactive)
+    ):
         raise ToolError(
-            f"--sync-username or JOPLIN_SYNC_USERNAME is required for {target.label} "
+            f"--sync-username, --sync-username-file or JOPLIN_SYNC_USERNAME is required for {target.label} "
             f"({target.username_label})"
         )
     if target.secret_label and not target.credentials_optional:
@@ -1720,7 +1725,15 @@ def resolve_sync_configuration(
 ) -> SyncConfiguration:
     target = selected_sync_target(args)
     username = args.sync_username or ""
-    if args.sync_username_file:
+    if target.target_id == 8 and not username:
+        username = resolve_secret(
+            args.sync_username_file,
+            "--sync-username-file",
+            "S3 access key: ",
+            non_interactive=args.non_interactive,
+            getpass_fn=getpass_fn,
+        )
+    elif args.sync_username_file:
         username = load_secret_file(args.sync_username_file, "sync username")
     redactor.add(username)
     settings: list[SyncSetting] = []

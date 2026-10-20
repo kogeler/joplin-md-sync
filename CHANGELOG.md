@@ -23,7 +23,8 @@ All notable changes to this project are documented here. The format follows
 
 - Pass Terminal settings, including sync passwords and S3 keys, through
   Joplin's stdin JSON import instead of child process arguments. Support a
-  protected access-key/username file for unattended S3 setup.
+  protected access-key/username file for unattended S3 setup; keep hidden
+  interactive prompts for both S3 keys as the default, with files optional.
 - Regenerate all four dependency locks through the normal whole-graph refresh,
   removing vulnerable transitive versions that blocked otherwise unrelated
   Dependabot pull requests.

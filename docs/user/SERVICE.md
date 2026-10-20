@@ -230,8 +230,8 @@ variable.
 | --- | --- | --- | --- |
 | `--sync-target TARGET` | One of `filesystem`, `onedrive`, `nextcloud`, `webdav`, `dropbox`, `s3`, `joplin-server`, `joplin-cloud`, `joplin-server-saml`. Selects the Joplin driver configured by a full installation. | **none**; required except with `--upgrade` or `--purge` | `JOPLIN_SYNC_TARGET` |
 | `--sync-location VALUE` | Existing absolute directory for `filesystem`; bucket name for `s3`; absolute HTTP(S) URL for Nextcloud, WebDAV, Joplin Server, or SAML. URLs may not contain credentials, query strings, or fragments. | **none**; required for those targets | `JOPLIN_SYNC_LOCATION` |
-| `--sync-username VALUE` | Nextcloud or WebDAV username, Joplin Server account email, or S3 access key. It is invalid for browser targets, SAML, and filesystem sync. | **none**; required for Nextcloud, Joplin Server, and S3; optional for WebDAV | `JOPLIN_SYNC_USERNAME` |
-| `--sync-username-file PATH` | Protected one-line username or S3 access-key file. Use this for S3 so the access key never enters shell history or process arguments. Mutually exclusive with `--sync-username` / `JOPLIN_SYNC_USERNAME`. | **none** | `JOPLIN_SYNC_USERNAME_FILE` |
+| `--sync-username VALUE` | Nextcloud or WebDAV username, Joplin Server account email, or S3 access key. It is invalid for browser targets, SAML, and filesystem sync. Prefer the hidden prompt for S3 instead of putting an access key in an argument. | **none**; required for Nextcloud and Joplin Server; optional for WebDAV; S3 asks with a hidden prompt when omitted | `JOPLIN_SYNC_USERNAME` |
+| `--sync-username-file PATH` | Optional protected one-line username or S3 access-key file for automation. Replaces the S3 access-key prompt. Mutually exclusive with `--sync-username` / `JOPLIN_SYNC_USERNAME`. | **none**; S3 uses a hidden prompt by default | `JOPLIN_SYNC_USERNAME_FILE` |
 | `--sync-secret-file PATH` | Reads the Nextcloud/WebDAV/Joplin Server password or S3 secret key from a protected one-line file. The value is never printed or retained in an installer-created password file. | **none**; an interactive full install uses a hidden prompt when the selected target needs a secret | `JOPLIN_SYNC_SECRET_FILE` |
 | `--e2ee-password-file PATH` | Reads the existing Joplin E2EE password from a protected one-line file. It is read only when the synchronized data reports E2EE enabled and the profile has no working key cache. It never enables E2EE or creates a key. | **none**; if needed, interactive mode uses a hidden prompt | `JOPLIN_E2EE_PASSWORD_FILE` |
 | `--s3-endpoint URL` | Absolute HTTP(S) endpoint for AWS S3 or an S3-compatible service. Valid only with `--sync-target s3`. | `https://s3.amazonaws.com/` | `JOPLIN_S3_ENDPOINT` |
@@ -239,7 +239,7 @@ variable.
 | `--s3-force-path-style` | Writes `sync.8.forcePathStyle=true`; use when the S3-compatible service requires bucket names in URL paths. | disabled | none |
 | `--no-s3-force-path-style` | Explicitly writes `sync.8.forcePathStyle=false`. Normally unnecessary because this is already the default. | disabled path-style access | none |
 
-Both secret-file options require an existing regular file owned by the current
+All credential-file options require an existing regular file owned by the current
 user, with no group or other permission bits, no final-component symlink, at
 most 4096 bytes, valid UTF-8, and exactly one non-empty line. `--dry-run` checks
 the option combinations but deliberately does not open these files.
@@ -306,7 +306,7 @@ advertised by Joplin Terminal 3.6.2:
 | `nextcloud` | 5 | `--sync-location URL --sync-username USER` | hidden prompt or secret file |
 | `webdav` | 6 | `--sync-location URL`; username is optional | hidden prompt or secret file when a username is set |
 | `dropbox` | 7 | none | interactive browser code |
-| `s3` | 8 | bucket, access key, region | hidden secret-key prompt or secret file |
+| `s3` | 8 | bucket, region | hidden access-key and secret-key prompts by default; optional files for automation |
 | `joplin-server` | 9 | server URL and account email | hidden prompt or secret file |
 | `joplin-cloud` | 10 | none | interactive browser confirmation |
 | `joplin-server-saml` | 11 | server URL | interactive browser code |
@@ -338,7 +338,7 @@ python3 install_joplin_terminal.py --sync-target webdav --sync-location 'https:/
 python3 install_joplin_terminal.py --sync-target joplin-server --sync-location 'https://joplin.example.com' --sync-username 'user@example.com'
 
 # AWS S3; add --s3-endpoint and --s3-force-path-style for compatible services
-python3 install_joplin_terminal.py --sync-target s3 --sync-location notes-bucket --sync-username-file /protected/s3-access-key --s3-region eu-north-1
+python3 install_joplin_terminal.py --sync-target s3 --sync-location notes-bucket --s3-region eu-north-1
 
 # Joplin Server with SAML enabled
 python3 install_joplin_terminal.py --sync-target joplin-server-saml --sync-location 'https://joplin.example.com'
@@ -351,20 +351,26 @@ working Joplin client before the first sync.
 ### Custom S3-compatible provider
 
 Use an existing private bucket and dedicated S3 credentials with permission
-to list that bucket and read, write, and delete its objects. Store both keys
-in owner-only `0600` one-line files, never in commands, logs, tickets, or chat.
-Supply the endpoint and region specified by your provider, for example:
+to list that bucket and read, write, and delete its objects. By default the
+installer asks for the access key and secret key interactively, hiding both
+values as you type. No credential files are required. Supply the endpoint and
+region specified by your provider, for example:
 
 ```bash
 python3 install_joplin_terminal.py \
   --sync-target s3 \
   --sync-location YOUR_BUCKET_NAME \
   --s3-endpoint https://s3.region-1.storage.example.com \
-  --s3-region region-1 \
-  --sync-username-file /protected/s3-access-key \
-  --sync-secret-file /protected/s3-secret-key \
-  --non-interactive
+  --s3-region region-1
 ```
+
+For automation, optionally add `--sync-username-file /protected/s3-access-key`
+and `--sync-secret-file /protected/s3-secret-key`. Each supplied file replaces
+only its corresponding prompt, so you can also supply one file and enter the
+other key interactively. Add `--non-interactive` only when both credentials
+are provided; missing credentials then fail without prompting. Credential
+files must be owner-only `0600` one-line files. Never put keys in commands,
+logs, tickets, or chat.
 
 Replace the example endpoint, region, and bucket with your provider's actual
 values. The endpoint is the provider's S3 API address, not a bucket-specific
@@ -391,9 +397,11 @@ migration tool.
 
 ### Password files
 
-Interactive installation is preferred and asks for target and E2EE passwords
-with hidden prompts. Automation uses `--sync-secret-file` and, when the remote
-uses E2EE, `--e2ee-password-file`. Each file must be a current-user-owned,
+Interactive installation is the default and asks for target and E2EE passwords
+with hidden prompts. S3 also asks for its access key with a hidden prompt.
+Credential files are optional: automation can use `--sync-username-file` for
+the S3 access key, `--sync-secret-file` for the target password/secret key and,
+when the remote uses E2EE, `--e2ee-password-file`. Each file must be a current-user-owned,
 non-symlink regular file with no group/other access and exactly one non-empty
 UTF-8 line:
 

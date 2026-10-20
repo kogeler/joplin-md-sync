@@ -9,6 +9,7 @@ import os
 import pty
 import select
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -244,6 +245,127 @@ class ParserTests(unittest.TestCase):
 
 
 class SecretTests(unittest.TestCase):
+    def test_s3_defaults_prompt_for_both_keys_without_echo(self) -> None:
+        args = installer.build_parser({}).parse_args(
+            [
+                "--sync-target",
+                "s3",
+                "--sync-location",
+                "fixture-bucket",
+                "--s3-region",
+                "custom-region-1",
+            ]
+        )
+        installer.validate_args(args)
+        access = "fixture-hidden-access"
+        secret = "fixture-hidden-secret"
+        pid, fd = pty.fork()
+        if pid == 0:
+            try:
+                config = installer.resolve_sync_configuration(args, SecretRedactor())
+                settings = {setting.name: setting.value for setting in config.settings}
+                success = (
+                    settings["sync.8.username"] == access and settings["sync.8.password"] == secret
+                )
+            except BaseException:
+                os._exit(1)
+            os._exit(0 if success else 2)
+        output = bytearray()
+        pending = [(b"S3 access key: ", access), (b"S3 secret key: ", secret)]
+        reaped = False
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if not select.select([fd], [], [], 0.1)[0]:
+                    continue
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output.extend(chunk)
+                if pending and pending[0][0] in output:
+                    _prompt, value = pending.pop(0)
+                    os.write(fd, (value + "\n").encode())
+            else:
+                self.fail("hidden S3 prompts did not finish")
+            _pid, status = os.waitpid(pid, 0)
+            reaped = True
+            self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+            self.assertFalse(pending)
+            self.assertNotIn(access.encode(), output)
+            self.assertNotIn(secret.encode(), output)
+        finally:
+            if not reaped:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+    def test_s3_optional_files_replace_only_their_corresponding_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            keys = {"S3 access key: ": "fixture-access", "S3 secret key: ": "fixture-secret"}
+            for name, value in (("access", "fixture-access"), ("secret", "fixture-secret")):
+                installer.atomic_write(root / name, (value + "\n").encode(), 0o600)
+            for access_file, secret_file in ((True, False), (False, True), (True, True)):
+                with self.subTest(access_file=access_file, secret_file=secret_file):
+                    options = [
+                        "--sync-target",
+                        "s3",
+                        "--sync-location",
+                        "fixture-bucket",
+                        "--s3-region",
+                        "custom-region-1",
+                    ]
+                    if access_file:
+                        options += ["--sync-username-file", str(root / "access")]
+                    if secret_file:
+                        options += ["--sync-secret-file", str(root / "secret")]
+                    if access_file and secret_file:
+                        options += ["--non-interactive"]
+                    args = installer.build_parser({}).parse_args(options)
+                    installer.validate_args(args)
+                    prompt = mock.Mock(side_effect=lambda label: keys[label])
+                    config = installer.resolve_sync_configuration(
+                        args, SecretRedactor(), getpass_fn=prompt
+                    )
+                    values = {setting.name: setting.value for setting in config.settings}
+                    self.assertEqual(values["sync.8.username"], "fixture-access")
+                    self.assertEqual(values["sync.8.password"], "fixture-secret")
+                    expected = []
+                    if not access_file:
+                        expected.append(mock.call("S3 access key: "))
+                    if not secret_file:
+                        expected.append(mock.call("S3 secret key: "))
+                    self.assertEqual(prompt.call_args_list, expected)
+
+    def test_s3_noninteractive_missing_keys_fails_before_reading_or_prompting(self) -> None:
+        for options in (
+            [],
+            ["--sync-username-file", "/not-read/access"],
+            ["--sync-secret-file", "/not-read/secret"],
+        ):
+            args = installer.build_parser({}).parse_args(
+                [
+                    "--sync-target",
+                    "s3",
+                    "--sync-location",
+                    "fixture-bucket",
+                    "--s3-region",
+                    "custom-region-1",
+                    "--non-interactive",
+                    *options,
+                ]
+            )
+            with mock.patch.object(installer, "load_secret_file") as read_file:
+                with self.assertRaises(ToolError):
+                    installer.validate_args(args)
+            read_file.assert_not_called()
+
     def test_settings_use_stdin_not_process_arguments_and_preserve_json_types(self) -> None:
         runner = installer.CommandRunner(SecretRedactor(), os.environ)
         paths = mock.Mock()
