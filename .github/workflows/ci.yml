@@ -96,6 +96,9 @@ jobs:
       - name: Run live protocol acceptance
         run: make test-live PY=python
 
+      - name: Run real Terminal and S3 acceptance
+        run: make test-service-live
+
   compatibility:
     name: Compatibility (${{ matrix.platform }}-${{ matrix.arch }}, Python ${{ matrix.python }})
     needs: quality

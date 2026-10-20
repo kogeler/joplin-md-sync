@@ -6,8 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-20
+
 ### Changed
 
+- Require agents to leave PR descriptions to CI and update `CHANGELOG.md`
+  instead of manually writing or editing PR bodies, including at creation.
 - Maintain the complete Python dependency graph through one daily Dependabot
   version-update group, including transitive packages across all four audience
   locks. Keep one open version-update PR per ecosystem, automatically rebase
@@ -21,12 +25,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- Pass Terminal settings, including sync passwords and S3 keys, through
+  Joplin's stdin JSON import instead of child process arguments. Support a
+  protected access-key/username file for unattended S3 setup; keep hidden
+  interactive prompts for both S3 keys as the default, with files optional.
 - Regenerate all four dependency locks through the normal whole-graph refresh,
   removing vulnerable transitive versions that blocked otherwise unrelated
   Dependabot pull requests.
 
 ### Fixed
 
+- Preserve custom headless-service ports, paths, remote-MCP policy and filesystem
+  sandbox exceptions during upgrades; deploy current supervisor helpers and both
+  units, retain prior executable/service files, and stop both services on failure.
+- Reject failed or incomplete initial sync reports even when Joplin exits zero.
+  Add real Terminal installation and signed S3 upload/download acceptance to CI,
+  and document custom S3-compatible providers and safe sync-target replacement
+  boundaries.
 - Publish the GitHub Release before PyPI, whose file names can never be reused,
   and skip PyPI when it already holds the version. A release interrupted before
   or during GitHub publication, for example because a workflow change reached

@@ -9,6 +9,7 @@ import os
 import pty
 import select
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -35,6 +36,13 @@ from joplin_terminal_common import (  # noqa: E402
 
 GPT_ACTIONS_TOKEN = "g" * 43
 MCP_TOKEN = "m" * 43
+
+
+def write_installed_units(tool: installer.Installer) -> None:
+    installer.install_unit(
+        tool.paths, tool.args, tool.paths.deploy_dir / "run_joplin_terminal.py", Path("/node")
+    )
+    installer.install_adapter_unit(tool.paths, tool.args)
 
 
 class ParserTests(unittest.TestCase):
@@ -237,6 +245,192 @@ class ParserTests(unittest.TestCase):
 
 
 class SecretTests(unittest.TestCase):
+    def test_s3_defaults_prompt_for_both_keys_without_echo(self) -> None:
+        args = installer.build_parser({}).parse_args(
+            [
+                "--sync-target",
+                "s3",
+                "--sync-location",
+                "fixture-bucket",
+                "--s3-region",
+                "custom-region-1",
+            ]
+        )
+        installer.validate_args(args)
+        access = "fixture-hidden-access"
+        secret = "fixture-hidden-secret"
+        pid, fd = pty.fork()
+        if pid == 0:
+            try:
+                config = installer.resolve_sync_configuration(args, SecretRedactor())
+                settings = {setting.name: setting.value for setting in config.settings}
+                success = (
+                    settings["sync.8.username"] == access and settings["sync.8.password"] == secret
+                )
+            except BaseException:
+                os._exit(1)
+            os._exit(0 if success else 2)
+        output = bytearray()
+        pending = [(b"S3 access key: ", access), (b"S3 secret key: ", secret)]
+        reaped = False
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if not select.select([fd], [], [], 0.1)[0]:
+                    continue
+                try:
+                    chunk = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output.extend(chunk)
+                if pending and pending[0][0] in output:
+                    _prompt, value = pending.pop(0)
+                    os.write(fd, (value + "\n").encode())
+            else:
+                self.fail("hidden S3 prompts did not finish")
+            _pid, status = os.waitpid(pid, 0)
+            reaped = True
+            self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+            self.assertFalse(pending)
+            self.assertNotIn(access.encode(), output)
+            self.assertNotIn(secret.encode(), output)
+        finally:
+            if not reaped:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                os.waitpid(pid, 0)
+            os.close(fd)
+
+    def test_s3_optional_files_replace_only_their_corresponding_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            keys = {"S3 access key: ": "fixture-access", "S3 secret key: ": "fixture-secret"}
+            for name, value in (("access", "fixture-access"), ("secret", "fixture-secret")):
+                installer.atomic_write(root / name, (value + "\n").encode(), 0o600)
+            for access_file, secret_file in ((True, False), (False, True), (True, True)):
+                with self.subTest(access_file=access_file, secret_file=secret_file):
+                    options = [
+                        "--sync-target",
+                        "s3",
+                        "--sync-location",
+                        "fixture-bucket",
+                        "--s3-region",
+                        "custom-region-1",
+                    ]
+                    if access_file:
+                        options += ["--sync-username-file", str(root / "access")]
+                    if secret_file:
+                        options += ["--sync-secret-file", str(root / "secret")]
+                    if access_file and secret_file:
+                        options += ["--non-interactive"]
+                    args = installer.build_parser({}).parse_args(options)
+                    installer.validate_args(args)
+                    prompt = mock.Mock(side_effect=lambda label: keys[label])
+                    config = installer.resolve_sync_configuration(
+                        args, SecretRedactor(), getpass_fn=prompt
+                    )
+                    values = {setting.name: setting.value for setting in config.settings}
+                    self.assertEqual(values["sync.8.username"], "fixture-access")
+                    self.assertEqual(values["sync.8.password"], "fixture-secret")
+                    expected = []
+                    if not access_file:
+                        expected.append(mock.call("S3 access key: "))
+                    if not secret_file:
+                        expected.append(mock.call("S3 secret key: "))
+                    self.assertEqual(prompt.call_args_list, expected)
+
+    def test_s3_noninteractive_missing_keys_fails_before_reading_or_prompting(self) -> None:
+        for options in (
+            [],
+            ["--sync-username-file", "/not-read/access"],
+            ["--sync-secret-file", "/not-read/secret"],
+        ):
+            args = installer.build_parser({}).parse_args(
+                [
+                    "--sync-target",
+                    "s3",
+                    "--sync-location",
+                    "fixture-bucket",
+                    "--s3-region",
+                    "custom-region-1",
+                    "--non-interactive",
+                    *options,
+                ]
+            )
+            with mock.patch.object(installer, "load_secret_file") as read_file:
+                with self.assertRaises(ToolError):
+                    installer.validate_args(args)
+            read_file.assert_not_called()
+
+    def test_settings_use_stdin_not_process_arguments_and_preserve_json_types(self) -> None:
+        runner = installer.CommandRunner(SecretRedactor(), os.environ)
+        paths = mock.Mock()
+        # Real subprocess: JSON is delivered on a pipe, not a file or argv.
+        command = [
+            sys.executable,
+            "-c",
+            "import sys,json; print(json.dumps({'argv':sys.argv[1:], 'settings':json.load(sys.stdin)}))",
+        ]
+        original_run = runner.run
+        observed: list[dict[str, object]] = []
+
+        def capture(*args, **kwargs):
+            result = original_run(*args, **kwargs)
+            observed.append(json.loads(result.stdout))
+            return result
+
+        secret = 'synthetic-password-"-λ-\\'
+        with (
+            mock.patch.object(installer, "joplin_command", return_value=command),
+            mock.patch.object(runner, "run", side_effect=capture),
+        ):
+            for name, value in (
+                ("sync.8.password", secret),
+                ("sync.8.username", "access-key"),
+                ("sync.8.forcePathStyle", "false"),
+                ("api.port", "49151"),
+            ):
+                installer.write_setting(runner, paths, name, value, secret=True)
+        self.assertTrue(all(result["argv"] == [] for result in observed))
+        self.assertEqual(observed[0]["settings"], {"sync.8.password": secret})
+        self.assertEqual(observed[2]["settings"], {"sync.8.forcePathStyle": False})
+        self.assertEqual(observed[3]["settings"], {"api.port": 49151})
+
+    def test_s3_access_key_file_is_protected_and_never_a_child_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            key_file = root / "key"
+            installer.atomic_write(key_file, b"fixture-access-key\n", 0o600)
+            args = installer.build_parser({}).parse_args(
+                [
+                    "--sync-target",
+                    "s3",
+                    "--sync-location",
+                    "notes-bucket",
+                    "--s3-region",
+                    "custom-region-1",
+                    "--sync-username-file",
+                    str(key_file),
+                ]
+            )
+            installer.validate_args(args)
+            config = installer.resolve_sync_configuration(
+                args, SecretRedactor(), getpass_fn=lambda _: "fixture-secret"
+            )
+            self.assertIn(
+                installer.SyncSetting("sync.8.username", "fixture-access-key"), config.settings
+            )
+            key_file.chmod(0o644)
+            with self.assertRaisesRegex(ToolError, "group or others"):
+                installer.resolve_sync_configuration(args, SecretRedactor())
+            args.sync_username = "duplicate"
+            with self.assertRaisesRegex(ToolError, "exactly one"):
+                installer.validate_args(args)
+
     def test_child_environment_removes_every_service_secret(self) -> None:
         env = child_environment(
             {
@@ -244,6 +438,7 @@ class SecretTests(unittest.TestCase):
                 "JOPLIN_TOKEN": "joplin-secret",
                 "JOPLIN_GPT_ACTIONS_TOKEN": "actions-secret",
                 "JOPLIN_MCP_AUTH_TOKEN": "mcp-secret",
+                "JOPLIN_SYNC_USERNAME": "fixture-access-key",
             }
         )
 
@@ -252,6 +447,7 @@ class SecretTests(unittest.TestCase):
             "JOPLIN_TOKEN",
             "JOPLIN_GPT_ACTIONS_TOKEN",
             "JOPLIN_MCP_AUTH_TOKEN",
+            "JOPLIN_SYNC_USERNAME",
         ):
             self.assertNotIn(name, env)
 
@@ -919,6 +1115,27 @@ class UnitAndPathTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_sync_rejects_zero_exit_with_error_or_incomplete_report_and_restores_locale(
+        self,
+    ) -> None:
+        for report in (
+            "Completed: now. Last error: synthetic private error",
+            "Sync target must be upgraded",
+            "",
+        ):
+            runner = mock.Mock()
+            runner.run_long.return_value = subprocess.CompletedProcess([], 0, report, "")
+            with (
+                mock.patch.object(installer, "read_setting", return_value="ru_RU"),
+                mock.patch.object(installer, "write_setting") as write,
+                self.assertRaisesRegex(ToolError, "did not complete"),
+            ):
+                installer.run_sync(runner, mock.Mock(), "initial sync")
+            self.assertEqual(
+                [call.args[2:] for call in write.call_args_list],
+                [("locale", "en_GB"), ("locale", "ru_RU")],
+            )
+
     def test_default_target_with_choice_description_is_not_a_conflict(self) -> None:
         args = mock.Mock(
             sync_interval=300,
@@ -1347,9 +1564,7 @@ class DryRunTests(unittest.TestCase):
             )
             prompt = mock.Mock(side_effect=AssertionError("must not prompt"))
             tool = installer.Installer(args, env=env, getpass_fn=prompt)
-            tool.paths.unit_path.parent.mkdir(parents=True)
-            tool.paths.unit_path.write_text("unit\n")
-            tool.paths.adapter_unit_path.write_text("unit\n")
+            write_installed_units(tool)
             tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
             tool.paths.token_file.write_text("j" * 32)
             dependencies = installer.Dependencies(
@@ -1383,6 +1598,149 @@ class DryRunTests(unittest.TestCase):
 
 
 class ServiceLifecycleTests(unittest.TestCase):
+    def test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files(self) -> None:
+        for old_snap in (False, True):
+            with self.subTest(old_snap=old_snap):
+                self._upgrade_preservation_case(old_snap)
+
+    def _upgrade_preservation_case(self, old_snap: bool) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env = {
+                "HOME": str(root),
+                "XDG_CONFIG_HOME": str(root / "config"),
+                "XDG_STATE_HOME": str(root / "state"),
+                "PATH": os.environ["PATH"],
+            }
+            filesystem = root / "sync files %"
+            filesystem.mkdir()
+            original = installer.build_parser(env).parse_args(
+                [
+                    "--upgrade",
+                    "--api-port",
+                    "49151",
+                    "--mcp-port",
+                    "49152",
+                    "--sync-interval",
+                    "600",
+                    "--allow-remote-mcp",
+                    "--joplin-prefix",
+                    str(root / "custom prefix"),
+                    "--profile-dir",
+                    str(root / "custom profile"),
+                    "--sync-target",
+                    "filesystem",
+                    "--sync-location",
+                    str(filesystem),
+                ]
+            )
+            old = installer.Installer(original, env=env)
+            write_installed_units(old)
+            if old_snap:
+                old.paths.unit_path.write_text(
+                    "\n".join(
+                        line
+                        for line in old.paths.unit_path.read_text().splitlines()
+                        if not line.startswith("ReadWritePaths=")
+                    )
+                    + "\n"
+                )
+            old.paths.deploy_dir.mkdir(parents=True)
+            (old.paths.deploy_dir / "run_joplin_terminal.py").write_text("old supervisor")
+            old.paths.mcp_binary.parent.mkdir(parents=True, exist_ok=True)
+            old.paths.mcp_binary.write_text("old executable")
+            old.paths.npm_prefix.mkdir(parents=True)
+            (old.paths.npm_prefix / "old-package").write_text("recoverable package")
+            old.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
+            old.paths.token_file.write_text("j" * 32)
+            args = installer.build_parser(env).parse_args(
+                [
+                    "--upgrade",
+                    "--no-start-service",
+                    "--joplin-version",
+                    "3.7.1",
+                    "--joplin-md-sync-version",
+                    "9.9.1",
+                ]
+            )
+            tool = installer.Installer(args, env=env)
+            dependencies = installer.Dependencies(
+                Path("/node"), Path("/npm"), Path("/systemctl"), "22", "10"
+            )
+            with (
+                mock.patch.object(installer, "check_dependencies", return_value=dependencies),
+                mock.patch.object(installer, "service_active", return_value=False),
+                mock.patch.object(installer, "systemctl_command"),
+                mock.patch.object(
+                    installer, "resolve_service_tokens", return_value=(MCP_TOKEN, GPT_ACTIONS_TOKEN)
+                ),
+                mock.patch.object(installer, "installed_joplin_version", return_value="3.6.2"),
+                mock.patch.object(
+                    installer,
+                    "read_setting",
+                    side_effect=lambda _runner, _paths, name: (
+                        "2 (File system)" if name == "sync.target" else str(filesystem)
+                    ),
+                ),
+                mock.patch.object(installer, "install_or_update_joplin", return_value="3.7.1"),
+                mock.patch.object(installer, "install_or_update_mcp", return_value="9.9.1"),
+                mock.patch.object(
+                    installer, "resolve_secret", side_effect=AssertionError("no secret prompt")
+                ),
+            ):
+                tool.run()
+            self.assertEqual(tool.paths.prefix, old.paths.prefix)
+            self.assertEqual(tool.paths.profile_dir, old.paths.profile_dir)
+            self.assertEqual(args.api_port, 49151)
+            self.assertEqual(args.mcp_port, 49152)
+            self.assertEqual(args.sync_interval, 600)
+            self.assertTrue(args.allow_remote_mcp)
+            self.assertIn("0.0.0.0", tool.paths.adapter_unit_path.read_text())
+            self.assertIn(str(filesystem).replace("%", "%%"), tool.paths.unit_path.read_text())
+            self.assertEqual(
+                (tool.paths.deploy_dir / "run_joplin_terminal.py").read_bytes(),
+                (TOOLS_DIR / "run_joplin_terminal.py").read_bytes(),
+            )
+            backups = list(tool.paths.state_dir.glob("upgrade-backup-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual((backups[0] / "joplin-md-sync").read_text(), "old executable")
+            self.assertEqual(
+                (backups[0] / "npm" / "old-package").read_text(), "recoverable package"
+            )
+            self.assertEqual(
+                (backups[0] / "joplin-terminal-service" / "run_joplin_terminal.py").read_text(),
+                "old supervisor",
+            )
+
+    def test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env = {"HOME": str(root), "JOPLIN_API_PORT": "49155"}
+            args = installer.build_parser(env).parse_args(
+                ["--upgrade", "--api-port", "49151", "--allow-remote-mcp"]
+            )
+            tool = installer.Installer(args, env=env)
+            write_installed_units(tool)
+            args = installer.build_parser(env).parse_args(
+                ["--upgrade", "--no-allow-remote-mcp", "--mcp-port", "49156"]
+            )
+            tool = installer.Installer(args, env=env)
+            with mock.patch.object(
+                installer, "check_dependencies", side_effect=ToolError("after argument restoration")
+            ):
+                with self.assertRaisesRegex(ToolError, "after argument restoration"):
+                    tool.run()
+            self.assertEqual(args.api_port, 49155)
+            self.assertEqual(args.mcp_port, 49156)
+            self.assertIn("api_port", args.explicit_options)
+            self.assertIn("allow_remote_mcp", args.explicit_options)
+            self.assertFalse(args.allow_remote_mcp)
+            tool.paths.adapter_unit_path.write_text("[Service]\nExecStart=unknown\n")
+            with mock.patch.object(installer, "check_dependencies") as dependencies:
+                with self.assertRaises(ToolError):
+                    tool.run()
+            dependencies.assert_not_called()
+
     def test_failed_upgrade_healthcheck_stops_restart_loop(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -1405,9 +1763,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 ]
             )
             tool = installer.Installer(args, env=env)
-            tool.paths.unit_path.parent.mkdir(parents=True)
-            tool.paths.unit_path.write_text("unit\n")
-            tool.paths.adapter_unit_path.write_text("unit\n")
+            write_installed_units(tool)
             tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
             tool.paths.token_file.write_text("j" * 32)
             dependencies = installer.Dependencies(
@@ -1429,7 +1785,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 self.assertRaisesRegex(ToolError, "healthcheck failed"),
             ):
                 tool.run()
-            stop_failed.assert_called_once_with(
+            stop_failed.assert_any_call(
                 tool.runner,
                 dependencies.systemctl,
                 "joplin-terminal.service",
@@ -1524,9 +1880,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 ]
             )
             tool = installer.Installer(args, env=env)
-            tool.paths.unit_path.parent.mkdir(parents=True)
-            tool.paths.unit_path.write_text("unit\n")
-            tool.paths.adapter_unit_path.write_text("unit\n")
+            write_installed_units(tool)
             tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
             tool.paths.token_file.write_text("j" * 32)
             dependencies = installer.Dependencies(
@@ -1588,9 +1942,7 @@ class ServiceLifecycleTests(unittest.TestCase):
                 ]
             )
             tool = installer.Installer(args, env=env)
-            tool.paths.unit_path.parent.mkdir(parents=True)
-            tool.paths.unit_path.write_text("unit\n")
-            tool.paths.adapter_unit_path.write_text("unit\n")
+            write_installed_units(tool)
             tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
             tool.paths.token_file.write_text("j" * 32)
             dependencies = installer.Dependencies(

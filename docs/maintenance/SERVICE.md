@@ -28,6 +28,7 @@ Linux CI runs the dependency-free installer suite through:
 
 ```bash
 make test-service-installer
+make test-service-live
 ```
 
 To reproduce it in a clean container:
@@ -45,6 +46,20 @@ The exact behavioral coverage is indexed by the evidence links in the
 regular integration suite and `make test-live`. That target provisions its own
 checksum-verified Joplin Desktop 3.6.15 binary and temporary profile on Linux
 AMD64; it never uses the operator's running Joplin instance.
+
+`make test-service-live` builds an isolated Python/Node container and invokes
+the real installer to install Joplin Terminal 3.7.1. Runtime acceptance has no
+external network: two temporary profiles and a local S3 protocol fixture
+verify signed requests (including presigned GET), custom endpoint paths, a
+non-AWS region, prompt-based sender setup, optional credential-file receiver
+setup, note upload/download, and wrong-key rejection even when Joplin
+exits zero. It does not use an external S3 provider account, production notes,
+or a systemd user manager. It also starts the real Terminal through the
+supervisor, checks Data API readiness and verifies clean termination. CI runs
+this target in the live acceptance job; installer unit tests separately cover
+lifecycle policy.
+The installer suite uses a real PTY to verify that both default S3 key prompts
+hide input; the documentation tests keep the primary example interactive.
 
 ## Change procedure
 
