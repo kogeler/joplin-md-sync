@@ -7,4 +7,4 @@
 bandit[toml]==1.9.4
 mypy==2.4.0
 pip-audit==2.10.1
-ruff==0.17.1
+ruff==0.17.2
