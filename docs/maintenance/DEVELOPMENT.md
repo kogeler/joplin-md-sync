@@ -13,11 +13,10 @@ Use the Make targets rather than installing an ad hoc tool set:
 | Target | Purpose |
 | --- | --- |
 | `make venv` | Editable runtime CLI with no third-party runtime packages |
-| `make venv-dev` | Hash-verified Linux quality environment |
+| `make venv-dev` | Locked Linux quality group |
 | `make venv-test` | Cross-platform test environment |
 | `make venv-package` | Packaging environment |
 | `make venv-docs` | Documentation environment |
-| `make venv-lock` | Isolated resolver bootstrap |
 
 Every environment lives under `.venvs/<key>/`, for example
 `.venvs/<key>/venv-test`. `scripts/venv_root.py` derives the key from the OS
@@ -41,6 +40,11 @@ left untouched; delete an obsolete one manually.
 5. Run `make ci` before a pull request when the Linux container/runtime
    prerequisites are available.
 
+Install uv before running Make. CI uses `.uv-version` through the official
+setup-uv action. Every group is installed with `uv sync --locked` into its
+own host-scoped environment. No target rewrites `uv.lock` unless explicitly
+asked through `make lock` or `make refresh-dependencies`.
+
 Useful targets:
 
 ```bash
@@ -50,7 +54,7 @@ make typecheck
 make bandit
 make test
 make test-service-installer
-make test-dependency-updates
+make lock-check
 make docs-build
 make docs-audit
 make docs-screenshots
@@ -58,11 +62,9 @@ make package
 make smoke
 ```
 
-`make ci` adds coverage, lock drift, offline acceptance with the real Dependabot
-pip updater, strict docs, dependency submission, workflow lint, and vulnerability
-audit. The updater acceptance requires Linux AMD64 and Podman or Docker; its
-image is downloaded before the offline scenarios run. Reusable CI follows that
-job with a
+`make ci` adds coverage, native lock validation, strict docs, workflow lint, and
+an audit of all locked dependency groups. Podman or Docker is needed for the
+immutable workflow linter. Reusable CI follows the quality job with a
 separate Linux AMD64 `make test-live` gate. The live target downloads the
 checksum-pinned official Joplin Desktop 3.6.15 Debian binary, extracts it
 without installing system packages, and runs it with Xvfb, `HOME`, XDG paths,

@@ -43,9 +43,8 @@ make venv
 make venv-dev
 make check
 make ci
-make freeze-check
+make lock-check
 make test-service-installer
-make test-dependency-updates
 make test-live
 make package
 make smoke
@@ -64,9 +63,11 @@ maintained version source.
 
 Make keeps every environment under `.venvs/<key>/`, private to the current
 machine and user, so one checkout on a shared or network drive works from
-several hosts. Direct Python pins live only in the `requirements-*.in`
-Dependabot inputs; `make lock` regenerates their `requirements-*.txt` hash
-locks, which are never hand-edited. Ordinary changes add notes under
+several hosts. Development dependencies live in standard `pyproject.toml`
+dependency groups; uv and Dependabot maintain the single `uv.lock`, which is
+never hand-edited. Install uv before using Make; CI selects its version from
+`.uv-version`. Use `make lock` after editing requirements and `make lock-check`
+to validate them without rewriting the lock. Ordinary changes add notes under
 `## [Unreleased]` in `CHANGELOG.md` and keep `.version`; only deliberate
 release preparation advances it.
 

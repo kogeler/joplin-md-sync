@@ -18,20 +18,8 @@ EXE :=
 PLATFORM := linux
 endif
 
-DEVELOPMENT_INPUT := requirements-dev.in
-TEST_INPUT := requirements-test.in
-PACKAGE_INPUT := requirements-package.in
-DOCS_INPUT := requirements-docs.in
-DEVELOPMENT_LOCK := requirements-dev.txt
-TEST_LOCK := requirements-test.txt
-PACKAGE_LOCK := requirements-package.txt
-DOCS_LOCK := requirements-docs.txt
-COMPILE := --quiet --strip-extras --allow-unsafe --generate-hashes
-LOCK_UPGRADE ?=
-# Keep pip and pip-tools on the pair Dependabot's pip-compile updater uses, so
-# its lock updates and local regeneration resolve identically.
-LOCK_BOOTSTRAP := pip==26.2.1 setuptools==84.0.0 pip-tools==7.6.1 \
-	build==1.5.0 click==8.4.2 packaging==26.3 pyproject-hooks==1.2.0 wheel==0.48.0
+UV ?= uv
+PROJECT_PYTHON := $(shell $(PY) -c "import sys; print(sys.executable)")
 
 ARCH ?= $(shell $(PY) -c "from scripts.build_standalone import standalone_architecture; print(standalone_architecture())" 2>/dev/null)
 STANDALONE := dist/joplin-md-sync-$(PLATFORM)-$(ARCH)$(EXE)
@@ -44,24 +32,15 @@ endif
 VENV := $(VENV_ROOT)/venv
 VENV_DEV := $(VENV_ROOT)/venv-dev
 VENV_DOCS := $(VENV_ROOT)/venv-docs
-VENV_LOCK := $(VENV_ROOT)/venv-lock
 VENV_PACKAGE := $(VENV_ROOT)/venv-package
 VENV_SMOKE := $(VENV_ROOT)/venv-smoke
 VENV_TEST := $(VENV_ROOT)/venv-test
 PYTHON := $(VENV)/$(BIN)/python
 PYTHON_DEV := $(VENV_DEV)/$(BIN)/python
 PYTHON_DOCS := $(VENV_DOCS)/$(BIN)/python
-PYTHON_LOCK := $(VENV_LOCK)/$(BIN)/python
 PYTHON_PACKAGE := $(VENV_PACKAGE)/$(BIN)/python
 PYTHON_TEST := $(VENV_TEST)/$(BIN)/python
-DEPS_STAMP := $(VENV)/.deps-installed
-DEPS_DEV_STAMP := $(VENV_DEV)/.deps-installed
-DEPS_DOCS_STAMP := $(VENV_DOCS)/.deps-installed
-DEPS_LOCK_STAMP := $(VENV_LOCK)/.deps-installed
-DEPS_PACKAGE_STAMP := $(VENV_PACKAGE)/.deps-installed
-DEPS_TEST_STAMP := $(VENV_TEST)/.deps-installed
 ARTIFACTS := .artifacts
-DEPENDENCY_SNAPSHOT := $(ARTIFACTS)/dependency-snapshot.json
 RELEASE_NOTES := $(ARTIFACTS)/release-notes.md
 DOCS_SITE_URL := https://joplin-mcp.romancello.net/
 DOCS_SCREENSHOTS ?= $(ARTIFACTS)/docs-screenshots
@@ -72,15 +51,14 @@ PYTEST_XDIST := -n $(TEST_WORKERS) --dist=worksteal
 COVERAGE_MIN ?= 87
 RUFF_OUTPUT_FORMAT ?=
 RUFF_OUTPUT := $(if $(RUFF_OUTPUT_FORMAT),--output-format=$(RUFF_OUTPUT_FORMAT))
-RUFF_SOURCES := src tests tests_live tests_dependency scripts .github/scripts docs/site/hooks.py
-PYTHON_SOURCES := src tests tests_live tests_dependency scripts .github/scripts docs/site/hooks.py
+RUFF_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
+PYTHON_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
 ACTIONLINT_IMAGE := docker.io/rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-DEPENDABOT_IMAGE := ghcr.io/dependabot/dependabot-updater-pip@sha256:27c0028263474e74f78d9254f14cbb82dd094c35666530eb284d8db17096c000
 CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
-.PHONY: help venv venv-dev venv-test venv-package venv-docs venv-lock lock refresh-dependencies freeze \
-	freeze-check docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	lock-platform-check test test-full test-dependency-updates test-live test-live-stdio-standalone test-service-installer test-service-live audit dependency-snapshot \
+.PHONY: help venv venv-dev venv-test venv-package venv-docs lock lock-check refresh-dependencies \
+	docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
+	test test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release clean
@@ -89,114 +67,29 @@ help: ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
 		awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
 
-$(PYTHON):
-	$(PY) -m venv $(VENV)
+venv: ## runtime-only editable installation from the project lock
+	UV_PROJECT_ENVIRONMENT="$(VENV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups
 
-$(DEPS_STAMP): $(PYTHON) pyproject.toml .version
-	$(PYTHON) -m pip install --no-deps -e .
-	$(PYTHON) -m pip check
-	touch $(DEPS_STAMP)
+venv-dev: ## quality tools, without installing the project or other groups
+	UV_PROJECT_ENVIRONMENT="$(VENV_DEV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group quality --no-build
 
-venv: $(DEPS_STAMP) ## runtime venv with the CLI installed editable
+venv-test: ## portable test tools from the same universal lock
+	UV_PROJECT_ENVIRONMENT="$(VENV_TEST)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group test --no-build
 
-$(PYTHON_DEV):
-	$(PY) -m venv $(VENV_DEV)
+venv-package: ## release tools and build backend from the same lock
+	UV_PROJECT_ENVIRONMENT="$(VENV_PACKAGE)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group build --no-build
 
-$(DEPS_DEV_STAMP): $(PYTHON_DEV) $(DEVELOPMENT_LOCK)
-	$(PYTHON_DEV) -m pip install --quiet --require-hashes --only-binary=:all: \
-		--requirement $(DEVELOPMENT_LOCK)
-	$(PYTHON_DEV) -m pip check
-	touch $(DEPS_DEV_STAMP)
+venv-docs: ## documentation tools from the same lock
+	UV_PROJECT_ENVIRONMENT="$(VENV_DOCS)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group docs --no-build
 
-venv-dev: $(DEPS_DEV_STAMP) ## dev venv from the hash-verified lock
+lock: ## update uv.lock after editing project requirements
+	$(UV) lock
 
-$(PYTHON_TEST):
-	$(PY) -m venv $(VENV_TEST)
+lock-check: ## let uv validate the committed lock without rewriting it
+	$(UV) lock --check
 
-$(DEPS_TEST_STAMP): $(PYTHON_TEST) $(TEST_LOCK)
-	$(PYTHON_TEST) -m pip install --quiet --require-hashes --only-binary=:all: \
-		--requirement $(TEST_LOCK)
-	$(PYTHON_TEST) -m pip check
-	touch $(DEPS_TEST_STAMP)
-
-venv-test: $(DEPS_TEST_STAMP) ## test venv from the cross-platform hash lock
-
-$(PYTHON_PACKAGE):
-	$(PY) -m venv $(VENV_PACKAGE)
-
-$(DEPS_PACKAGE_STAMP): $(PYTHON_PACKAGE) $(PACKAGE_LOCK)
-	$(PYTHON_PACKAGE) -m pip install --quiet --require-hashes --only-binary=:all: \
-		--requirement $(PACKAGE_LOCK)
-	$(PYTHON_PACKAGE) -m pip check
-	touch $(DEPS_PACKAGE_STAMP)
-
-venv-package: $(DEPS_PACKAGE_STAMP) ## packaging venv from the cross-platform hash lock
-
-$(PYTHON_DOCS):
-	$(PY) -m venv $(VENV_DOCS)
-
-$(DEPS_DOCS_STAMP): $(PYTHON_DOCS) $(DOCS_LOCK)
-	$(PYTHON_DOCS) -m pip install --quiet --require-hashes --only-binary=:all: \
-		--requirement $(DOCS_LOCK)
-	$(PYTHON_DOCS) -m pip check
-	touch $(DEPS_DOCS_STAMP)
-
-venv-docs: $(DEPS_DOCS_STAMP) ## docs venv from the hash-verified lock
-
-$(PYTHON_LOCK):
-	$(PY) -m venv $(VENV_LOCK)
-
-$(DEPS_LOCK_STAMP): $(PYTHON_LOCK) Makefile
-	$(PYTHON_LOCK) -m pip install --quiet --only-binary=:all: $(LOCK_BOOTSTRAP)
-	$(PYTHON_LOCK) -m pip check
-	touch $(DEPS_LOCK_STAMP)
-
-venv-lock: $(DEPS_LOCK_STAMP) ## isolated exact-pinned pip-compile resolver
-
-lock: venv-lock ## regenerate all four hash locks from their requirements inputs
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
-		--output-file=$(DEVELOPMENT_LOCK) $(DEVELOPMENT_INPUT)
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
-		--output-file=$(TEST_LOCK) $(TEST_INPUT)
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
-		--output-file=$(PACKAGE_LOCK) $(PACKAGE_INPUT)
-	$(PYTHON_LOCK) -m piptools compile $(COMPILE) $(LOCK_UPGRADE) \
-		--output-file=$(DOCS_LOCK) $(DOCS_INPUT)
-
-refresh-dependencies: ## re-resolve all locks after updating direct pins
-	$(MAKE) lock LOCK_UPGRADE=--upgrade
-
-freeze: refresh-dependencies ## compatibility alias for refresh-dependencies
-
-freeze-check: venv-lock ## reject lock drift without upgrading dependencies
-	@temporary="$$(mktemp -d)"; trap 'find "$$temporary" -depth -delete' EXIT; \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(DEVELOPMENT_LOCK) \
-			--output-file="$$temporary/development.txt" $(DEVELOPMENT_INPUT); \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(TEST_LOCK) \
-			--output-file="$$temporary/test.txt" $(TEST_INPUT); \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(PACKAGE_LOCK) \
-			--output-file="$$temporary/package.txt" $(PACKAGE_INPUT); \
-		$(PYTHON_LOCK) -m piptools compile $(COMPILE) --constraint=$(DOCS_LOCK) \
-			--output-file="$$temporary/docs.txt" $(DOCS_INPUT); \
-		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(DEVELOPMENT_LOCK)) \
-			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/development.txt"); \
-		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(TEST_LOCK)) \
-			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/test.txt"); \
-		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(PACKAGE_LOCK)) \
-			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/package.txt"); \
-		diff -u <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' $(DOCS_LOCK)) \
-			<(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$$/d' "$$temporary/docs.txt")
-
-lock-platform-check: venv-lock ## verify test and package locks resolve from Windows wheels
-	@for version in 3.13 3.14; do \
-		abi="cp$${version/./}"; \
-		for lock in $(TEST_LOCK) $(PACKAGE_LOCK); do \
-			$(PYTHON_LOCK) -m pip install --quiet --dry-run --ignore-installed \
-				--require-hashes --only-binary=:all: --platform win_amd64 \
-				--implementation cp --python-version "$$version" --abi "$$abi" \
-				--requirement "$$lock"; \
-		done; \
-	done
+refresh-dependencies: ## upgrade the complete graph within declared requirements
+	$(UV) lock --upgrade
 
 docs-build: venv-docs ## build the documentation site with strict checks
 	$(VENV_DOCS)/$(BIN)/mkdocs build --strict
@@ -256,27 +149,10 @@ test-service-live: ## real Terminal installation and offline S3 round trip in an
 	$(CONTAINER) run --rm --network=none \
 		-v "$(CURDIR):/workspace:ro" localhost/joplin-service-acceptance
 
-test-dependency-updates: venv-test venv-lock ## offline acceptance with the real Dependabot pip updater (Linux AMD64)
-	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }
-	@$(CONTAINER) image inspect $(DEPENDABOT_IMAGE) >/dev/null 2>&1 || \
-		$(CONTAINER) pull $(DEPENDABOT_IMAGE)
-	DEPENDABOT_IMAGE="$(DEPENDABOT_IMAGE)" CONTAINER="$(CONTAINER)" \
-		LOCK_PYTHON="$(abspath $(PYTHON_LOCK))" \
-		$(PYTHON_TEST) -m pytest -q tests_dependency
-
-audit: venv-dev ## audit every non-empty exact dependency lock
-	$(PYTHON_DEV) -m pip_audit --strict --disable-pip \
-		--progress-spinner=off --requirement $(DEVELOPMENT_LOCK)
-	$(PYTHON_DEV) -m pip_audit --strict --disable-pip \
-		--progress-spinner=off --requirement $(TEST_LOCK)
-	$(PYTHON_DEV) -m pip_audit --strict --disable-pip \
-		--progress-spinner=off --requirement $(PACKAGE_LOCK)
-	$(PYTHON_DEV) -m pip_audit --strict --disable-pip \
-		--progress-spinner=off --requirement $(DOCS_LOCK)
-
-dependency-snapshot: ## build GitHub dependency manifests offline
-	mkdir -p $(ARTIFACTS)
-	$(PY) .github/scripts/dependency_snapshot.py --output $(DEPENDENCY_SNAPSHOT)
+audit: venv-dev ## audit a native export of every locked dependency group
+	mkdir -p $(ARTIFACTS)/audit
+	$(UV) export --locked --all-groups --no-emit-project --format pylock.toml --output-file $(ARTIFACTS)/audit/pylock.toml > /dev/null
+	$(PYTHON_DEV) -m pip_audit --locked $(ARTIFACTS)/audit --strict --progress-spinner=off
 
 validate-actions: ## lint GitHub workflows in an immutable isolated image
 	@test -n "$(CONTAINER)" || { printf '%s\n' 'Podman or Docker is required' >&2; exit 1; }
@@ -288,14 +164,14 @@ release-notes: ## generate the exact current-version GitHub release body
 	mkdir -p $(ARTIFACTS)
 	$(PY) .github/scripts/release_notes.py --output $(RELEASE_NOTES)
 
-check: lint typecheck bandit syntax test verify-release dependency-snapshot ## local cross-platform gates
+check: lock-check lint typecheck bandit syntax test verify-release ## local source and native lock gates
 
 ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
-	freeze-check lock-platform-check test-dependency-updates docs-audit dependency-snapshot validate-actions audit ## complete Linux CI contract
+	lock-check docs-audit validate-actions audit ## complete Linux CI contract
 
 build: venv-package ## reproducibly build wheel and sdist into dist/
 	rm -rf dist build
-	SOURCE_DATE_EPOCH="$(SOURCE_DATE_EPOCH)" $(PYTHON_PACKAGE) -m build
+	SOURCE_DATE_EPOCH="$(SOURCE_DATE_EPOCH)" $(PYTHON_PACKAGE) -m build --no-isolation
 	$(PY) scripts/normalize_sdist.py --epoch "$(SOURCE_DATE_EPOCH)" \
 		dist/joplin_md_sync-$(VERSION).tar.gz
 
@@ -354,7 +230,7 @@ verify-release: ## verify version metadata and optional release tag/inventory
 	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG)) $(if $(REQUIRE_ALL_STANDALONES),--require-all-standalones)
 
 clean: ## remove this host's environments, generated artifacts, and caches
-	rm -rf $(VENV) $(VENV_DEV) $(VENV_TEST) $(VENV_PACKAGE) $(VENV_DOCS) $(VENV_LOCK) $(VENV_SMOKE) \
+	rm -rf $(VENV) $(VENV_DEV) $(VENV_TEST) $(VENV_PACKAGE) $(VENV_DOCS) $(VENV_SMOKE) \
 		dist build site $(ARTIFACTS) src/*.egg-info .mypy_cache .ruff_cache \
 		.pytest_cache .coverage htmlcov
 	rmdir $(VENV_ROOT) .venvs 2>/dev/null || true

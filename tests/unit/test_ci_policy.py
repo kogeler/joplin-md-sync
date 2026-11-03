@@ -22,22 +22,6 @@ def _workflow(name: str) -> str:
     return (WORKFLOWS / name).read_text(encoding="utf-8")
 
 
-def _cache_dependency_paths(workflow: str) -> list[list[str]]:
-    blocks = []
-    lines = workflow.splitlines()
-    for index, line in enumerate(lines):
-        if line.strip() != "cache-dependency-path: |":
-            continue
-        indent = len(line) - len(line.lstrip()) + 2
-        entries = []
-        for entry in lines[index + 1 :]:
-            if not entry.strip() or len(entry) - len(entry.lstrip()) != indent:
-                break
-            entries.append(entry.strip())
-        blocks.append(entries)
-    return blocks
-
-
 def _assigned_string(path: Path, name: str) -> str:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in tree.body:
@@ -69,18 +53,11 @@ def test_tests_do_not_duplicate_owned_version_pins() -> None:
             )
             if not reference.startswith("./")
         ),
-        *(
-            line.strip()
-            for path in ROOT.glob("requirements*.in")
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        ),
         *re.findall(r'^\s+python(?:-version)?:\s+"([^"]+)"$', ci, re.MULTILINE),
     }
     test_paths = [
         *sorted((ROOT / "tests").rglob("*.py")),
         *sorted((ROOT / "tests_live").glob("test_*.py")),
-        *sorted((ROOT / "tests_dependency").glob("test_*.py")),
         *sorted((ROOT / "scripts" / "joplin_terminal_service" / "tests").glob("test_*.py")),
     ]
     for path in test_paths:
@@ -92,7 +69,6 @@ def test_tests_do_not_duplicate_owned_version_pins() -> None:
 def test_workflow_set_is_event_driven_and_every_action_is_sha_pinned() -> None:
     assert {path.name for path in WORKFLOWS.glob("*.yml")} == {
         "ci.yml",
-        "dependency-submission.yml",
         "pages.yml",
         "pr-body.yml",
         "release.yml",
@@ -145,21 +121,6 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
     assert "security-events: write" in ci
     assert "pull-requests: write" not in ci
     assert "contents: write" not in ci
-    assert "cache-dependency-path: requirements" not in ci
-    audiences = [
-        [entry.removesuffix(".txt") for entry in block if entry.endswith(".txt")]
-        for block in _cache_dependency_paths(ci)
-    ]
-    assert ["requirements-test"] in audiences
-    assert ["requirements-package"] in audiences
-    for name in ("ci.yml", "pages.yml", "release.yml"):
-        for block in _cache_dependency_paths(_workflow(name)):
-            assert block
-            assert sorted(block) == sorted(
-                f"{stem}{suffix}"
-                for stem in {entry.rsplit(".", 1)[0] for entry in block}
-                for suffix in (".in", ".txt")
-            ), (name, block)
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "COVERAGE_MIN ?= 87" in makefile
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
@@ -291,20 +252,6 @@ def test_published_release_makes_later_main_pushes_a_no_op() -> None:
     assert "pypi_required" not in gate
 
 
-def test_dependency_submission_is_a_separate_trusted_write_boundary() -> None:
-    workflow = _workflow("dependency-submission.yml")
-    assert "push:" in workflow
-    assert "pull_request" not in workflow
-    assert workflow.count("contents: write") == 1
-    assert "make dependency-snapshot" in workflow
-    assert "POST /repos/{owner}/{repo}/dependency-graph/snapshots" in workflow
-    assert "requirements-docs.txt" in workflow
-    assert "requirements-test.txt" in workflow
-    assert "requirements-package.txt" in workflow
-    assert "Submit all four lock manifests" in workflow
-    assert "joplin-md-sync-pip-locks" in workflow
-
-
 def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     release = _workflow("release.yml")
     assert "uses: ./.github/workflows/ci.yml" in release
@@ -364,8 +311,7 @@ def test_pages_validates_prs_and_confines_publish_permissions() -> None:
     assert pages.count("id-token: write") == 1
     assert "github.event_name != 'pull_request'" in pages
     trigger = pages.split("\npermissions:", 1)[0]
-    assert '"requirements-docs.in"' in trigger
-    assert '"requirements-docs.txt"' in trigger
+    assert '"uv.lock"' in trigger
 
 
 def test_pr_body_is_the_only_pull_request_target_write_boundary() -> None:

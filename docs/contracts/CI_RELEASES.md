@@ -7,7 +7,7 @@
 ### `CIR-001` - Workflow topology is event-driven and immutable
 
 **Contract:** The repository MUST contain only the reviewed CI,
-dependency-submission, Pages, PR-body, and release workflows. External actions
+Pages, PR-body, and release workflows. External actions
 MUST use full commit SHAs, validator images MUST use immutable digests,
 checkout credentials MUST not persist, and every workflow MUST declare
 permissions and concurrency behavior.
@@ -36,8 +36,7 @@ profile.
 ### `CIR-003` - Write permissions are confined to dedicated jobs
 
 **Contract:** Default workflow permission MUST be read-only contents. Only the
-CodeQL job MAY receive `security-events: write`, dependency submission MAY
-receive job-scoped `contents: write`, Pages deployment MAY receive job-scoped
+CodeQL job MAY receive `security-events: write`, Pages deployment MAY receive job-scoped
 Pages and OIDC writes, PR-body automation MAY receive pull-request write, and
 GitHub release publication MAY receive job-scoped contents write. PyPI
 publication MAY receive only job-scoped OIDC write and MUST NOT receive a
@@ -45,7 +44,6 @@ stored credential.
 
 **Evidence:**
 
-- [`test_dependency_submission_is_a_separate_trusted_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_dependency_submission_is_a_separate_trusted_write_boundary`
 - [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
 - [`test_pages_validates_prs_and_confines_publish_permissions`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pages_validates_prs_and_confines_publish_permissions`
 - [`test_pr_body_is_the_only_pull_request_target_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pr_body_is_the_only_pull_request_target_write_boundary`
@@ -116,18 +114,17 @@ without moving or replacing history.
 - [`test_requires_all_standalones_when_requested`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneInventoryTest::test_requires_all_standalones_when_requested`
 - [`test_uses_only_the_exact_current_changelog_section`](../../tests/unit/test_release_notes.py) - `tests/unit/test_release_notes.py::test_uses_only_the_exact_current_changelog_section`
 
-### `CIR-007` - Dependency submission is trusted-main-only
+### `CIR-007` - Native dependency integration needs no repository write job
 
-**Contract:** Dependency submission MUST trigger only on direct main push,
-build four validated lock manifests offline from the locks and their
-requirements inputs, validate the expected repository
-and payload shape, and submit with only its job-scoped standard token. Pull
-requests and reusable release invocation MUST not enter this write boundary.
+**Contract:** GitHub MUST receive dependency information through its native uv
+integration. The repository MUST NOT parse or submit generated lock snapshots
+through a custom workflow, nor grant dependency jobs contents-write permission.
+Dependency review and the lock-wide vulnerability audit MUST remain enabled.
 
 **Evidence:**
 
-- [`test_dependency_submission_is_a_separate_trusted_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_dependency_submission_is_a_separate_trusted_write_boundary`
-- [`test_builds_all_exact_lock_manifests`](../../tests/unit/test_dependency_snapshot.py) - `tests/unit/test_dependency_snapshot.py::test_builds_all_exact_lock_manifests`
+- [`test_workflow_set_is_event_driven_and_every_action_is_sha_pinned`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_workflow_set_is_event_driven_and_every_action_is_sha_pinned`
+- [`audit`](../../Makefile) - `make audit`
 
 ### `CIR-008` - Documentation changes build before merge and publish a sitemap
 
@@ -148,7 +145,9 @@ files, and grant deployment writes only to the deploy job.
 
 **Contract:** Contract files MUST be the only normative documentation, use
 unique stable IDs and the catalogued assertion shape, and link every assertion
-to at least one existing test definition. The user, maintenance, and site-only
+to an existing test definition, native Make check, or declarative integration
+configuration. Native tool checks MUST execute in CI rather than be
+reimplemented in unit tests. The user, maintenance, and site-only
 trees MUST remain structurally separate and all published internal links MUST
 resolve in a strict MkDocs build.
 
@@ -202,4 +201,3 @@ CI version increment and release consistency enforcement MUST remain blocking.
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
 - [`test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`
 - [`test_version_job_compares_exact_base_and_head`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_compares_exact_base_and_head`
-- [`test_direct_dependencies_are_exact_and_scoped`](../../tests/unit/test_dependency_policy.py) - `tests/unit/test_dependency_policy.py::test_direct_dependencies_are_exact_and_scoped`

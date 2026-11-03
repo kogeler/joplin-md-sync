@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==84.0.0"]
+requires = ["setuptools>=84"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -23,8 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
 ]
-# Runtime dependency policy is owned by docs/contracts/DEPENDENCIES.md. Internal
-# tool versions live in requirements-*.in and their generated hash locks.
+# Development tools are local dependency groups, never runtime requirements.
 dependencies = []
 
 [project.urls]
@@ -42,6 +41,31 @@ where = ["src"]
 
 [tool.setuptools.dynamic]
 version = { file = ".version" }
+
+[dependency-groups]
+quality = [
+    "bandit[toml]>=1.9.4",
+    "mypy>=2.4.0",
+    "pip-audit>=2.10.1",
+    "ruff>=0.17.1",
+]
+test = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+]
+build = [
+    "build>=1.6.1",
+    "pyinstaller>=6.22.3",
+    "setuptools",
+]
+docs = ["mkdocs-material>=9.7.7"]
+
+[tool.uv]
+required-version = ">=0.11"
+default-groups = []
+# The editable package version comes from a separate file.
+cache-keys = [{ file = "pyproject.toml" }, { file = ".version" }]
 
 [tool.ruff]
 line-length = 100

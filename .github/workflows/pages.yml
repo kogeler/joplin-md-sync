@@ -10,8 +10,8 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
-      - "requirements-docs.in"
-      - "requirements-docs.txt"
+      - "uv.lock"
+      - ".uv-version"
       - "Makefile"
       - ".github/workflows/pages.yml"
   push:
@@ -21,8 +21,8 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "pyproject.toml"
-      - "requirements-docs.in"
-      - "requirements-docs.txt"
+      - "uv.lock"
+      - ".uv-version"
       - "Makefile"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -52,10 +52,12 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements-docs.in
-            requirements-docs.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .uv-version
+          enable-cache: true
 
       - name: Build and audit generated site
         env:

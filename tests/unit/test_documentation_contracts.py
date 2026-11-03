@@ -108,6 +108,19 @@ def test_contract_assertions_have_unique_ids_and_real_evidence() -> None:
             for relative_link, node_id in evidence:
                 target = (path.parent / relative_link).resolve()
                 assert target.is_file(), (assertion_id, relative_link)
+                if node_id == "configuration":
+                    assert target.suffix in {".toml", ".yml"}, (assertion_id, target)
+                    continue
+                if node_id.startswith("make "):
+                    assert target == ROOT / "Makefile", (assertion_id, target)
+                    command = node_id.removeprefix("make ")
+                    assert re.fullmatch(r"[a-z][a-z0-9-]*", command), node_id
+                    assert re.search(
+                        rf"^{re.escape(command)}:",
+                        target.read_text(encoding="utf-8"),
+                        re.MULTILINE,
+                    ), (assertion_id, node_id)
+                    continue
                 assert target == (ROOT / node_id.split("::", 1)[0]).resolve(), (
                     assertion_id,
                     relative_link,
