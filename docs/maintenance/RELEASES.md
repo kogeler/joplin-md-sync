@@ -19,7 +19,8 @@ already published as a GitHub Release, and requires a higher version otherwise.
 When a pull request changes `CHANGELOG.md`, the PR-body workflow copies the
 newest populated level-two section, normally `## [Unreleased]`, into one
 marker-delimited block of the pull-request description. Text outside that
-block stays contributor-owned; do not edit or duplicate the marker lines.
+block is preserved by CI. Agents must never manually write or edit any part of
+the PR body; update the changelog and let CI generate the description.
 
 ## Prepare
 
@@ -30,7 +31,9 @@ block stays contributor-owned; do not edit or duplicate the marker lines.
    `## [Unreleased]` heading for later work.
 4. Update versioned installation examples when the release should become the
    documented stable version.
-5. Refresh direct dependencies and locks when dependency updates are included.
+5. Run `make lock-check`. If dependency requirements changed, run `make lock`
+   and include `uv.lock`. Use `make refresh-dependencies` only when dependency
+   upgrades are intended for this release.
 6. Run `make ci`, `make package`, and `make smoke` on Linux.
 
 `make verify-release` checks version ownership and changelog structure.

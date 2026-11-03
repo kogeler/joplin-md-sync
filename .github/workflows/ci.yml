@@ -43,16 +43,12 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements-dev.in
-            requirements-dev.txt
-            requirements-test.in
-            requirements-test.txt
-            requirements-package.in
-            requirements-package.txt
-            requirements-docs.in
-            requirements-docs.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
 
       - name: Run the Make CI contract
         env:
@@ -83,10 +79,12 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements-test.in
-            requirements-test.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
 
       - name: Verify headless desktop prerequisites
         run: |
@@ -144,10 +142,12 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.python_arch }}
-          cache: pip
-          cache-dependency-path: |
-            requirements-test.in
-            requirements-test.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
 
       - name: Run package tests and metadata checks
         shell: bash
@@ -189,10 +189,12 @@ jobs:
         with:
           python-version: "3.14"
           architecture: ${{ matrix.python_arch }}
-          cache: pip
-          cache-dependency-path: |
-            requirements-package.in
-            requirements-package.txt
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
 
       - name: Build and smoke-test native executable
         shell: bash
@@ -230,18 +232,15 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements-dev.in
-            requirements-dev.txt
-            requirements-test.in
-            requirements-test.txt
-            requirements-package.in
-            requirements-package.txt
-            requirements-docs.in
-            requirements-docs.txt
 
-      - name: Audit exact locks for fork fallback
+      - name: Set up uv for fork fallback
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
+
+      - name: Audit locked dependencies for fork fallback
         if: github.event.pull_request.head.repo.full_name != github.repository
         run: make audit PY=python
 

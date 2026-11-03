@@ -3,23 +3,22 @@
 
 version: 2
 updates:
-  # The requirements-*.in files own direct versions and pip-compile owns their
-  # same-stem hash locks. pyproject.toml holds only package metadata and the
-  # manually maintained build-backend pin, so it is excluded from pip manifests.
-  - package-ecosystem: pip
+  # uv owns both the manifest and the universal lock, including transitive updates.
+  - package-ecosystem: uv
     directory: /
     # One owner and one version-update PR for the complete Python graph.
     # Grouping alone does not opt transitive lock entries into updates.
     allow:
       - dependency-type: all
     schedule:
-      interval: daily
+      interval: weekly
+      day: monday
       time: "05:00"
       timezone: Europe/Helsinki
     open-pull-requests-limit: 1
     rebase-strategy: auto
-    exclude-paths:
-      - pyproject.toml
+    cooldown:
+      default-days: 7
     groups:
       python-dependencies:
         patterns:
