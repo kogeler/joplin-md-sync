@@ -14,7 +14,7 @@ Source: https://github.com/kogeler/joplin-md-sync
 - ChatGPT Actions: https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/
 - MCP API: https://joplin-mcp.romancello.net/user/MCP_API/
 - Self-hosting: https://joplin-mcp.romancello.net/user/SELF_HOSTED/
-- Service operations: https://joplin-mcp.romancello.net/user/SERVICE/
+- Joplin Headless Service: https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/
 
 ## Reference
 

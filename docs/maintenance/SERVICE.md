@@ -6,8 +6,8 @@ The headless installer's normative behavior belongs to the
 [service contract](../contracts/SERVICE.md). Authentication and transport
 requirements belong to the [security](../contracts/SECURITY.md) and
 [agent-interface](../contracts/AGENT_INTERFACES.md) contracts. User setup,
-operation, troubleshooting, and manual acceptance remain in
-[Service operations](../user/SERVICE.md).
+operation, troubleshooting, and sync acceptance remain in
+[Joplin Headless Service](../user/JOPLIN_HEADLESS_SERVICE.md).
 
 ## Components
 

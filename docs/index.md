@@ -24,7 +24,7 @@ hide:
       <a class="home-button home-button--secondary" href="user/MCP_API/#local-stdio">
         Connect local MCP
       </a>
-      <a class="home-button home-button--secondary" href="user/SERVICE/">
+      <a class="home-button home-button--secondary" href="user/JOPLIN_HEADLESS_SERVICE/">
         Deploy headless
       </a>
     </div>
@@ -113,7 +113,7 @@ hide:
           Install Joplin Terminal, recurrent sync, MCP, and Actions as coordinated
           rootless services on a Linux host with one interactive installer.
         </p>
-        <a href="user/SERVICE/">Deploy the complete service &rarr;</a>
+        <a href="user/JOPLIN_HEADLESS_SERVICE/">Deploy Joplin Headless Service &rarr;</a>
       </article>
     </div>
   </div>

@@ -8,7 +8,7 @@ Markdown workspace. Use it when an agent needs ordinary files, repository
 context, an exact three-way diff, or Git history. For direct note operations,
 start with [ChatGPT Actions](CHATGPT_ACTIONS.md) or the [MCP API](MCP_API.md);
 for a server without a desktop session, use the
-[headless service installer](SERVICE.md#headless-linux-installation).
+[Joplin Headless Service quick runbook](JOPLIN_HEADLESS_SERVICE.md#quick-runbook).
 
 ## Prerequisites
 

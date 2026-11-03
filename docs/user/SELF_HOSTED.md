@@ -47,7 +47,7 @@ Desktop does not need to run on this host or remain online elsewhere.
 The installer supports filesystem, OneDrive, Nextcloud, WebDAV, Dropbox, S3,
 Joplin Server, Joplin Cloud, and Joplin Server SAML targets. Browser-based and
 password-based targets have different setup paths; use the canonical
-[service installation guide](SERVICE.md#headless-linux-installation) instead
+[Joplin Headless Service runbook](JOPLIN_HEADLESS_SERVICE.md#quick-runbook) instead
 of constructing profile commands manually.
 
 ## Topology B: local desktop
@@ -124,4 +124,4 @@ system, the selected sync target remains the data transport, and
    Actions write and never interleave the two write models.
 
 For commands, installer options, upgrades, rollback, removal, and
-troubleshooting, continue to [Service operations](SERVICE.md).
+troubleshooting, continue to [Joplin Headless Service](JOPLIN_HEADLESS_SERVICE.md).

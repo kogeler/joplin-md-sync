@@ -59,4 +59,4 @@ and systemd configuration.
 
 Deployment instructions are in
 [Self-hosted service](../user/SELF_HOSTED.md) and
-[Service operations](../user/SERVICE.md).
+[Joplin Headless Service](../user/JOPLIN_HEADLESS_SERVICE.md).
