@@ -11,7 +11,7 @@ on:
       - "mkdocs.yml"
       - "pyproject.toml"
       - "uv.lock"
-      - ".uv-version"
+      - ".tool-versions"
       - "Makefile"
       - ".github/workflows/pages.yml"
   push:
@@ -22,7 +22,7 @@ on:
       - "mkdocs.yml"
       - "pyproject.toml"
       - "uv.lock"
-      - ".uv-version"
+      - ".tool-versions"
       - "Makefile"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          version-file: .uv-version
+          version-file: .tool-versions
           enable-cache: true
 
       - name: Build and audit generated site

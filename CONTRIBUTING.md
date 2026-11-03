@@ -18,7 +18,7 @@ to the current machine and user, so one checkout on a shared or network drive
 works from several hosts:
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first;
-`.uv-version` selects the reviewed CLI version in CI. Development tools live
+`.tool-versions` selects the reviewed CLI version in CI. Development tools live
 in standard dependency groups and share one universal `uv.lock`.
 
 ```bash

@@ -10,7 +10,7 @@ The installed joplin-md-sync package still has no runtime dependencies.
 ## Install the tools
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
-supported Python interpreter. `.uv-version` records the reviewed uv CLI version
+supported Python interpreter. `.tool-versions` records the reviewed uv CLI version
 used by CI's official setup-uv action. The project declares a compatible
 minimum rather than requiring Dependabot's updater to use that exact binary.
 

@@ -40,7 +40,7 @@ left untouched; delete an obsolete one manually.
 5. Run `make ci` before a pull request when the Linux container/runtime
    prerequisites are available.
 
-Install uv before running Make. CI uses `.uv-version` through the official
+Install uv before running Make. CI uses `.tool-versions` through the official
 setup-uv action. Every group is installed with `uv sync --locked` into its
 own host-scoped environment. No target rewrites `uv.lock` unless explicitly
 asked through `make lock` or `make refresh-dependencies`.

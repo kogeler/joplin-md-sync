@@ -37,7 +37,7 @@ to compensate for host-specific locking.
 Python interpreter and dedicated project-environment path. Tool environments
 MUST select only their own group and require third-party wheels. CI MUST NOT
 silently rewrite the lock or install an independently maintained tool list.
-The reviewed CI uv executable version MUST have one owner in `.uv-version`;
+The reviewed CI uv executable version MUST have one owner in `.tool-versions`;
 the project minimum MUST NOT force Dependabot to use that exact CLI build.
 
 **Evidence:**
