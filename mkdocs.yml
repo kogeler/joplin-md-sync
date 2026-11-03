@@ -111,7 +111,7 @@ nav:
       - ChatGPT Actions: user/CHATGPT_ACTIONS.md
       - "MCP: local & HTTP": user/MCP_API.md
       - Self-hosted deployment: user/SELF_HOSTED.md
-      - Service operations: user/SERVICE.md
+      - Joplin Headless Service: user/JOPLIN_HEADLESS_SERVICE.md
   - Markdown sync:
       - Quick start: user/GETTING_STARTED.md
       - Agent workflows: user/AGENT_WORKFLOWS.md

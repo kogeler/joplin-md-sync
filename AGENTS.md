@@ -141,7 +141,7 @@ Setup and operation:
 - [MCP API](docs/user/MCP_API.md)
 - [ChatGPT Actions](docs/user/CHATGPT_ACTIONS.md)
 - [Self-hosted deployment](docs/user/SELF_HOSTED.md)
-- [Service operations](docs/user/SERVICE.md)
+- [Joplin Headless Service](docs/user/JOPLIN_HEADLESS_SERVICE.md)
 
 The normative transport and deployment requirements are in the
 [agent-interface](docs/contracts/AGENT_INTERFACES.md),

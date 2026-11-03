@@ -42,10 +42,10 @@ USER_FILES = {
     "CLI.md",
     "CONFLICTS.md",
     "GETTING_STARTED.md",
+    "JOPLIN_HEADLESS_SERVICE.md",
     "MCP_API.md",
     "OVERVIEW.md",
     "SELF_HOSTED.md",
-    "SERVICE.md",
     "WORKSPACE_FORMAT.md",
 }
 MAINTENANCE_FILES = {
@@ -238,9 +238,7 @@ def test_homepage_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
     assert "install_joplin_terminal.py" in homepage
 
     mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-    social_metadata = (DOCS / "site" / "overrides" / "home.html").read_text(
-        encoding="utf-8"
-    )
+    social_metadata = (DOCS / "site" / "overrides" / "home.html").read_text(encoding="utf-8")
     assert '"MCP: local & HTTP": user/MCP_API.md' in mkdocs
     assert "local stdio MCP" in mkdocs
     assert "local stdio MCP" in social_metadata

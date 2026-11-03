@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the headless-service guide with a task-oriented Joplin Headless
+  Service runbook: direct remote Nextcloud/S3 install and purge commands first,
+  followed by installed paths, the complete installer CLI, and advanced
+  deployment/maintenance. Rename the guide to `JOPLIN_HEADLESS_SERVICE.md`,
+  update links directly, and test the runnable examples against the installer.
+
 ## [1.7.1] - 2026-10-20
 
 ### Changed

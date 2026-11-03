@@ -214,7 +214,7 @@ Joplin connection options are the normal `--base-url`, `--port`,
 The command intentionally stays in the foreground. Full protocol behavior,
 security guidance, MCP client configuration, and service-manager examples are
 split by purpose between [MCP API](MCP_API.md) and
-[Joplin API Service](SERVICE.md).
+[Joplin Headless Service](JOPLIN_HEADLESS_SERVICE.md).
 
 Actions-only options are rejected unless `--gpt-actions` is present. The
 Actions token file is required, re-read on each request, protected like every

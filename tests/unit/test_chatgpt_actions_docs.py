@@ -45,7 +45,7 @@ def test_chatgpt_actions_setup_is_complete_and_not_split() -> None:
 
 
 def test_service_guide_delegates_actions_setup_without_duplicate_commands() -> None:
-    service = (DOCS / "user" / "SERVICE.md").read_text(encoding="utf-8")
+    service = (DOCS / "user" / "JOPLIN_HEADLESS_SERVICE.md").read_text(encoding="utf-8")
     assert "ChatGPT Actions end-to-end setup" in service
     assert "setup-probe-not-a-tool" not in service
     assert "gpt-actions export-openapi" not in service

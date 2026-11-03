@@ -14,7 +14,7 @@ history.
 **[Website](https://joplin-mcp.romancello.net/)** ·
 **[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
 **[MCP: local stdio & HTTP](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
-**[Deploy headless](https://joplin-mcp.romancello.net/user/SERVICE/)**
+**[Deploy headless](https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/)**
 
 ## What you get
 
@@ -69,9 +69,9 @@ joplin-md-sync.service     MCP and ChatGPT Actions on one guarded adapter
 ```
 
 It also generates separate protected credentials for Joplin, MCP, and Actions.
-The full guide covers every sync target, a reviewed-download flow, dry-run,
-upgrade, rollback, and removal:
-[Joplin API Service](https://joplin-mcp.romancello.net/user/SERVICE/).
+For ready-to-run Nextcloud, custom S3, and uninstall commands, see
+[Joplin Headless Service](https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/).
+The guide also explains installed paths, every installer option, and upgrades.
 
 ### 2. Publish the narrow HTTPS route
 

@@ -105,5 +105,5 @@ proposed creations.
 Start by comparing the integration modes in
 [Choose an agent interface](AGENT_INTERFACES.md). Continue with
 [ChatGPT Actions](CHATGPT_ACTIONS.md), the [MCP API](MCP_API.md), the
-[headless service](SERVICE.md#headless-linux-installation), or the
+[headless service](JOPLIN_HEADLESS_SERVICE.md#quick-runbook), or the
 [Markdown quick start](GETTING_STARTED.md) for the interface you need.

@@ -66,9 +66,10 @@ token-file/environment policy.
 ### Streamable HTTP
 
 `mcp serve` remains the network mode and opens the MCP endpoint at
-`http://127.0.0.1:8765/mcp` by default. Deployment, credentials, systemd, Task
-Scheduler, and live acceptance are documented once in [Joplin API
-Service](SERVICE.md).
+`http://127.0.0.1:8765/mcp` by default. For headless installation, credentials,
+and systemd operations, see [Joplin Headless Service](JOPLIN_HEADLESS_SERVICE.md).
+For Windows autostart, use the
+[`install-service-task.ps1`](../../examples/windows/install-service-task.ps1) example.
 
 Example MCP client settings without MCP authorization:
 
@@ -217,5 +218,6 @@ containing one URL-safe Base64 token that encodes at least 32 bytes;
 generate it with `secrets.token_urlsafe(32)`. Symlinks, weak or oversized
 tokens, insecure POSIX modes or Windows ACLs, non-ASCII headers, and duplicate
 Authorization headers are rejected. Browser-originated requests are also checked against the
-allowed Origin set. See [Joplin API Service](SERVICE.md) for secure token
-creation, listener binding, and operational commands.
+allowed Origin set. The [Joplin Headless Service installer](JOPLIN_HEADLESS_SERVICE.md)
+generates these tokens automatically and documents listener binding and
+operational commands.
