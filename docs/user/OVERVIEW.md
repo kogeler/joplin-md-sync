@@ -12,7 +12,7 @@ It provides three complementary ways to work with the same notes:
    for current notes, notebooks, tags, and search through generated OpenAPI.
 2. **Typed MCP tools.** Give any compatible assistant structured access to
    notes, notebooks, tags, search, and resources over local stdio or Streamable
-   HTTP.
+   HTTP, including hosted Claude through built-in GitHub OAuth.
 3. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
    edit them with an agent or local tools, inspect a three-way diff, dry-run the
    exact push plan, and only then update Joplin.
@@ -50,7 +50,7 @@ yours:
 | --- | --- |
 | Note application | Joplin Desktop or a dedicated Joplin Terminal profile |
 | Joplin synchronization | Filesystem, Nextcloud, WebDAV, S3, Joplin Server, Joplin Cloud, or another supported Joplin target |
-| Agent access | ChatGPT Actions, local stdio MCP, Streamable HTTP MCP, or Markdown files |
+| Agent access | ChatGPT Actions, local stdio MCP, Streamable HTTP MCP, Claude with GitHub OAuth, or Markdown files |
 | Change review | CLI diff/dry-run, Git review, client-side MCP approval, or a combination |
 | Network boundary | Loopback only, private network, VPN, or a controlled HTTPS publishing layer |
 

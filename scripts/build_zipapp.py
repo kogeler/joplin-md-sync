@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build dist/joplin-md-sync.pyz with the stdlib zipapp module.
 
-The tool has zero runtime dependencies, so the zipapp contains only the
-package itself and runs with any supported CPython:
+The zipapp contains the application code. Run it in a supported Python
+environment with the standard project runtime dependencies installed; native
+executables bundle Python and those dependencies:
 
     python joplin-md-sync.pyz --help
 """

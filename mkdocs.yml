@@ -109,6 +109,7 @@ nav:
   - "ChatGPT & MCP":
       - Choose an interface: user/AGENT_INTERFACES.md
       - ChatGPT Actions: user/CHATGPT_ACTIONS.md
+      - Claude with GitHub: user/CLAUDE_CONNECTOR.md
       - "MCP: local & HTTP": user/MCP_API.md
       - Self-hosted deployment: user/SELF_HOSTED.md
       - Joplin Headless Service: user/JOPLIN_HEADLESS_SERVICE.md

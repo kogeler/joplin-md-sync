@@ -18,6 +18,16 @@ api.py          Joplin Data API client (urllib): pagination, GET retries,
 mcp_service.py  validated note/notebook/tag/resource operations, relationship
                 traversal, base64 limits, bounded Joplin availability waits
 mcp_server.py   combined HTTP listener and shared MCP JSON-RPC dispatcher
+http_app.py     single-listener legacy/OAuth ASGI routing and framing checks
+legacy_asgi.py  ASGI I/O adapter over the same legacy HTTP processing
+github_oauth.py GitHub token exchange, numeric owner policy and grant serialization
+oauth_server.py embedded FastMCP/ASGI runtime, route validation, lifecycle
+oauth_config.py validated CLI options configuration and setup account lookup
+oauth_store.py  encrypted, bounded OAuth grants with exclusive process lock
+oauth_tools.py  FastMCP provider backed by the shared registry/dispatcher
+oauth_http.py   socket admission and read deadlines before request headers
+oauth_boundary.py public input limits, safe errors and SDK log suppression
+oauth_execution.py bounded shared worker execution without mutation replay
 mcp_stdio.py    local newline-delimited MCP transport over stdin/stdout
 tool_registry.py shared immutable definitions, Actions exposure, effect mapping
 tool_schema.py  dependency-free JSON Schema subset validation
@@ -54,6 +64,7 @@ engine:
 HTTP MCP client ---> MCP HTTP adapter ----+
 Local MCP client --> MCP stdio adapter ---+-> tool registry/executor -> mcp_service -> api -> Joplin
 Custom GPT Action -> Actions HTTP adapter +
+Hosted Claude -----> OAuth MCP adapter ---+
 ```
 
 It directly manages Joplin notes, notebooks, tags, and resources and does not
@@ -61,11 +72,75 @@ mutate workspace state. The service layer is transport-independent, so future
 transports can reuse its validation, metadata shaping, relationship handling,
 multipart uploads, and outage behavior.
 
-The two transports share the same in-process executor. The Actions adapter
+The agent transports share the same in-process executor. The Actions adapter
 never calls `/mcp`, and HTTP controllers never bypass the registry to call the
 Joplin client directly. Binary resource read/create/update stays available to
 MCP but is explicitly disabled in Actions exposure metadata because its 10 MiB
 contract cannot fit the Actions text/payload limit.
+
+GitHub OAuth is installed as part of the standard runtime and activated by
+`mcp serve --github-oauth`. The enabled service uses one Uvicorn
+worker and one listener: legacy `/mcp`, Actions, OAuth `/claude/mcp`, discovery,
+consent and callbacks. The disabled service retains the existing HTTP runtime;
+stdio never opens an HTTP listener. Both HTTP implementations use the same
+legacy request logic, registry, dispatcher, executor and Joplin service.
+
+OAuth tokens reference encrypted persistent grants. Every resource request
+verifies the current GitHub numeric ID through `/user`; positive results are
+cached only within that request. One process owns the state directory and
+serializes authorization-code exchanges, explicit refresh and transparent
+refresh. Removing grants or changing the allowed ID therefore closes access
+after restart even for a still-valid signed token. Operator setup and recovery
+are described in the [connector guide](../user/CLAUDE_CONNECTOR.md).
+
+### Embedded OAuth design
+
+| Choice | Reason |
+| --- | --- |
+| `OAuthProxy`, a GitHub identity verifier and a narrow upstream token client | Enforce the verified numeric owner, normalize GitHub refresh TTL fields, and distinguish temporary failures from revocation while retaining SDK endpoints, PKCE, consent and JWT handling. |
+| One exchange lock in one HTTP worker | Serialize registration, authorization-code exchange, explicit refresh and transparent refresh without private SDK storage patches or distributed coordination. Lock waits count toward the request deadline. Multiple HTTP workers are unsupported. |
+| Request-local positive verification cache | Avoid duplicate GitHub identity lookups within one request while rechecking grants on the next request. |
+| Encrypted FileTree storage | Keep grants in a dedicated private directory with a schema, quotas and an exclusive process lock, independently of workspace state and without another database service. |
+| Stateless Streamable HTTP with JSON responses | Joplin tools do not need server-push or transport session IDs. Persistent OAuth grants survive restart independently of the transport. |
+| Native executable or prepared Python environment | Native builds bundle Python and runtime dependencies. The zipapp contains application code and uses the environment's runtime because binary dependencies cannot be imported directly from the zip. |
+
+### OAuth runtime limits
+
+The following defaults describe the embedded runtime. They complement the
+[agent-interface](../contracts/AGENT_INTERFACES.md) and
+[security](../contracts/SECURITY.md) contracts. Implementations live in
+[socket admission](../../src/joplin_md_sync/oauth_http.py),
+[request boundaries](../../src/joplin_md_sync/oauth_boundary.py),
+[worker execution](../../src/joplin_md_sync/oauth_execution.py),
+[GitHub policy](../../src/joplin_md_sync/github_oauth.py), and
+[persistent storage](../../src/joplin_md_sync/oauth_store.py).
+
+| Resource | Default behavior |
+| --- | --- |
+| Accepted sockets | 16, with admission before HTTP headers arrive |
+| Incoming request read deadline | 15 seconds, including empty sockets, partial bodies and pipelined requests |
+| Shared synchronous execution | 8 daemon workers; up to 16 admitted running or waiting requests across the interfaces |
+| Public OAuth flow rate | A shared token bucket of 60 requests per minute |
+| Dynamic client registration | Up to 512 live registered client IDs; expired client records release their identifiers, and working grants are never evicted |
+| Request bodies | 16 MiB for `/claude/mcp`, 8 KiB for `/register`, 64 KiB for other OAuth routes |
+| Query string | Up to 8 KiB; ambiguous paths/framing, duplicate authorization/form parameters and deeply nested JSON are rejected |
+| Flow deadline | 9 seconds normally, 25 seconds for refresh; prebuffered registration/form input has a 2-second read limit within that budget |
+| GitHub HTTP | 4-second client timeout; no ambient proxy or automatic redirects |
+| Access token lifetime | 3600 seconds by default; configurable from 600 to 3600 seconds |
+| Stored state | Up to 4096 files and 256 MiB; records up to 64 KiB, TTL capped at 15897600 seconds |
+| Shutdown and cancellation | Bounded draining; an active mutation retains its execution slot until completion, without replay or late private exception logging |
+
+GitHub token responses include an upstream refresh token and positive integer
+lifetimes. The adapter maps `refresh_token_expires_in` to the SDK's
+`refresh_expires_in` field. API scope `user` includes `read:user`;
+`offline_access` is not used as an API permission check. Timeouts, 5xx, 429 and
+403 responses carrying rate-limit indicators produce a temporary `503` with a
+safe Retry-After. Invalid grants retain their distinct OAuth error.
+
+Host and Origin checks use the configured public authority. Requests without
+Origin are supported; forwarded headers do not change the transport peer.
+The reverse proxy blocks public health routes and keeps callback code/state out
+of raw request logs, as shown in the connector guide.
 
 ## Data flow of a mutating command
 
@@ -84,9 +159,10 @@ finalize: cursor, journal complete, prune backups
 
 ## Key design decisions
 
-1. **Zero runtime dependencies.** Everything is stdlib; tests use
-   `unittest`; the fake Joplin server is `http.server`. This keeps the
-   wheel/pyz trivially portable and the supply-chain surface nil.
+1. **One standard service runtime.** FastMCP, ASGI and GitHub OAuth ship with
+   the standard package and native executables. CLI configuration enables
+   interfaces on the existing listener. Runtime requirements and development
+   tools share the root uv lock; platform and distribution tests validate them.
 2. **Base snapshots are full copies**, not hashes only. A true three-way
    comparison and offline `status`/`diff --offline` need base content, and
    it lets `build_remote_snapshot` skip body fetches for notes whose

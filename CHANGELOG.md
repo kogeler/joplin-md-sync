@@ -6,8 +6,50 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-05
+
+### Added
+
+- Include the GitHub OAuth and ASGI runtime in every standard installation
+  and native executable. Enable GitHub login for one configured numeric account
+  ID with `mcp serve --github-oauth` on the existing HTTP port.
+- Configure OAuth with individual CLI flags and protected secret-file options.
+  Add account-ID lookup, read-only `mcp oauth-check`, and locked local
+  `mcp oauth-reset`, with encrypted persistent grants and installer lifecycle
+  support on the existing service unit.
+- Bound OAuth execution, suppress private worker errors after cancellation,
+  and distinguish temporary GitHub failures from revoked grants while
+  preserving refresh grants for recovery.
+- Provide Nginx examples for the existing HTTPS hostname that exclude OAuth
+  callback codes/state from request logs and match the MCP body limit.
+  Document local installation of unpublished CI candidates.
+- Require process/TLS OAuth E2E acceptance for login, all registered tools,
+  identity and grant rejection, refresh, restart, state and concurrency limits.
+  Verify the real Joplin Data API and native systemd sandbox separately, and
+  retain downloadable CodeQL dataflow evidence with CI results.
+
 ### Changed
 
+- Make the headless installer work without setup flags: ask for missing values,
+  hide secrets, preserve configured settings on automatic updates, and fill new
+  OAuth configuration interactively. Add `--reconfigure` for a fresh setup
+  selection and `--clean` for prompt-free removal; clear disabled managed
+  credentials and grants while retaining external operator-owned files. Use
+  the same disabled startup defaults in dry-run and the actual setup flow.
+- Share sync configuration and credential cleanup across new installations,
+  upgrades and profiles left after interrupted setup. Reuse credentials only
+  for matching account/bucket identities, reject incomplete service pairs
+  before overwriting configuration, and require secret input without echo and
+  regular credential files that can be read without blocking.
+- Split the installer into a small entry point and focused Python modules.
+  Piped/downloaded runs verify and import the complete bundle in a private
+  temporary directory, then remove it on exit. Select an unmerged branch, tag
+  or commit with `--installer-ref`/`--ref`, keeping `main` as the default and
+  downloading every module from the same selection. Local runs use sibling modules.
+- Require explicit user authorization for agent commits and pushes, and English
+  for all project-authored material. Keep working plans outside published docs;
+  consolidate OAuth design, runtime limits, test evidence and deployment
+  validation in the maintained architecture, development and connector guides.
 - Use native uv dependency groups and one universal `uv.lock` for development,
   tests, packaging, and documentation. Install each group into its existing
   host-private environment and let Dependabot update the manifest and lock

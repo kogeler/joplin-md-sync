@@ -55,6 +55,22 @@ jobs:
           RUFF_OUTPUT_FORMAT: github
         run: make ci PY=python
 
+      - name: Verify OAuth functional coverage from real test results
+        run: python scripts/report_oauth_acceptance.py --junit .artifacts/test-results.xml --output .artifacts/oauth-e2e-evidence.json
+
+      # The report is written before its gate fails; keep it for diagnosis.
+      - name: Upload OAuth acceptance evidence
+        if: ${{ !cancelled() && hashFiles('.artifacts/oauth-e2e-evidence.json') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oauth-acceptance-evidence
+          path: |
+            .artifacts/oauth-e2e-evidence.json
+            .artifacts/test-results.xml
+            .artifacts/coverage.xml
+            .artifacts/coverage-report.md
+          if-no-files-found: error
+
       - name: Publish coverage summary
         if: ${{ !cancelled() }}
         run: |
@@ -200,6 +216,30 @@ jobs:
         shell: bash
         run: make standalone checksums smoke-standalone verify-release PY=python
 
+      - name: Verify native OAuth in the real systemd user sandbox
+        if: matrix.platform == 'linux'
+        run: |
+          # Ubuntu's unconfined userns policy removes namespace capabilities.
+          # Permit the trusted executor to construct the production sandbox,
+          # without changing the host-wide AppArmor restriction or unit options.
+          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            sudo tee /etc/apparmor.d/joplin-oauth-ci-userns > /dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile joplin-oauth-ci-userns /usr/lib/systemd/systemd-executor flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+            sudo apparmor_parser -r /etc/apparmor.d/joplin-oauth-ci-userns
+          fi
+          runner_name="$(id -un)"
+          runner_uid="$(id -u)"
+          sudo loginctl enable-linger "$runner_name"
+          sudo systemctl start "user@$runner_uid.service"
+          XDG_RUNTIME_DIR="/run/user/$runner_uid"
+          export XDG_RUNTIME_DIR
+          make test-oauth-systemd PY=python
+
       - name: Upload smoke-tested native executable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -274,6 +314,16 @@ jobs:
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: .github/workflows/codeql.yml:analyze/language:${{ matrix.language }}
+          output: .artifacts/codeql
+
+      - name: Upload CodeQL dataflow evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: codeql-${{ matrix.language }}-evidence
+          path: .artifacts/codeql/*.sarif
+          if-no-files-found: error
+          retention-days: 7
 
   version:
     name: Version increment

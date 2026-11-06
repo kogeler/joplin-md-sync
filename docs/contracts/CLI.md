@@ -127,3 +127,20 @@ links.
 - [`test_resource_links_survive_round_trip`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::ResourcesTest::test_resource_links_survive_round_trip`
 - [`test_resources_pull_downloads_files`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::ResourcesTest::test_resources_pull_downloads_files`
 - [`test_note_links_not_treated_as_missing_resources`](../../tests/integration/test_discovery_resources.py) - `tests/integration/test_discovery_resources.py::ResourcesTest::test_note_links_not_treated_as_missing_resources`
+
+### `CLI-008` - OAuth management is explicit and check is read-only
+
+**Contract:** OAuth MUST be installed as standard runtime and activated by
+`mcp serve --github-oauth`. `mcp oauth-check` MUST
+validate the same CLI values and protected secret files and route construction without binding,
+network calls or state provisioning. `mcp oauth-reset` MUST require explicit
+`--confirm-reset` and refuse concurrent use of the state directory. Setup login
+lookup MUST return a verified numeric ID and MUST NOT turn the login into an
+authorization rule. Invalid configuration MUST fail before binding.
+
+**Evidence:**
+
+- [`test_standard_runtime_exposes_oauth_and_checks_config_without_provisioning`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_standard_runtime_exposes_oauth_and_checks_config_without_provisioning`
+- [`test_invalid_config_fails_without_provisioning`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_invalid_config_fails_without_provisioning`
+- [`test_reset_requires_explicit_confirmation`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_reset_requires_explicit_confirmation`
+- [`test_github_timeout_and_setup_lookup_failure_are_safe`](../../tests/oauth/unit/test_identity.py) - `tests/oauth/unit/test_identity.py::test_github_timeout_and_setup_lookup_failure_are_safe`

@@ -14,6 +14,10 @@ Self-hosting is not one switch. It is control over four separate layers:
 `joplin-md-sync` supports a headless Linux topology and a local desktop
 topology. Neither requires publishing Joplin's own Data API.
 
+Hosted Claude can use [GitHub OAuth](CLAUDE_CONNECTOR.md) on `/claude/mcp`.
+Enable it on the existing bridge and expose its discovery, consent and callback
+routes through the same HTTPS hostname. The bridge keeps one listener and port.
+
 ## Topology A: headless Linux host
 
 ```text

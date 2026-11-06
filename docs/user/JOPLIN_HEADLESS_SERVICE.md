@@ -16,6 +16,37 @@ Choose [Nextcloud](#install-with-nextcloud), [S3](#install-with-s3), or
 
 <a id="headless-linux-installation"></a>
 
+### Interactive installation and updates
+
+Run the same entry point without any options for guided setup:
+
+```bash
+set -o pipefail
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  'https://raw.githubusercontent.com/kogeler/joplin-md-sync/main/scripts/joplin_terminal_service/install_joplin_terminal.py' \
+  | python3 -
+```
+
+CLI options answer the corresponding setup questions. Missing values are
+requested only when needed; secret input is hidden. Optional yes/no questions
+show `[y/N]`, and Enter means no. Selecting `none` as the sync backend installs
+local services without synchronization. Answer yes to service startup and
+automatic startup if you want the services running after setup.
+
+When the two services already exist, the same command updates them and keeps
+their configured paths, ports, sync credentials, optional features, version
+selection and startup choices. It does not repeat setup questions. For example,
+adding `--github-oauth` asks only for missing OAuth settings and its hidden
+Client Secret. Existing OAuth settings are reused.
+
+`--reconfigure` starts a complete configuration flow using only this run's CLI,
+environment and interactive answers. Optional features default to no. Disabled
+features lose their active settings and installer-owned secrets/grants; inactive
+sync credentials are cleared through Joplin's supported CLI. Full reconfiguration resets managed OAuth registrations/grants and removes
+unused owned keys; reconnect OAuth clients afterward. Existing notes and
+operator-owned external secret/state files are retained. Program/profile
+relocation is a separate installation, not an in-place reconfiguration.
+
 ### Install with Nextcloud
 
 Use the sync URL and account from a working Joplin client. The remote Joplin
@@ -60,7 +91,7 @@ The installer does not create the bucket or change its permissions. See
 ### Remove the local installation
 
 !!! danger "This deletes the local notes profile"
-    `--purge` permanently deletes the managed local profile, programs,
+    `--clean` (alias `--purge`) permanently deletes the managed local profile, programs,
     credentials, units, state, and upgrade backups. **It does not delete remote
     Nextcloud/S3 data.** Make a verified JEX export in Joplin first if you need
     to retain local notes. This is not a sync-target migration command.
@@ -69,13 +100,13 @@ The installer does not create the bucket or change its permissions. See
 set -o pipefail
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
   'https://raw.githubusercontent.com/kogeler/joplin-md-sync/main/scripts/joplin_terminal_service/install_joplin_terminal.py' \
-  | python3 - --purge
+  | python3 - --clean
 ```
 
-The installer displays the selected profile path and requires you to type
-`PURGE`. Add `--dry-run` to preview the selected paths without deleting them.
-If you originally used custom paths, repeat those options and XDG variables;
-see [custom-path removal](#removal).
+This command runs without questions or a confirmation flag. Add `--dry-run`
+to preview the selected paths. Installed units recover custom paths; keep the
+same XDG variables and supply path overrides for incomplete/unreadable setups.
+See [custom-path removal](#removal).
 
 ### What to expect during installation
 
@@ -95,8 +126,8 @@ Large stores can take a long time: a progress heartbeat appears every minute,
 and each initial sync/decryption stage can run for up to 24 hours. Note titles
 and bodies are not printed as progress.
 
-Success means both services started and the installer's Joplin API, MCP
-notebook-listing, and Actions authentication checks passed. Check the result:
+If startup was selected, success includes Joplin API, MCP notebook-listing
+and Actions authentication smoke checks. Otherwise the units remain stopped. Check the result:
 
 ```bash
 systemctl --user status joplin-terminal.service joplin-md-sync.service
@@ -136,8 +167,12 @@ installer, not root's home.
 | `~/.config/systemd/user/` | `joplin-terminal.service` and `joplin-md-sync.service`. |
 | `~/.config/joplin-agent/api-token` | Private Joplin Data API credential; used by the adapter, not by clients. |
 | `~/.config/joplin-md-sync/mcp-token` | Bearer credential for MCP clients at `/mcp`. |
+| `~/.config/joplin-md-sync/installer-settings.json` | Nonsecret saved version/startup choices; owner-only. |
+| `~/.config/joplin-md-sync/oauth-settings.json` | Saved OAuth values and secret-file paths, without secret values. |
+| `~/.config/joplin-md-sync/oauth-secrets/` | Owner-only Client Secret/signing-key files created by interactive setup. |
 | `~/.config/joplin-md-sync/gpt-actions-token` | Separate bearer credential for ChatGPT Actions at `/api/gpt/v1/*`. |
 | `~/.local/state/joplin-agent/` | Profile lock and retained upgrade backups. |
+| `~/.local/state/joplin-md-sync/oauth/` | Default encrypted OAuth grants when GitHub OAuth is enabled. |
 
 All three token files are owner-only (`0600`). The installer prints their
 paths, not their contents. Reruns preserve valid existing MCP/Actions tokens;
@@ -155,23 +190,28 @@ Pass options after `python3 -` in the remote commands above, or after
 `python3 install_joplin_terminal.py` when using a downloaded copy. Use
 `--help` for the built-in summary.
 
-There are three modes: **install** (default), `--upgrade`, and `--purge`.
-Install requires a sync target; upgrade and purge do not. `--dry-run` previews
+The default mode automatically installs or updates. `--reconfigure` rebuilds
+the selected configuration; `--clean` removes the managed installation.
+No setup option is mandatory in interactive mode. `--upgrade` and `--purge`
+remain compatibility aliases for explicit update/removal. `--dry-run` previews
 any mode without prompting, reading secret files, or changing the installation.
-When using the remote form, bootstrap may still fetch the Python companion
-module before argument handling, including for `--help` and `--dry-run`.
+When using the remote form, bootstrap downloads the verified Python package and assets into a private
+`/tmp/joplin-installer-*` directory before argument handling, including for
+`--help` and `--dry-run`. The temporary directory is removed on exit.
 Install/upgrade dry runs also check that the required host programs exist and
 that Node/npm report usable versions; they do not require a working user bus.
 
-For value options, precedence is **CLI → environment → default**. Boolean
-switches have no environment equivalent. On upgrade, saved service settings
-replace defaults unless explicitly overridden.
+For settings, precedence is **CLI → environment → existing configuration →
+interactive answer/default**. Reconfiguration skips existing configuration.
+Boolean feature questions default to no; an explicit positive or negative
+flag replaces the question. `--non-interactive` and `--dry-run` are optional
+automation controls and never prompt.
 
 ### Sync and credential options
 
 | Option | Meaning and default | Environment |
 | --- | --- | --- |
-| `--sync-target TARGET` | Required for install. One of the targets in the table below. | `JOPLIN_SYNC_TARGET` |
+| `--sync-target TARGET` | Prompted when not configured. Default interactive choice: `none`. One of the targets in the table below. | `JOPLIN_SYNC_TARGET` |
 | `--sync-location VALUE` | Target directory, bucket name, or HTTP(S) URL; required as shown below. No default. | `JOPLIN_SYNC_LOCATION` |
 | `--sync-username VALUE` | Nextcloud/WebDAV username or Joplin Server email. Also accepts an S3 access key for compatibility; **prefer the hidden S3 prompt**, not an argument. | `JOPLIN_SYNC_USERNAME` |
 | `--sync-username-file PATH` | Optional protected username/access-key file. Replaces only that prompt; cannot be combined with `--sync-username` or its environment variable. | `JOPLIN_SYNC_USERNAME_FILE` |
@@ -192,6 +232,7 @@ is described below.
 
 | Target | `--sync-location` | Username and authentication |
 | --- | --- | --- |
+| `none` | Not used | Disable synchronization and clear inactive sync settings during reconfiguration. |
 | `nextcloud` | Existing Nextcloud Joplin directory URL | Username required; hidden password prompt. |
 | `s3` | Bucket name, **not** a URL | `--s3-region` required; custom `--s3-endpoint` optional. Both keys use hidden prompts by default. |
 | `filesystem` | Existing writable absolute directory | No credentials. The directory is not created for you. |
@@ -215,6 +256,15 @@ the profile is modified.
 | `--joplin-prefix PATH` | Program prefix. Default: `~/.local`. Does **not** relocate the profile, config, or state. | `JOPLIN_INSTALL_PREFIX` |
 | `--api-port PORT` | Private loopback API port, passed to both services. Default: `41185`. | `JOPLIN_API_PORT` |
 | `--mcp-port PORT` | Shared MCP/Actions port. Default: `8765`; must differ from the API port. Both ports accept `1..65535`. | `JOPLIN_MCP_PORT` |
+| `--github-oauth` | Enable built-in GitHub OAuth on the existing port. Upgrade preserves installed settings. See [Claude setup](CLAUDE_CONNECTOR.md). | `JOPLIN_GITHUB_OAUTH` (`1`, `true` or `yes`) |
+| `--github-oauth-public-url URL` | Public HTTPS origin for discovery and callbacks; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_PUBLIC_URL` |
+| `--github-oauth-client-id ID` | GitHub OAuth App Client ID; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_CLIENT_ID` |
+| `--github-oauth-client-secret-file PATH` | Protected Client Secret file. Default: hidden prompt, saved under `oauth-secrets/`. | `JOPLIN_GITHUB_OAUTH_CLIENT_SECRET_FILE` |
+| `--github-oauth-signing-key-file PATH` | Protected signing-key file. Default: a generated owner-only key under `oauth-secrets/`. | `JOPLIN_GITHUB_OAUTH_SIGNING_KEY_FILE` |
+| `--github-oauth-allowed-user-id ID` | Single permitted numeric GitHub account ID; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_ALLOWED_USER_ID` |
+| `--github-oauth-login-hint USER` | Optional GitHub login hint, never an access rule. | `JOPLIN_GITHUB_OAUTH_LOGIN_HINT` |
+| `--github-oauth-state-dir PATH` | Absolute private state directory. Default: `~/.local/state/joplin-md-sync/oauth`; a custom directory is operator-owned and kept by purge. | `JOPLIN_GITHUB_OAUTH_STATE_DIR` |
+| `--github-oauth-access-token-ttl SECONDS` | Access-token lifetime from `600` to `3600`. Default: `3600`. | `JOPLIN_GITHUB_OAUTH_ACCESS_TOKEN_TTL` |
 | `--sync-interval SECONDS` | Default: `300`. Allowed: `300`, `600`, `1800`, `3600`, `43200`, `86400`. | `JOPLIN_SYNC_INTERVAL` |
 | `--joplin-version VERSION` | npm Joplin version: `latest` (default) or `X.Y.Z`, optionally with a prerelease suffix. | `JOPLIN_VERSION` |
 | `--joplin-md-sync-version VERSION` | Adapter GitHub release: `latest` (default) or `X.Y.Z`, optionally with a prerelease suffix. | `JOPLIN_MD_SYNC_VERSION` |
@@ -223,22 +273,26 @@ the profile is modified.
 both versions for a repeatable deployment. Environment-only path controls are
 `HOME`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME`; their exact
 effects are in [the full layout](#custom-paths-and-full-file-layout).
-`JOPLIN_TERMINAL_ASSET_BASE_URL` selects the HTTPS base for companion files
-when they are absent locally; pin it to the same commit as the installer.
+`JOPLIN_TERMINAL_ASSET_BASE_URL` selects the HTTPS bundle base when the package
+is absent locally; pin it to the same commit as the entry script. A SHA-256
+manifest pinned by the entry point verifies every downloaded module/template
+before import. An inconsistent bundle fails before setup starts.
 
 ### Mode and lifecycle switches
 
 | Option | Effect |
 | --- | --- |
+| `--installer-ref REF`, `--ref REF` | Installer branch, tag or commit SHA; default `main`, environment `JOPLIN_TERMINAL_INSTALLER_REF`. Fetch the entry script from the same ref. |
 | `--upgrade` | Update both programs, helpers, and units; preserve installed settings and tokens. Retain previous program/service files. No sync or E2EE password prompts. Requires both installed units. |
-| `--purge` | Permanently remove the managed local setup, including profile and backups. Remote data and lingering are unchanged. Cannot be combined with `--upgrade`. |
-| `--yes` | Skip the exact `PURGE` confirmation. Only valid with `--purge`; required for non-interactive purge. |
+| `--clean`, `--purge` | Without prompts or a confirmation flag, permanently remove the managed local setup, including profile and backups. Remote data and lingering are unchanged. Cannot be combined with `--upgrade`. |
+| `--yes` | Compatibility no-op, accepted only with `--clean`/`--purge`, which already need no confirmation flag. |
 | `--dry-run` | Validate arguments and print a redacted plan. Do not install programs, open the profile or secret files, generate tokens, sync, modify services, or delete files. |
 | `--non-interactive` | Never prompt. Supply required static values and files for every needed credential. Browser/SAML authentication is not supported. |
-| `--force-reconfigure` | Allow changing an existing profile's target/public target settings without confirmation. Does not delete the profile or migrate its notes for you. |
-| `--enable-linger` | Enable and verify systemd user lingering. Without it, interactive install asks; non-interactive install only warns if lingering is off. |
-| `--no-enable-service` | Do not enable automatic startup. Services still start unless `--no-start-service` is also passed. |
-| `--no-start-service` | Leave services stopped after install/upgrade and skip runtime API/MCP/Actions checks. |
+| `--reconfigure`, `--force-reconfigure` | Rebuild configuration from this run. Prompt for missing settings; remove disabled managed OAuth secrets/grants and inactive sync credentials. Keep notes and external operator-owned files. |
+| `--enable-linger`, `--no-enable-linger` | Select whether setup enables systemd user lingering. Without it, interactive install asks; non-interactive install only warns if lingering is off. |
+| `--enable-service`, `--no-enable-service` | Enable/disable automatic startup. Interactive default: no; updates preserve the saved choice. |
+| `--start-service`, `--no-start-service` | Start services and run smoke checks, or leave them stopped. Interactive default: no; updates preserve the saved choice. |
+| `--no-github-oauth` | Disable OAuth in the existing unit while preserving configuration, secret files and grants. Cannot be combined with an explicit OAuth config. |
 | `--allow-remote-mcp` | Bind the **shared** authenticated adapter to `0.0.0.0` instead of loopback. Does not expose the Joplin Data API or configure HTTPS/firewall rules. |
 | `--no-allow-remote-mcp` | Explicitly bind the adapter to loopback, including on upgrade. First install defaults to loopback; upgrade inherits installed policy. |
 | `--verbose` | Enable redacted debug logging; sensitive Joplin responses remain suppressed. |
@@ -265,6 +319,70 @@ Prepare its directory/bucket and credentials, plus the existing E2EE password
 if your notes are encrypted. Only the sync target is needed for ongoing note
 sync; the installed services do not fetch installer code from GitHub.
 
+### Run from a branch, tag or commit
+
+`main` is the remote default. To test an unmerged installer version on your
+server, choose its branch, tag or full commit SHA once and use the same ref
+for the downloaded entry point and `--installer-ref` (`--ref` alias):
+
+```bash
+installer_ref='feature/your-branch'
+installer_ref_url=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$installer_ref")
+set -o pipefail
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  "https://raw.githubusercontent.com/kogeler/joplin-md-sync/${installer_ref_url}/scripts/joplin_terminal_service/install_joplin_terminal.py" \
+  | python3 - --installer-ref "$installer_ref"
+```
+
+Append `--dry-run` to preview setup before applying it. Replace
+`feature/your-branch` with your branch, or with a tag or commit SHA to pin the
+exact installer source. All modules and
+unit templates come from that selection; no companion files fall back to
+`main`. The entry point checks the pinned manifest/file hashes and rejects a
+mixed or changed bundle before setup. Local checkouts use their sibling
+package by default; an explicit source ref selects a downloaded bundle.
+
+`JOPLIN_TERMINAL_INSTALLER_REF` is the environment equivalent, with CLI taking
+precedence. `JOPLIN_TERMINAL_ASSET_BASE_URL` can select a fork/mirror; include
+`{ref}` in a custom URL when combining it with ref selection. Existing raw
+GitHub base URLs also accept a ref override. Installer source selection is
+independent of `--joplin-version` and `--joplin-md-sync-version`.
+
+### Test an unpublished runtime candidate
+
+Selecting an installer branch does not download an unreleased adapter from
+that branch. To test an adapter before its release is published, obtain the
+smoke-tested native artifact for your architecture from the successful
+[CI run](https://github.com/kogeler/joplin-md-sync/actions/workflows/ci.yml)
+of the selected commit. Use it as a local release source; no extra server or
+port is needed. The CI artifacts `standalone-linux-amd64` and
+`standalone-linux-arm64` are ZIP archives retained for one day.
+
+For Linux amd64, extract `joplin-md-sync-linux-amd64` into
+`$HOME/joplin-candidate/download/v1.8.0/`, using the version the candidate
+reports, then run:
+
+```bash
+candidate_root="$HOME/joplin-candidate"
+candidate_version='1.8.0'
+candidate_asset='joplin-md-sync-linux-amd64'
+(cd "$candidate_root/download/v$candidate_version" && sha256sum "$candidate_asset" > SHA256SUMS.txt)
+candidate_url=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$candidate_root")
+installer_ref='feature/your-branch'
+installer_ref_url=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$installer_ref")
+set -o pipefail
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  "https://raw.githubusercontent.com/kogeler/joplin-md-sync/${installer_ref_url}/scripts/joplin_terminal_service/install_joplin_terminal.py" \
+  | JOPLIN_MD_SYNC_RELEASES_URL="$candidate_url" python3 - --installer-ref "$installer_ref" \
+      --joplin-md-sync-version "$candidate_version"
+```
+
+For Linux arm64, use the `joplin-md-sync-linux-arm64` artifact and asset name.
+Keep the artifact and installer ref on the intended commit. The installer still
+verifies the checksum, executable identity/version and OAuth preflight before
+replacing a healthy service. The local checksum describes the CI artifact you
+selected; it does not authenticate an artifact from an unknown source.
+
 ### Review or pin the installer
 
 Download and inspect the installer before executing it:
@@ -277,14 +395,15 @@ less install_joplin_terminal.py
 python3 install_joplin_terminal.py --help
 ```
 
-Without local sibling files, it fetches `joplin_terminal_common.py`,
-`run_joplin_terminal.py`, and both unit templates from GitHub. Reviewing only
+Without the local `joplin_terminal_installer/` package, it downloads that
+package, shared primitives, the supervisor and both unit templates into `/tmp`. Reviewing only
 the entry point does not review those companions. For a reviewed commit,
 replace `REVIEWED_COMMIT_SHA` below with that commit's full SHA, download from
 the same base, and inspect the companion files too:
 
 ```bash
-export JOPLIN_TERMINAL_ASSET_BASE_URL='https://raw.githubusercontent.com/kogeler/joplin-md-sync/REVIEWED_COMMIT_SHA/scripts/joplin_terminal_service'
+export JOPLIN_TERMINAL_INSTALLER_REF='REVIEWED_COMMIT_SHA'
+export JOPLIN_TERMINAL_ASSET_BASE_URL="https://raw.githubusercontent.com/kogeler/joplin-md-sync/${JOPLIN_TERMINAL_INSTALLER_REF}/scripts/joplin_terminal_service"
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
   "$JOPLIN_TERMINAL_ASSET_BASE_URL/install_joplin_terminal.py" \
   --output install_joplin_terminal.py
@@ -295,8 +414,9 @@ present. Pin `--joplin-version` and `--joplin-md-sync-version` separately: a
 pinned installer commit does not pin the programs it installs. Deployed
 services use local files and do not fetch installer code at runtime.
 
-Preview any full installation by appending `--dry-run` to its command. Required
-target arguments are still validated, but credential-file contents are not read.
+Preview by appending `--dry-run`. Supplied target arguments are validated;
+missing setup values are shown as pending interactive setup. Credential-file
+contents are not read and no profile/service settings are changed.
 
 ### Custom S3-compatible provider
 
@@ -409,15 +529,21 @@ With all defaults, the complete managed layout is:
 ├── lib/joplin-terminal-service/
 │   ├── run_joplin_terminal.py
 │   └── joplin_terminal_common.py
-└── state/joplin-agent/
-    ├── profile-*.lock             exclusive lock, keyed by profile
-    └── upgrade-backup-*/          previous program/helper/unit files
+└── state/
+    ├── joplin-agent/
+    │   ├── profile-*.lock         exclusive lock, keyed by profile
+    │   └── upgrade-backup-*/      previous program/helper/unit files
+    └── joplin-md-sync/oauth/      default OAuth grants (with OAuth only)
 
 ~/.config/
 ├── joplin-agent/api-token
 ├── joplin-md-sync/
 │   ├── mcp-token
-│   └── gpt-actions-token
+│   ├── gpt-actions-token
+│   ├── installer-settings.json    saved version/startup choices
+│   ├── oauth-settings.json        OAuth settings (with OAuth only)
+│   ├── oauth-managed-state.json   marks the default OAuth state as managed
+│   └── oauth-secrets/             generated OAuth secret files
 └── systemd/user/
     ├── joplin-terminal.service
     ├── joplin-md-sync.service
@@ -430,7 +556,7 @@ With all defaults, the complete managed layout is:
 | `--profile-dir PATH` | Only the dedicated Joplin profile. |
 | `XDG_DATA_HOME` | Default profile becomes `$XDG_DATA_HOME/joplin-agent/profile/`; explicit `--profile-dir` wins. Does not move the npm tree. |
 | `XDG_CONFIG_HOME` | Both credential directories and `systemd/user/`. Default: `$HOME/.config`. |
-| `XDG_STATE_HOME` | `joplin-agent/` lock and upgrade backups. Default: `$HOME/.local/state`. |
+| `XDG_STATE_HOME` | `joplin-agent/` lock and upgrade backups, plus the default `joplin-md-sync/oauth/` state. Default: `$HOME/.local/state`. |
 | `HOME` | Home used for default locations and `~` expansion. Run consistently as the intended service user. |
 
 For example, keep the normal config/state locations but move programs and the
@@ -458,6 +584,8 @@ installer. Normal Node installations get a read-only filesystem sandbox with
 writes allowed to the profile, lock directory, and any filesystem sync target.
 For Snap Node, the stable `/snap/bin/node` alias is retained and incompatible
 mount-namespace restrictions are omitted; the adapter's sandbox is unchanged.
+The adapter unit is read-only except, with GitHub OAuth enabled, its selected
+OAuth state directory.
 
 ### Service management
 
@@ -566,11 +694,12 @@ Or run the remote command from the quick runbook with only `--upgrade` after
 
 ```bash
 python3 install_joplin_terminal.py --upgrade \
-  --joplin-version 3.7.1 --joplin-md-sync-version 1.7.1
+  --joplin-version 3.7.1 --joplin-md-sync-version 1.8.0
 ```
 
-The installer resolves versions before stopping services, preserves the profile
-and valid MCP/Actions tokens, updates both programs/helpers/units, and repeats
+The installer resolves versions and downloads, verifies and smoke-tests a
+changed `joplin-md-sync` executable before stopping services. It preserves the
+profile and valid MCP/Actions tokens, updates both programs/helpers/units, and repeats
 the API/MCP/Actions checks. It does not ask for stored sync or E2EE passwords.
 Missing adapter token files are generated; existing valid values are not rotated.
 
@@ -597,9 +726,10 @@ whether to preserve your notes or start empty.
 
 1. Finish sync on the authoritative Joplin client and make a verified JEX
    export through Joplin. Keep the old remote data and local profile.
-2. Prepare a dedicated bucket and choose a **new** `--profile-dir`. The same
-   installer manages one pair of services per account; this replaces their
-   configuration, not a parallel running installation.
+2. Prepare a dedicated bucket. To stage a replacement with a **new** profile,
+   use a separate Linux service account and follow the installation flow there.
+   The installer manages one pair of services per account and refuses to relocate
+   an existing pair to another profile or prefix, including with `--reconfigure`.
 3. For an empty setup, install against the empty bucket. Existing Nextcloud
    notes are **not** transferred automatically. To retain notes, plan their
    supported import/migration in Joplin and coordinate every other client.
@@ -609,8 +739,9 @@ whether to preserve your notes or start empty.
 Do not use `--purge` to remove just the old profile: it also uninstalls both
 managed services and their credentials, including the replacement setup.
 
-Reusing a profile with different target/public settings prompts for confirmation;
-`--force-reconfigure` bypasses that confirmation, not the migration work. Never
+An explicit target/location selection authorizes that configuration change.
+`--reconfigure` rebuilds setup choices and removes inactive managed credentials;
+it does not migrate notes to another backend. Never
 copy/edit a Joplin database or sync-target objects by hand, and never disable
 the wipe-out fail-safe to make a migration proceed.
 
@@ -626,14 +757,20 @@ python3 install_joplin_terminal.py --purge --dry-run \
   --profile-dir "$HOME/data/joplin-headless-profile"
 ```
 
-Repeat without `--dry-run` to purge and confirm with `PURGE`. It stops and
+Repeat with `--clean` and without `--dry-run` to remove the selected setup without questions. It stops and
 disables both services, verifies they are inactive, acquires the exclusive
 profile lock, and deletes only managed local paths. Unrelated files under
 the prefix/config directories remain. Repeating purge is safe.
 
+If only one unit file remains, or the units cannot supply consistent paths,
+normal setup refuses to overwrite the installation. Restore the units, or use `--clean` with
+the existing explicit `--profile-dir` and `--joplin-prefix` before reinstalling.
+Cleanup still runs without questions; it requires those paths to avoid guessing
+which profile belongs to a damaged service pair.
+
 For an explicitly disposable automation account only,
-`--purge --non-interactive --yes` skips confirmation and **permanently deletes
-the selected local profile**. Remote sync data remains untouched. Lingering
+`--clean` runs without input and **permanently deletes the selected local profile**.
+The older `--purge --non-interactive --yes` form remains accepted. Remote sync data remains untouched. Lingering
 also remains enabled because other user services may use it; disable it
 separately only if that is intended for the whole account.
 

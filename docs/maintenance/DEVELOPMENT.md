@@ -12,10 +12,10 @@ Use the Make targets rather than installing an ad hoc tool set:
 
 | Target | Purpose |
 | --- | --- |
-| `make venv` | Editable runtime CLI with no third-party runtime packages |
-| `make venv-dev` | Locked Linux quality group |
-| `make venv-test` | Cross-platform test environment |
-| `make venv-package` | Packaging environment |
+| `make venv` | Editable CLI with all standard runtime dependencies |
+| `make venv-dev` | Locked quality group and standard runtime |
+| `make venv-test` | Cross-platform tests and standard runtime, including required OAuth E2E |
+| `make venv-package` | Build tools and standard runtime for native packaging |
 | `make venv-docs` | Documentation environment |
 
 Every environment lives under `.venvs/<key>/`, for example
@@ -78,12 +78,63 @@ executable and runs the read-only stdio acceptance through that artifact
 against the same ephemeral Joplin Desktop runtime. Both live targets are Linux
 AMD64 only.
 
+## OAuth acceptance and evidence
+
+The standard `make test` and `make test-full` targets include mandatory OAuth
+E2E scenarios. Focused runs use `make test-oauth` or `make test-oauth-e2e`.
+The `--require-oauth-e2e` gate rejects missing collection, skipped or xfailed
+required scenarios, and failures.
+
+| Check | Coverage |
+| --- | --- |
+| `make test-oauth-e2e` | A separate production CLI process, real HTTP/TLS, DCR, both PKCE flows, consent, owner policy, every registered tool, refresh, restart, replay and failure behavior |
+| `make test-full` | The full source suite, mandatory OAuth E2E, JUnit results and source coverage |
+| `make test-service-installer` | Real installer processes and controlling TTYs, hidden prompts, update/reconfigure/clean, private files, source-ref selection and temporary bundle cleanup |
+| `make test-live` | OAuth and other agent interfaces against an isolated real Joplin Desktop |
+| `make test-service-live` | Real Terminal installation, signed S3 round trip and the deployed supervisor |
+| `make package` and `make smoke` | Source/wheel/sdist/zipapp runtime behavior, including OAuth off/on, discovery, registration and consent outside the checkout |
+| `make standalone checksums smoke-standalone` | Native executable packaging, integrity metadata and the same runtime smoke |
+| `make test-oauth-systemd` | The built native executable in a real Linux user sandbox: scoped state writes, surrounding read-only paths, restart, disable/reset and managed purge |
+
+OAuth E2E replaces the external GitHub endpoints and controls the clock while
+retaining production parsers, middleware, cryptography, persistent storage,
+registry, executor and Joplin HTTP client. Unexpected external DNS is rejected.
+The child binds a kernel-assigned test port and reports it to the parent;
+readiness also checks the instance's unique Bearer credential. Package smoke
+and native systemd acceptance exercise the standard launcher and bind path.
+
+The [functional matrix](../../tests/oauth/e2e/requirements.json) maps 24 pytest
+requirements to exact test nodes; packaging and systemd have separate gates.
+The [service contract](../contracts/SERVICE.md) indexes installer evidence.
+`make test-oauth-e2e` writes `.artifacts/oauth-e2e-evidence.json` itself. After
+`make test-full`, generate the report from the complete JUnit results:
+
+```bash
+python scripts/report_oauth_acceptance.py \
+  --junit .artifacts/test-results.xml \
+  --output .artifacts/oauth-e2e-evidence.json
+```
+
+The report records each requirement's outcome, executed parameterized cases,
+and source hashes. CI uploads it with JUnit and coverage artifacts, and retains
+CodeQL SARIF separately. Functional coverage is distinct from line coverage;
+platform-specific skips outside mandatory OAuth E2E remain visible.
+
+A real hosted Claude login is validated through the
+[connector guide](../user/CLAUDE_CONNECTOR.md#connect-claude-and-verify), using
+operator credentials and a browser. Mocked acceptance does not establish that
+an operator's deployed hostname, proxy and connector are configured correctly.
+
 ## Documentation changes
 
 Put normative testable behavior in `docs/contracts/`, user tasks and reference
 material in `docs/user/`, implementation rationale and maintainer procedures in
 `docs/maintenance/`, and build-only inputs in `docs/site/`. Keep the product
 homepage at `docs/index.md` because it is the MkDocs site index.
+Write all project material in English. Keep working plans, research notes and
+task trackers in Git-ignored `tmp/`, outside published documentation and site
+navigation. Extract durable guidance into these maintained guides. Follow the
+root agent runbook's explicit authorization rules for commits and pushes.
 
 Every new contract assertion needs a permanent ID and at least one exact pytest
 or unittest evidence node. `tests/unit/test_documentation_contracts.py`

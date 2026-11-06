@@ -11,6 +11,22 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
+def oauth_pyinstaller_options() -> list[str]:
+    """Metadata and dynamic backends required by the embedded OAuth runtime."""
+    return [
+        "--recursive-copy-metadata",
+        "fastmcp",
+        "--recursive-copy-metadata",
+        "aiofile",
+        "--collect-data",
+        "fastmcp",
+        "--collect-submodules",
+        "uvicorn",
+        "--collect-submodules",
+        "caio",
+    ]
+
+
 def standalone_architecture(machine: str = platform.machine()) -> str:
     architectures = {
         "amd64": "amd64",
@@ -63,6 +79,7 @@ def build() -> Path:
             str(REPO / "src"),
             "--add-data",
             f"{REPO / '.version'}{os.pathsep}joplin_md_sync",
+            *oauth_pyinstaller_options(),
         ]
     )
 

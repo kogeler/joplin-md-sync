@@ -126,6 +126,94 @@ def _add_root_arg(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_mcp_http_args(mp: argparse.ArgumentParser, *, management: bool = False) -> None:
+    _add_output_args(mp)
+    _add_conn_args(mp, timeout_default=5.0)
+    mp.add_argument("--host", default="127.0.0.1", help="MCP bind host (default: 127.0.0.1)")
+    mp.add_argument(
+        "--mcp-port", type=int, default=8765, metavar="PORT", help="MCP listen port (default: 8765)"
+    )
+    mp.add_argument(
+        "--mcp-path", default="/mcp", metavar="PATH", help="MCP endpoint path (default: /mcp)"
+    )
+    mp.add_argument(
+        "--auth-token-file",
+        metavar="PATH",
+        help="enable MCP bearer authentication using a token stored in PATH",
+    )
+    mp.add_argument(
+        "--gpt-actions",
+        action="store_true",
+        help="enable authenticated GPT Actions routes on the same listener",
+    )
+    mp.add_argument(
+        "--gpt-actions-token-file",
+        metavar="PATH",
+        help="dedicated GPT Actions bearer token file (required when enabled)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-request-bytes",
+        type=int,
+        metavar="N",
+        help="maximum Actions request bytes (default: 95000)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-response-chars",
+        type=int,
+        metavar="N",
+        help="maximum serialized Actions response characters (default: 95000)",
+    )
+    mp.add_argument(
+        "--gpt-actions-max-concurrency",
+        type=int,
+        metavar="N",
+        help="maximum concurrent Actions requests (default: 4)",
+    )
+    mp.add_argument(
+        "--gpt-actions-rate-limit",
+        type=int,
+        metavar="REQUESTS_PER_MINUTE",
+        help="authenticated Actions token-bucket rate (default: 60/minute)",
+    )
+    mp.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=[],
+        metavar="ORIGIN",
+        help="allow an HTTP Origin (repeatable; loopback origins are allowed locally)",
+    )
+    mp.add_argument(
+        "--allow-remote-mcp",
+        action="store_true",
+        help="allow non-loopback MCP bind (also requires --auth-token-file)",
+    )
+    mp.add_argument(
+        "--retry-timeout",
+        type=float,
+        default=10.0,
+        metavar="SECONDS",
+        help="bounded wait for Joplin per tool call (default: 10)",
+    )
+    mp.add_argument(
+        "--retry-delay",
+        type=float,
+        default=1.0,
+        metavar="SECONDS",
+        help="delay between Joplin availability attempts (default: 1)",
+    )
+    mp.add_argument(
+        "--discovery-timeout",
+        type=float,
+        default=0.25,
+        metavar="SECONDS",
+        help="timeout per Joplin discovery port (default: 0.25)",
+    )
+
+    from joplin_md_sync.oauth_config import add_oauth_cli_arguments
+
+    add_oauth_cli_arguments(mp, default_enabled=management)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="joplin-md-sync",
@@ -245,87 +333,27 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("mcp", help="run the Joplin MCP server")
     msub = p.add_subparsers(dest="mcp_command", required=True, metavar="SUBCOMMAND")
     mp = msub.add_parser("serve", help="serve MCP over Streamable HTTP in the foreground")
-    _add_output_args(mp)
-    _add_conn_args(mp, timeout_default=5.0)
-    mp.add_argument("--host", default="127.0.0.1", help="MCP bind host (default: 127.0.0.1)")
-    mp.add_argument(
-        "--mcp-port", type=int, default=8765, metavar="PORT", help="MCP listen port (default: 8765)"
+    _add_mcp_http_args(mp)
+    check = msub.add_parser(
+        "oauth-check", help="validate OAuth configuration without binding or provisioning"
     )
-    mp.add_argument(
-        "--mcp-path", default="/mcp", metavar="PATH", help="MCP endpoint path (default: /mcp)"
+    _add_mcp_http_args(check, management=True)
+    reset = msub.add_parser(
+        "oauth-reset", help="revoke local OAuth grants while the service is stopped"
     )
-    mp.add_argument(
-        "--auth-token-file",
-        metavar="PATH",
-        help="enable MCP bearer authentication using a token stored in PATH",
+    _add_output_args(reset)
+    from joplin_md_sync.oauth_config import add_oauth_cli_arguments
+
+    add_oauth_cli_arguments(reset, default_enabled=True)
+    reset.add_argument(
+        "--confirm-reset", action="store_true", help="confirm revoking all local OAuth grants"
     )
-    mp.add_argument(
-        "--gpt-actions",
-        action="store_true",
-        help="enable authenticated GPT Actions routes on the same listener",
+
+    lookup = msub.add_parser(
+        "github-user-id", help="resolve a public GitHub login to the numeric account ID"
     )
-    mp.add_argument(
-        "--gpt-actions-token-file",
-        metavar="PATH",
-        help="dedicated GPT Actions bearer token file (required when enabled)",
-    )
-    mp.add_argument(
-        "--gpt-actions-max-request-bytes",
-        type=int,
-        metavar="N",
-        help="maximum Actions request bytes (default: 95000)",
-    )
-    mp.add_argument(
-        "--gpt-actions-max-response-chars",
-        type=int,
-        metavar="N",
-        help="maximum serialized Actions response characters (default: 95000)",
-    )
-    mp.add_argument(
-        "--gpt-actions-max-concurrency",
-        type=int,
-        metavar="N",
-        help="maximum concurrent Actions requests (default: 4)",
-    )
-    mp.add_argument(
-        "--gpt-actions-rate-limit",
-        type=int,
-        metavar="REQUESTS_PER_MINUTE",
-        help="authenticated Actions token-bucket rate (default: 60/minute)",
-    )
-    mp.add_argument(
-        "--allowed-origin",
-        action="append",
-        default=[],
-        metavar="ORIGIN",
-        help="allow an HTTP Origin (repeatable; loopback origins are allowed locally)",
-    )
-    mp.add_argument(
-        "--allow-remote-mcp",
-        action="store_true",
-        help="allow non-loopback MCP bind (also requires --auth-token-file)",
-    )
-    mp.add_argument(
-        "--retry-timeout",
-        type=float,
-        default=10.0,
-        metavar="SECONDS",
-        help="bounded wait for Joplin per tool call (default: 10)",
-    )
-    mp.add_argument(
-        "--retry-delay",
-        type=float,
-        default=1.0,
-        metavar="SECONDS",
-        help="delay between Joplin availability attempts (default: 1)",
-    )
-    mp.add_argument(
-        "--discovery-timeout",
-        type=float,
-        default=0.25,
-        metavar="SECONDS",
-        help="timeout per Joplin discovery port (default: 0.25)",
-    )
+    _add_output_args(lookup)
+    lookup.add_argument("--login", required=True, help="GitHub username to resolve during setup")
 
     ms = msub.add_parser(
         "stdio",
@@ -532,6 +560,9 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "resources pull",
             "mcp serve",
             "mcp stdio",
+            "mcp oauth-check",
+            "mcp oauth-reset",
+            "mcp github-user-id",
             "gpt-actions export-openapi",
         ],
         "features": {
@@ -545,6 +576,7 @@ def cmd_capabilities(args: argparse.Namespace) -> CommandOutput:
             "mcp_stdio": True,
             "mcp_stdio_token_file": True,
             "mcp_optional_bearer_auth": True,
+            "mcp_github_oauth": True,
             "mcp_notebook_tag_resource_crud": True,
             "mcp_html_and_binary_note_content": True,
             "mcp_permanent_tag_resource_deletion": True,
@@ -1127,9 +1159,41 @@ def cmd_resources(args: argparse.Namespace) -> CommandOutput:
 
 
 def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
+    if args.mcp_command == "github-user-id":
+        from joplin_md_sync.oauth_config import lookup_github_user_id
+
+        try:
+            user_id = lookup_github_user_id(args.login)
+        except ValueError as exc:
+            raise UnsafeOperationError(str(exc)) from None
+        return CommandOutput(
+            EXIT_OK,
+            errors.CODE_OK,
+            {"github_user_id": user_id, "github_login": args.login},
+            [user_id],
+        )
     if args.mcp_command == "stdio":
         return _cmd_mcp_stdio(args)
-    if args.mcp_command != "serve":
+    if args.mcp_command == "oauth-reset":
+        if not args.confirm_reset:
+            raise UnsafeOperationError("OAuth reset requires --confirm-reset and a stopped service")
+        try:
+            from joplin_md_sync.oauth_config import OAuthConfig
+            from joplin_md_sync.oauth_store import OAuthState
+
+            config = OAuthConfig.from_cli(args)
+            with OAuthState(config) as state:
+                state.reset()
+        except (ValueError, OSError) as exc:
+            raise UnsafeOperationError(str(exc)) from None
+        except ImportError:
+            raise UnsafeOperationError(
+                "Service runtime installation is incomplete; reinstall joplin-md-sync"
+            ) from None
+        return CommandOutput(
+            EXIT_OK, errors.CODE_OK, {"oauth_grants_reset": True}, ["Local OAuth grants revoked"]
+        )
+    if args.mcp_command not in {"serve", "oauth-check"}:
         raise errors.InternalError(f"unknown MCP subcommand: {args.mcp_command}")
 
     from joplin_md_sync.mcp_server import (
@@ -1197,6 +1261,31 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             raise UnsafeOperationError("MCP token must differ from the Joplin token")
         if mcp_token not in _REDACT_TOKENS:
             _REDACT_TOKENS.append(mcp_token)
+
+    from joplin_md_sync.oauth_config import OAUTH_CLI_FIELDS
+
+    if not args.github_oauth and any(
+        getattr(args, "github_oauth_" + option) is not None for option, _ in OAUTH_CLI_FIELDS
+    ):
+        raise UnsafeOperationError("GitHub OAuth options require --github-oauth")
+    oauth_config = None
+    if args.github_oauth:
+        try:
+            from joplin_md_sync.oauth_config import OAuthConfig
+
+            oauth_config = OAuthConfig.from_cli(args)
+            if mcp_token is None:
+                raise ValueError("GitHub OAuth requires --auth-token-file, including on loopback")
+            from joplin_md_sync.auth import token_values_equal
+
+            if any(
+                token_values_equal(oauth_config.client_secret, value)
+                for value in (mcp_token, validation_joplin_token or "")
+            ):
+                raise ValueError("GitHub client secret must differ from existing credentials")
+            _REDACT_TOKENS.append(oauth_config.client_secret)
+        except (ValueError, OSError) as exc:
+            raise UnsafeOperationError(str(exc)) from None
 
     def client_factory() -> JoplinClient:
         token = resolve_token(args.token_file)
@@ -1269,6 +1358,50 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             actions_source,
             config=actions_config,
         )
+    if oauth_config is not None:
+        import base64
+
+        from joplin_md_sync.auth import token_values_equal
+
+        encoded_key = (
+            base64.urlsafe_b64encode(oauth_config.signing_key).rstrip(b"=").decode("ascii")
+        )
+        existing = [value for value in (mcp_token, validation_joplin_token) if value]
+        if actions_transport is not None:
+            existing.append(actions_transport.token_source.read())
+        if any(
+            token_values_equal(new, old)
+            for new in (oauth_config.client_secret, encoded_key)
+            for old in existing
+        ):
+            raise UnsafeOperationError("OAuth secrets must differ from existing credentials")
+        _REDACT_TOKENS.append(encoded_key)
+    if oauth_config is not None:
+        try:
+            from joplin_md_sync.legacy_asgi import LegacyContext
+            from joplin_md_sync.oauth_server import check_oauth, serve_oauth_http
+
+            context = LegacyContext(
+                dispatcher,
+                args.mcp_path,
+                BearerTokenSource(Path(args.auth_token_file)),
+                frozenset(allowed_origins),
+                actions_transport,
+                (args.host, args.mcp_port),
+            )
+            if args.mcp_command == "oauth-check":
+                result = check_oauth(oauth_config, context)
+                return CommandOutput(
+                    EXIT_OK, errors.CODE_OK, result, ["OAuth configuration validated"]
+                )
+            serve_oauth_http(oauth_config, context)
+        except ImportError:
+            raise UnsafeOperationError(
+                "Service runtime installation is incomplete; reinstall joplin-md-sync"
+            ) from None
+        except (ValueError, OSError) as exc:
+            raise UnsafeOperationError(str(exc)) from None
+        return CommandOutput(EXIT_OK, errors.CODE_OK, text=["MCP server stopped"])
     serve_mcp_http(
         dispatcher,
         host=args.host,
