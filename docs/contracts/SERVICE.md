@@ -73,6 +73,11 @@ a changed endpoint/account MUST NOT silently receive the previous secret.
 Account names and S3 bucket/region values MUST compare exactly; only URL
 normalization actually applied to the driver settings may be ignored.
 The `none` backend MUST disable synchronization.
+A rerun over an existing non-empty profile without installed units MUST ask
+sync questions only after reading the profile through the supported Joplin
+CLI, use its configured target, endpoint, account and credentials as defaults,
+and keep them unless this run explicitly changes them; an unconfigured profile
+MUST still offer the backend choice, and an empty directory is a fresh profile.
 S3 MUST ask for both missing access and secret keys with hidden interactive
 prompts by default; credential files MUST remain optional and replace only
 their corresponding prompts. Non-interactive mode MUST fail without prompting
@@ -86,6 +91,10 @@ bucket names, credentials, and path-style policy MUST reach the real driver.
 - [`test_each_static_target_maps_to_joplin_settings`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_each_static_target_maps_to_joplin_settings`
 - [`test_changed_account_name_never_receives_the_previous_password`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_changed_account_name_never_receives_the_previous_password`
 - [`test_reconfigure_existing_profile_without_units_clears_unused_credentials`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_reconfigure_existing_profile_without_units_clears_unused_credentials`
+- [`test_existing_nextcloud_profile_without_units_keeps_sync_when_defaults_are_accepted`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_existing_nextcloud_profile_without_units_keeps_sync_when_defaults_are_accepted`
+- [`test_existing_filesystem_profile_without_units_keeps_target_and_sandbox_path`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_existing_filesystem_profile_without_units_keeps_target_and_sandbox_path`
+- [`test_empty_or_unconfigured_profile_without_units_still_asks_for_the_sync_backend`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_empty_or_unconfigured_profile_without_units_still_asks_for_the_sync_backend`
+- [`test_existing_profile_without_units_applies_an_explicit_sync_target_change`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_existing_profile_without_units_applies_an_explicit_sync_target_change`
 - [`test_s3_maps_every_driver_setting`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_s3_maps_every_driver_setting`
 - [`test_browser_sync_requires_persisted_auth_before_verification`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_browser_sync_requires_persisted_auth_before_verification`
 - [`test_noninteractive_conflict_requires_force`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ConfigurationTests::test_noninteractive_conflict_requires_force`
@@ -119,8 +128,10 @@ independently without re-requesting stored sync secrets, preserve protected
 service tokens, restart both units in dependency order, and require bounded
 Joplin, MCP, and Actions smoke checks. Failed health checks MUST stop the
 restart loop of both units and retain recoverable prior executable/service
-files without copying or automatically downgrading a Joplin profile. A changed
-`joplin-md-sync` executable MUST be downloaded, verified and smoke-tested
+files without copying or automatically downgrading a Joplin profile. A failed
+Joplin package installation MUST restore the previous isolated npm tree, keep
+both units unchanged and restart only the services that were active before the
+upgrade. A changed `joplin-md-sync` executable MUST be downloaded, verified and smoke-tested
 before healthy services are stopped. Upgrade MUST preserve installed paths, ports, interval, listener policy and filesystem
 sandbox exceptions unless explicitly overridden, and refresh both units and
 supervisor helpers. Unreadable or inconsistent installed units MUST fail
@@ -143,6 +154,7 @@ through supported interfaces without deleting existing notes.
 - [`test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`
 - [`test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`
 - [`test_failed_adapter_download_keeps_healthy_services_running`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_failed_adapter_download_keeps_healthy_services_running`
+- [`test_failed_joplin_upgrade_restores_previous_tree_and_restarts_active_services`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_failed_joplin_upgrade_restores_previous_tree_and_restarts_active_services`
 
 ### `SVC-007` - Purge is explicit, scoped, and idempotent
 
@@ -151,7 +163,10 @@ a confirmation flag, bypass setup/credential collection, obtain the profile
 lock before deletion,
 remove only managed files and units, preserve unrelated user data, and be safe
 to repeat. Dry-run MUST delete nothing and MUST not require a working systemd
-bus.
+bus. The `joplin-md-sync` executable MUST be removed only when it matches the
+path and SHA-256 in the private receipt written when the installer placed it;
+symlinks, changed files and executables without a receipt MUST be preserved
+with a message.
 
 **Evidence:**
 
@@ -159,6 +174,9 @@ bus.
 - [`test_profile_lock_blocks_purge_before_data_removal`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_profile_lock_blocks_purge_before_data_removal`
 - [`test_noninteractive_clean_needs_no_yes_and_never_prompts`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_noninteractive_clean_needs_no_yes_and_never_prompts`
 - [`test_purge_dry_run_does_not_require_systemctl_or_delete_data`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_purge_dry_run_does_not_require_systemctl_or_delete_data`
+- [`test_purge_removes_the_adapter_only_when_it_matches_the_installer_receipt`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_purge_removes_the_adapter_only_when_it_matches_the_installer_receipt`
+- [`test_upgrade_records_the_replaced_adapter_for_purge`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_records_the_replaced_adapter_for_purge`
+- [`test_clean_removes_only_the_adapter_executable_recorded_by_the_installer`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_clean_removes_only_the_adapter_executable_recorded_by_the_installer`
 
 ### `SVC-008` - The supervisor fails closed and terminates cleanly
 
@@ -182,11 +200,14 @@ and port through `--github-oauth`. Upgrade MUST validate the candidate's
 OAuth configuration before stopping a healthy service or replacing its binary.
 OAuth state writes MUST receive a scoped sandbox exception; existing system
 hardening MUST remain. Ordinary OAuth disablement MUST preserve config and
-grants. During explicit `--reconfigure`, disabled OAuth MUST lose its saved
-configuration, owned secret files and registered managed grants; external
-operator-owned files MUST be retained. Enabling OAuth with missing settings
-MUST ask for them, hide the Client Secret, and generate an owner-only signing
-key when no key is supplied. Purge MUST remove only installer-registered
+grants. `JOPLIN_GITHUB_OAUTH` MUST accept only `1`/`true`/`yes`, which enables
+OAuth, or `0`/`false`/`no`, which MUST behave as `--no-github-oauth`; either
+command-line flag MUST override it, and both flags together MUST fail. Other
+values MUST fail before any change. During explicit `--reconfigure`, disabled
+OAuth MUST lose its saved configuration, owned secret files and registered
+managed grants; external operator-owned files MUST be retained. Enabling OAuth
+with missing settings MUST ask for them, hide the Client Secret, and generate
+an owner-only signing key when no key is supplied. Purge MUST remove only installer-registered
 managed OAuth state and MUST preserve operator-owned custom paths and external
 secrets.
 
@@ -195,6 +216,9 @@ secrets.
 - [`test_oauth_preflight_is_readonly_and_unit_has_scoped_write_path`](../../tests/oauth/integration/test_installer_oauth.py) - `tests/oauth/integration/test_installer_oauth.py::test_oauth_preflight_is_readonly_and_unit_has_scoped_write_path`
 - [`test_unregistered_custom_oauth_state_is_preserved`](../../tests/oauth/integration/test_installer_oauth.py) - `tests/oauth/integration/test_installer_oauth.py::test_unregistered_custom_oauth_state_is_preserved`
 - [`test_failed_oauth_candidate_check_keeps_healthy_services_and_old_binary`](../../tests/oauth/integration/test_installer_oauth.py) - `tests/oauth/integration/test_installer_oauth.py::test_failed_oauth_candidate_check_keeps_healthy_services_and_old_binary`
+- [`test_github_oauth_environment_is_a_strict_boolean_and_cli_overrides_it`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ParserTests::test_github_oauth_environment_is_a_strict_boolean_and_cli_overrides_it`
+- [`test_negative_oauth_environment_disables_like_no_github_oauth_and_reenables`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_negative_oauth_environment_disables_like_no_github_oauth_and_reenables`
+- [`test_command_line_oauth_choice_overrides_the_environment_and_invalid_value_fails`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_command_line_oauth_choice_overrides_the_environment_and_invalid_value_fails`
 
 ### `SVC-010` - The remote entry point imports a verified temporary package
 

@@ -7,6 +7,7 @@ credentials directly on the MCP resource; OAuthProxy owns the grant binding.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from contextvars import ContextVar, Token
 from types import TracebackType
@@ -34,6 +35,14 @@ GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_USER_URL = "https://api.github.com/user"
 CLAUDE_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
 GITHUB_CLIENT_AUTH_METHOD = "client_secret_post"
+REGISTRY_COLLECTION = "joplin-registration-limit"
+REGISTRY_KEY = "clients"
+# An anonymous registration stays pending until its owner completes login.
+# The window covers the 15-minute authorization transaction and 5-minute code.
+PENDING_CLIENT_TTL = 1800
+MAX_PENDING_CLIENTS = 64
+MAX_ESTABLISHED_CLIENTS = 512
+REGISTRY_TTL = 15897600
 ClientFactory = Callable[[], httpx2.AsyncClient]
 
 
@@ -146,7 +155,8 @@ class GitHubTokenClient(AsyncOAuth2Client):
     """Narrow upstream client surface supported by OAuthProxy's factory hook.
 
     Normalize GitHub TTLs and reject foreign identities before the OAuth proxy
-    persists tokens, authorization codes, or issues client credentials.
+    issues a client authorization code. Refreshed grants are owner-checked by
+    the proxy hooks after the rotated upstream pair is stored.
     """
 
     def __init__(
@@ -221,7 +231,13 @@ class GitHubTokenClient(AsyncOAuth2Client):
             raise OAuthError(
                 error="invalid_grant", description="GitHub expiring token profile required"
             ) from None
-        if await self.verifier.verify_token(tokens["access_token"]) is None:
+        # A refresh keeps the grant's GitHub account. OAuthProxy stores the
+        # rotated pair before `_extract_upstream_claims` (explicit refresh) or
+        # per-request verification (transparent refresh) checks the owner, so
+        # an identity outage after GitHub rotated the grant stays retryable.
+        if params.get("grant_type") != "refresh_token" and (
+            await self.verifier.verify_token(tokens["access_token"]) is None
+        ):
             raise OAuthError(error="access_denied", description="GitHub account is not permitted")
         tokens["refresh_expires_in"] = tokens["refresh_token_expires_in"]
         # The upstream wire scopes may be normalized to `user` by GitHub.
@@ -265,6 +281,10 @@ class OwnerGitHubOAuth(OAuthProxy):
         self.github_client_secret = client_secret
         self.registration_storage = storage
         self._exchange_lock = asyncio.Lock()
+        # The process owns the state directory exclusively, so the loaded
+        # registry stays authoritative; writes go to storage before memory.
+        self._registry: dict[str, dict[str, Any]] | None = None
+        self._registry_lock = asyncio.Lock()
         super().__init__(
             upstream_authorization_endpoint=GITHUB_AUTHORIZE_URL,
             upstream_token_endpoint=GITHUB_TOKEN_URL,
@@ -302,6 +322,9 @@ class OwnerGitHubOAuth(OAuthProxy):
         # this interface uses registered downstream clients only.
         if client_id == self.github_client_id:
             return None
+        entry = (await self._client_registry()).get(client_id)
+        if entry is None or _pending_expired(entry, time.time()):
+            return None
         client = await super().get_client(client_id)
         if client is not None and (
             not client.redirect_uris
@@ -319,32 +342,98 @@ class OwnerGitHubOAuth(OAuthProxy):
             raise RegistrationError(
                 "invalid_redirect_uri", "Only the hosted Claude callback is permitted"
             )
+        client_id = client_info.client_id
+        assert client_id is not None
         async with asyncio.timeout(9), self._exchange_lock:
-            saved = await self.registration_storage.get(
-                "clients", collection="joplin-registration-limit"
-            )
-            clients = list(saved.get("ids", [])) if saved is not None else []
-            if client_info.client_id not in clients and len(clients) >= 512:
-                # Registrations whose stored client expired no longer hold
-                # capacity; live clients and their grants are never evicted.
-                live = []
-                for client_id in clients:
-                    if await super().get_client(client_id) is not None:
-                        live.append(client_id)
-                if len(live) >= 512:
-                    raise RegistrationError(
-                        "invalid_client_metadata", "Client registration capacity exceeded"
-                    )
-                clients = live
-            await super().register_client(client_info)
-            if client_info.client_id not in clients:
-                clients.append(client_info.client_id)
-                await self.registration_storage.put(
-                    "clients",
-                    {"ids": clients},
-                    collection="joplin-registration-limit",
-                    ttl=15897600,
+            now = time.time()
+            registry = dict(await self._client_registry())
+            for expired in [key for key, entry in registry.items() if _pending_expired(entry, now)]:
+                del registry[expired]
+                await self._client_store.delete(key=expired)
+            pending = sum(entry["state"] == "pending" for entry in registry.values())
+            if client_id not in registry and pending >= MAX_PENDING_CLIENTS:
+                raise RegistrationError(
+                    "invalid_client_metadata",
+                    "Client registration capacity exceeded; retry later",
                 )
+            await super().register_client(client_info)
+            # Until an owner login promotes it, the stored record expires with
+            # the pending window instead of holding storage for months.
+            stored = await self._client_store.get(key=client_id)
+            if stored is not None:
+                await self._client_store.put(key=client_id, value=stored, ttl=PENDING_CLIENT_TTL)
+            registry[client_id] = {"state": "pending", "since": int(now)}
+            await self._save_registry(registry)
+
+    async def _client_registry(self) -> dict[str, dict[str, Any]]:
+        async with self._registry_lock:
+            if self._registry is None:
+                saved = await self.registration_storage.get(
+                    REGISTRY_KEY, collection=REGISTRY_COLLECTION
+                )
+                registry: dict[str, dict[str, Any]] = {}
+                entries = saved.get("clients") if saved is not None else None
+                if isinstance(entries, dict):
+                    for key, entry in entries.items():
+                        if (
+                            isinstance(entry, dict)
+                            and entry.get("state") in {"pending", "established"}
+                            and type(entry.get("since")) is int
+                        ):
+                            registry[key] = {"state": entry["state"], "since": entry["since"]}
+                elif saved is not None:
+                    # Unreleased list format: nothing proves owner authorization,
+                    # so former entries must log in or refresh within the window.
+                    for key in saved.get("ids", []):
+                        if isinstance(key, str):
+                            registry[key] = {"state": "pending", "since": int(time.time())}
+                self._registry = registry
+            return self._registry
+
+    async def _save_registry(self, registry: dict[str, dict[str, Any]]) -> None:
+        await self.registration_storage.put(
+            REGISTRY_KEY,
+            {"clients": registry},
+            collection=REGISTRY_COLLECTION,
+            ttl=REGISTRY_TTL,
+        )
+        self._registry = registry
+
+    async def _established_capacity(self, client_id: str) -> bool:
+        registry = await self._client_registry()
+        entry = registry.get(client_id)
+        if entry is not None and entry["state"] == "established":
+            return True
+        established = [key for key, item in registry.items() if item["state"] == "established"]
+        if len(established) < MAX_ESTABLISHED_CLIENTS:
+            return True
+        # Established clients whose stored record expired release their slot;
+        # live clients and their grants are never evicted.
+        live = {key for key in established if await super().get_client(key) is not None}
+        if len(live) >= MAX_ESTABLISHED_CLIENTS:
+            return False
+        await self._save_registry(
+            {
+                key: item
+                for key, item in registry.items()
+                if item["state"] != "established" or key in live
+            }
+        )
+        return True
+
+    async def _establish(self, client_id: str) -> None:
+        registry = await self._client_registry()
+        entry = registry.get(client_id)
+        if entry is None or entry["state"] == "established":
+            return
+        stored = await self._client_store.get(key=client_id)
+        if stored is None:
+            return
+        # Promotion restores the normal record lifetime after owner login.
+        await self._client_store.put(key=client_id, value=stored)
+        await self._save_registry(
+            {**registry, client_id: {"state": "established", "since": int(time.time())}}
+        )
 
     async def _extract_upstream_claims(self, idp_tokens: dict[str, Any]) -> dict[str, Any]:
         if await self.identity.verify_token(idp_tokens["access_token"]) is None:
@@ -367,16 +456,26 @@ class OwnerGitHubOAuth(OAuthProxy):
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
     ) -> OAuthToken:
+        assert client.client_id is not None
         async with asyncio.timeout(9), self._exchange_lock:
+            if not await self._established_capacity(client.client_id):
+                raise TokenError("invalid_client", "Client capacity exceeded")
             with self.identity.request_scope():
-                return await super().exchange_authorization_code(client, authorization_code)
+                tokens = await super().exchange_authorization_code(client, authorization_code)
+            await self._establish(client.client_id)
+            return tokens
 
     async def exchange_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: RefreshToken, scopes: list[str]
     ) -> OAuthToken:
+        assert client.client_id is not None
         async with asyncio.timeout(25), self._exchange_lock:
             with self.identity.request_scope():
-                return await super().exchange_refresh_token(client, refresh_token, scopes)
+                tokens = await super().exchange_refresh_token(client, refresh_token, scopes)
+            # A verified refresh proves the grant came from an owner login.
+            if await self._established_capacity(client.client_id):
+                await self._establish(client.client_id)
+            return tokens
 
     async def load_access_token(self, token: str) -> AccessToken | None:
         # Covers transparent upstream refresh as well as ordinary token reads.
@@ -386,3 +485,7 @@ class OwnerGitHubOAuth(OAuthProxy):
                 if loaded is not None and not isinstance(loaded, AccessToken):
                     raise GitHubUnavailable("Incompatible OAuth token result")
                 return loaded
+
+
+def _pending_expired(entry: dict[str, Any], now: float) -> bool:
+    return bool(entry["state"] == "pending" and now - entry["since"] > PENDING_CLIENT_TTL)

@@ -24,7 +24,7 @@ from .common import (
 )
 from .credentials import load_secret_file
 from .models import InstallPaths
-from .releases import _safe_launcher_state
+from .releases import _safe_launcher_state, file_sha256
 
 LOG = logging.getLogger("joplin-terminal-installer")
 
@@ -119,6 +119,23 @@ def remove_managed_path(path: Path) -> None:
         raise ToolError(f"could not remove managed path {path}: {exc.strerror}") from None
 
 
+def owned_mcp_binary(paths: InstallPaths) -> bool:
+    """Whether the adapter path is the exact regular file this installer recorded."""
+    binary = paths.mcp_binary
+    if binary.is_symlink() or not binary.is_file():
+        return False
+    try:
+        receipt = json.loads(load_secret_file(paths.mcp_receipt_file, "adapter receipt"))
+        return (
+            isinstance(receipt, dict)
+            and receipt.get("schema") == 1
+            and receipt.get("path") == str(binary)
+            and receipt.get("sha256") == file_sha256(binary)
+        )
+    except (ToolError, ValueError, OSError):
+        return False
+
+
 def stop_services_for_purge(runner: CommandRunner, systemctl: Path) -> None:
     result = runner.run(
         [
@@ -154,6 +171,14 @@ def purge_installation(
     stop_services_for_purge(runner, systemctl)
     with ProfileLock(paths.lock_file):
         for path in managed_purge_paths(paths):
+            if path == paths.mcp_binary and not owned_mcp_binary(paths):
+                if path.exists() or path.is_symlink():
+                    LOG.warning(
+                        "preserving %s: it is not the joplin-md-sync executable recorded "
+                        "by this installer; remove it manually if it is unused",
+                        path,
+                    )
+                continue
             remove_managed_path(path)
     remove_managed_path(paths.state_dir)
     for parent in {paths.npm_prefix.parent, paths.profile_dir.parent, paths.mcp_config_dir}:

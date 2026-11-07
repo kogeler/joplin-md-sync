@@ -86,7 +86,27 @@ class InstallerArgumentParser(argparse.ArgumentParser):
             if any(token.split("=", 1)[0] in action.option_strings for token in tokens):
                 result.explicit_options.add(action.dest)
                 result.command_line_options.add(action.dest)
+        enable = "github_oauth" in result.command_line_options
+        disable = "no_github_oauth" in result.command_line_options
+        if enable != disable:
+            # One command-line OAuth choice overrides JOPLIN_GITHUB_OAUTH either way;
+            # both flags together remain a conflict reported before any change.
+            result.github_oauth = enable
+            result.no_github_oauth = disable
+            result.explicit_options.discard("no_github_oauth" if enable else "github_oauth")
         return result
+
+
+def environment_github_oauth(env: Mapping[str, str]) -> bool | None:
+    """Parse JOPLIN_GITHUB_OAUTH; a negative value selects --no-github-oauth."""
+    raw = env.get("JOPLIN_GITHUB_OAUTH", "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes"}:
+        return True
+    if raw in {"0", "false", "no"}:
+        return False
+    raise ToolError("JOPLIN_GITHUB_OAUTH must be one of 1, true, yes, 0, false or no")
 
 
 def github_oauth_arguments(args: argparse.Namespace) -> list[str]:
@@ -111,11 +131,14 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
             "local installation."
         ),
     )
-    parser.set_defaults(
-        environment_options={
-            name for name, variable in ENVIRONMENT_OPTIONS.items() if variable in values
-        }
-    )
+    environment_options = {
+        name for name, variable in ENVIRONMENT_OPTIONS.items() if variable in values
+    }
+    environment_oauth = environment_github_oauth(values)
+    environment_options.discard("github_oauth")
+    if environment_oauth is not None:
+        environment_options.add("github_oauth" if environment_oauth else "no_github_oauth")
+    parser.set_defaults(environment_options=environment_options)
     parser.add_argument(
         "--installer-ref",
         "--ref",
@@ -218,7 +241,7 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--github-oauth",
         action="store_true",
-        default=values.get("JOPLIN_GITHUB_OAUTH", "").lower() in {"1", "true", "yes"},
+        default=environment_oauth is True,
         help="enable GitHub OAuth on the existing adapter port",
     )
     oauth_help = {
@@ -241,6 +264,7 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
     parser.add_argument(
         "--no-github-oauth",
         action="store_true",
+        default=environment_oauth is False,
         help="disable installed GitHub OAuth while preserving config and grants",
     )
     parser.add_argument(
@@ -479,6 +503,11 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.sync_interval not in SUPPORTED_SYNC_INTERVALS:
         allowed = ", ".join(str(value) for value in SUPPORTED_SYNC_INTERVALS)
         raise ToolError(f"--sync-interval must be one of: {allowed}")
-    if args.upgrade or (args.dry_run and not args.sync_target):
+    # Deferred sync options are validated after the existing profile is read.
+    if (
+        args.upgrade
+        or getattr(args, "deferred_sync", False)
+        or (args.dry_run and not args.sync_target)
+    ):
         return
     validate_sync_args(args)

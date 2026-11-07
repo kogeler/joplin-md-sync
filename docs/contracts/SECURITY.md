@@ -125,12 +125,18 @@ Actions and MCP MUST report the actual deletion class.
 **Contract:** OAuth configuration MUST require one positive ASCII decimal GitHub
 user ID. Login hints, email, unverified JWT claims and API scopes alone MUST NOT
 authorize an account. Issuance, refresh and protected requests MUST verify the
-current account via GitHub `/user`. Only within-request positive caching is
-permitted. Downstream redirect URIs MUST exactly match the hosted Claude
-callback `https://claude.ai/api/mcp/auth_callback`; DCR, PKCE, consent/state
-and one-use code/refresh binding MUST remain enforced.
-Client credentials MUST remain independent across OAuth, legacy MCP, Actions
-and Joplin. Codes, credentials and note bodies MUST NOT enter application/SDK
+current account via GitHub `/user` before downstream tokens are issued or a
+tool runs. An upstream grant that GitHub already rotated MUST be retained when
+that verification is temporarily unavailable, so the same downstream refresh
+can be retried. Only within-request positive caching is permitted. Downstream
+redirect URIs MUST exactly match the hosted Claude callback
+`https://claude.ai/api/mcp/auth_callback`; DCR, PKCE, consent/state and one-use
+code/refresh binding MUST remain enforced. Unverified registrations MUST stay
+pending with a bounded count and lifetime until an owner login establishes
+them; registration, token and browser-flow requests MUST have separate rate
+budgets. Client credentials MUST remain independent across OAuth, legacy MCP,
+Actions and Joplin, comparing the signing key as key material in every accepted
+encoding. Codes, credentials and note bodies MUST NOT enter application/SDK
 logs. GitHub expiring access and refresh token formats MUST be validated before
 issuing client credentials.
 
@@ -141,6 +147,12 @@ issuing client credentials.
 - [`test_invalid_pkce_state_code_replay_and_redirect`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_invalid_pkce_state_code_replay_and_redirect`
 - [`test_concurrent_code_and_refresh_are_single_use`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_concurrent_code_and_refresh_are_single_use`
 - [`test_signed_wrong_audience_issuer_type_and_expired_tokens_are_rejected`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_signed_wrong_audience_issuer_type_and_expired_tokens_are_rejected`
+- [`test_explicit_refresh_survives_identity_outage_after_rotation`](../../tests/oauth/e2e/test_oauth_recovery.py) - `tests/oauth/e2e/test_oauth_recovery.py::test_explicit_refresh_survives_identity_outage_after_rotation`
+- [`test_transparent_refresh_survives_identity_outage_without_running_tools`](../../tests/oauth/e2e/test_oauth_recovery.py) - `tests/oauth/e2e/test_oauth_recovery.py::test_transparent_refresh_survives_identity_outage_without_running_tools`
+- [`test_owner_login_establishes_client_and_foreign_or_abandoned_stay_pending`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_owner_login_establishes_client_and_foreign_or_abandoned_stay_pending`
+- [`test_pending_registrations_expire_without_reset`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_pending_registrations_expire_without_reset`
+- [`test_dcr_registration_capacity_preserves_existing_owner_grant`](../../tests/oauth/e2e/test_oauth_lifecycle.py) - `tests/oauth/e2e/test_oauth_lifecycle.py::test_dcr_registration_capacity_preserves_existing_owner_grant`
+- [`test_signing_key_reuse_is_rejected_in_any_accepted_encoding`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_signing_key_reuse_is_rejected_in_any_accepted_encoding`
 
 ### `SEC-009` - OAuth state is private, encrypted and exclusively managed
 

@@ -27,6 +27,68 @@ def test_real_listener_admission_includes_sockets_without_headers(app):
     assert not app.backend.store.notes
 
 
+def keep_alive_health(client: socket.socket, host: str) -> bytes:
+    """Complete one keep-alive request; return its status line, or b"" if refused."""
+    try:
+        client.sendall(f"GET /healthz HTTP/1.1\r\nHost: {host}\r\n\r\n".encode())
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = client.recv(65536)
+            if not chunk:
+                assert not data, "The listener closed a connection mid-response"
+                return b""
+            data += chunk
+    except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+        return b""
+    head, _, body = data.partition(b"\r\n\r\n")
+    lines = head.split(b"\r\n")
+    fields = dict(line.lower().split(b":", 1) for line in lines[1:])
+    assert b"close" not in fields.get(b"connection", b"").lower()
+    while len(body) < int(fields[b"content-length"]):
+        chunk = client.recv(65536)
+        assert chunk, "The listener truncated a keep-alive response"
+        body += chunk
+    return lines[0]
+
+
+def admitted_connection(port: int, host: str, *, timeout: float = 2) -> socket.socket:
+    """Return a connection that completed a request; a closed slot frees asynchronously."""
+    deadline = time.monotonic() + timeout
+    while True:
+        client = socket.create_connection(("127.0.0.1", port), timeout=2)
+        if keep_alive_health(client, host).startswith(b"HTTP/1.1 200"):
+            return client
+        client.close()
+        assert time.monotonic() < deadline, "The listener refused an available connection slot"
+        time.sleep(0.02)
+
+
+def test_real_listener_admits_exactly_sixteen_keep_alive_connections(app):
+    app.start()
+    host = f"127.0.0.1:{app.port}"
+    clients = []
+    try:
+        clients.append(admitted_connection(app.port, host))
+        # Uvicorn closes idle keep-alive connections after 5 s; stay well inside it.
+        started = time.monotonic()
+        while len(clients) < 16:
+            clients.append(admitted_connection(app.port, host))
+        with socket.create_connection(("127.0.0.1", app.port), timeout=2) as excess:
+            assert keep_alive_health(excess, host) == b"", "A 17th connection was admitted"
+        clients.pop(0).close()
+        clients.append(admitted_connection(app.port, host))
+        with socket.create_connection(("127.0.0.1", app.port), timeout=2) as excess:
+            assert keep_alive_health(excess, host) == b"", "The replacement exceeded the bound"
+        # Every admitted connection stayed open and serves another request.
+        for client in clients:
+            assert keep_alive_health(client, host).startswith(b"HTTP/1.1 200")
+        assert time.monotonic() - started < 4
+    finally:
+        for client in clients:
+            client.close()
+    assert not app.backend.store.notes
+
+
 @pytest.mark.parametrize(
     "framing",
     [

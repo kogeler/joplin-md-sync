@@ -281,6 +281,17 @@ class WizardProcessTests(unittest.TestCase):
             ("Start services after setup?", ""),
         ]
 
+    @classmethod
+    def recovery_answers(cls, *sync_answers):
+        """Setup questions when an existing profile supplies the sync defaults."""
+        answers = [answer for answer in cls.public_answers() if answer[0] != "Sync backend"]
+        return answers + list(sync_answers)
+
+    def remove_units(self):
+        """Leave the profile of an interrupted setup without its service pair."""
+        for unit in (self.unit, self.unit.with_name("joplin-terminal.service")):
+            unit.unlink()
+
     def install_nextcloud(self, *, remote=False):
         answers = self.public_answers(
             "nextcloud",
@@ -512,6 +523,64 @@ class WizardProcessTests(unittest.TestCase):
         self.assertEqual(self.settings()["sync.5.password"], "")
         self.assertEqual(self.settings()["sync.5.path"], "")
 
+    def test_existing_nextcloud_profile_without_units_keeps_sync_when_defaults_are_accepted(self):
+        self.install_nextcloud()
+        before = self.settings()
+        self.remove_units()
+        output = self.run_installer(answers=self.recovery_answers())
+        self.assertEqual(self.settings(), before)
+        self.assertNotIn("Sync backend", output)
+        self.assertNotIn("Nextcloud password", output)
+        self.assertTrue(self.unit.is_file())
+        # Automation recovers the same profile without --reconfigure or sync options.
+        self.remove_units()
+        self.run_installer("--non-interactive")
+        self.assertEqual(self.settings(), before)
+        self.assertTrue(self.unit.is_file())
+
+    def test_existing_filesystem_profile_without_units_keeps_target_and_sandbox_path(self):
+        directory = self.root / "filesystem sync"
+        directory.mkdir()
+        self.run_installer(
+            answers=self.public_answers("filesystem", ("absolute directory", str(directory)))
+        )
+        before = self.settings()
+        self.assertEqual(before["sync.target"], 2)
+        backend = self.unit.with_name("joplin-terminal.service")
+        original_backend = backend.read_text()
+        self.assertIn(str(directory), original_backend)
+        self.remove_units()
+        output = self.run_installer(answers=self.recovery_answers())
+        self.assertNotIn("Sync backend", output)
+        self.assertNotIn("absolute directory", output)
+        self.assertEqual(self.settings(), before)
+        self.assertEqual(backend.read_text(), original_backend)
+
+    def test_empty_or_unconfigured_profile_without_units_still_asks_for_the_sync_backend(self):
+        self.profile.mkdir(mode=0o700, parents=True)
+        # An empty directory is a fresh profile: the normal question order applies.
+        self.run_installer(answers=self.public_answers())
+        before = self.settings()
+        self.assertEqual(before["sync.target"], 0)
+        self.remove_units()
+        # A readable profile without a configured target still offers the choice.
+        self.run_installer(answers=self.recovery_answers(("Sync backend", "")))
+        self.assertEqual(self.settings(), before)
+
+    def test_existing_profile_without_units_applies_an_explicit_sync_target_change(self):
+        self.install_nextcloud()
+        self.remove_units()
+        directory = self.root / "replacement filesystem sync"
+        directory.mkdir()
+        self.run_installer(
+            "--sync-target", "filesystem", "--sync-location", str(directory), "--non-interactive"
+        )
+        after = self.settings()
+        self.assertEqual(after["sync.target"], 2)
+        self.assertEqual(after["sync.2.path"], str(directory))
+        self.assertEqual(after["sync.5.password"], "")
+        self.assertEqual(after["sync.5.path"], "")
+
     def test_partial_service_pair_is_rejected_before_prompts_or_changes(self):
         self.install_nextcloud()
         before = self.settings()
@@ -657,6 +726,90 @@ class WizardProcessTests(unittest.TestCase):
         self.register_oauth_client()
         self.assertTrue(list((state / "store").rglob("*.json")))
 
+    def enable_oauth_non_interactively(self):
+        secret = self.root / "operator-client-secret"
+        if not secret.exists():
+            descriptor = os.open(secret, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "w") as output:
+                output.write(OAUTH_SECRET + "\n")
+        self.run_installer(
+            "--github-oauth",
+            "--github-oauth-client-id",
+            "fixture-client",
+            "--github-oauth-public-url",
+            "https://notes.example.invalid",
+            "--github-oauth-allowed-user-id",
+            "42",
+            "--github-oauth-client-secret-file",
+            str(secret),
+            "--non-interactive",
+        )
+        return self.unit.read_text()
+
+    def oauth_files(self):
+        """Saved OAuth settings, owned secrets, the state registration and grants."""
+        state = self.home / ".local/state/joplin-md-sync/oauth"
+        paths = [
+            self.config / "oauth-settings.json",
+            self.config / "oauth-managed-state.json",
+            *(self.config / "oauth-secrets").rglob("*"),
+            *state.rglob("*"),
+        ]
+        return {path: path.read_bytes() for path in paths if path.is_file()}
+
+    def test_negative_oauth_environment_disables_like_no_github_oauth_and_reenables(self):
+        self.run_installer("--non-interactive")
+        enabled_unit = self.enable_oauth_non_interactively()
+        self.register_oauth_client()
+        state = self.home / ".local/state/joplin-md-sync/oauth"
+        self.assertIn(f'ReadWritePaths="{state}"', enabled_unit)
+        preserved = self.oauth_files()
+        self.assertTrue(any(path.suffix == ".json" and state in path.parents for path in preserved))
+        self.assertTrue(list((self.config / "oauth-secrets").iterdir()))
+        for value in ("false", "0", "NO"):
+            with self.subTest(value=value):
+                self.env["JOPLIN_GITHUB_OAUTH"] = value
+                self.run_installer()
+                disabled_unit = self.unit.read_text()
+                self.assertNotIn("--github-oauth", disabled_unit)
+                self.assertNotIn(str(state), disabled_unit)
+                self.assertEqual(self.oauth_files(), preserved)
+                # Re-enabling reuses saved settings, secrets and grants without questions.
+                self.env["JOPLIN_GITHUB_OAUTH"] = "yes"
+                self.run_installer()
+                self.assertEqual(self.unit.read_text(), enabled_unit)
+                self.assertEqual(self.oauth_files(), preserved)
+        self.env.pop("JOPLIN_GITHUB_OAUTH")
+        self.run_installer("--no-github-oauth")
+        self.assertEqual(self.unit.read_text(), disabled_unit)
+        self.assertEqual(self.oauth_files(), preserved)
+
+    def test_command_line_oauth_choice_overrides_the_environment_and_invalid_value_fails(self):
+        self.run_installer("--non-interactive")
+        enabled_unit = self.enable_oauth_non_interactively()
+        preserved = self.oauth_files()
+        self.env["JOPLIN_GITHUB_OAUTH"] = "true"
+        self.run_installer("--no-github-oauth")
+        self.assertNotIn("--github-oauth", self.unit.read_text())
+        self.assertEqual(self.oauth_files(), preserved)
+        self.env["JOPLIN_GITHUB_OAUTH"] = "false"
+        self.run_installer("--github-oauth")
+        self.assertEqual(self.unit.read_text(), enabled_unit)
+        self.assertEqual(self.oauth_files(), preserved)
+        calls = self.root / "calls.jsonl"
+        for value, arguments, message in (
+            ("false", ("--github-oauth", "--no-github-oauth"), "cannot be combined"),
+            ("maybe", (), "JOPLIN_GITHUB_OAUTH must be one of"),
+        ):
+            with self.subTest(value=value, arguments=arguments):
+                self.env["JOPLIN_GITHUB_OAUTH"] = value
+                calls.write_text("")
+                output = self.run_installer(*arguments, expected=1)
+                self.assertIn(message, output)
+                self.assertEqual(calls.read_text(), "")
+                self.assertEqual(self.unit.read_text(), enabled_unit)
+                self.assertEqual(self.oauth_files(), preserved)
+
     def test_clean_never_prompts_and_removes_only_the_managed_installation(self):
         self.run_installer(answers=self.public_answers())
         unrelated = self.home / "keep-me"
@@ -667,6 +820,32 @@ class WizardProcessTests(unittest.TestCase):
         self.assertFalse(self.config.exists())
         self.assertTrue(unrelated.is_file())
         self.run_installer("--clean")
+
+    def test_clean_removes_only_the_adapter_executable_recorded_by_the_installer(self):
+        binary = self.home / ".local/bin/joplin-md-sync"
+        receipt = self.home / ".local/state/joplin-agent/joplin-md-sync-receipt.json"
+        self.run_installer("--non-interactive")
+        self.assertEqual(
+            json.loads(receipt.read_text()),
+            {
+                "schema": 1,
+                "path": str(binary),
+                "sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+            },
+        )
+        self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+        self.run_installer("--clean")
+        self.assertFalse(binary.exists())
+        # An executable the installer accepted but did not place stays after clean.
+        binary.write_bytes(self.candidate)
+        binary.chmod(0o700)
+        self.run_installer("--non-interactive")
+        self.assertFalse(receipt.exists())
+        output = self.run_installer("--clean")
+        self.assertIn(f"preserving {binary}", output)
+        self.assertEqual(binary.read_bytes(), self.candidate)
+        self.assertFalse(self.profile.exists())
+        self.assertFalse(self.unit.exists())
 
     def test_clean_preserves_operator_oauth_secrets_in_the_shared_config_directory(self):
         self.run_installer("--non-interactive")

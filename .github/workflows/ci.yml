@@ -55,12 +55,15 @@ jobs:
           RUFF_OUTPUT_FORMAT: github
         run: make ci PY=python
 
+      # Diagnose failed tests too: report whenever JUnit exists. A failed test
+      # step still fails the job; this only adds evidence to the failure.
       - name: Verify OAuth functional coverage from real test results
+        if: ${{ !cancelled() && hashFiles('.artifacts/test-results.xml') != '' }}
         run: python scripts/report_oauth_acceptance.py --junit .artifacts/test-results.xml --output .artifacts/oauth-e2e-evidence.json
 
-      # The report is written before its gate fails; keep it for diagnosis.
+      # The report is written before its gate fails; keep what exists for diagnosis.
       - name: Upload OAuth acceptance evidence
-        if: ${{ !cancelled() && hashFiles('.artifacts/oauth-e2e-evidence.json') != '' }}
+        if: ${{ !cancelled() && hashFiles('.artifacts/test-results.xml') != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oauth-acceptance-evidence
@@ -69,7 +72,7 @@ jobs:
             .artifacts/test-results.xml
             .artifacts/coverage.xml
             .artifacts/coverage-report.md
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Publish coverage summary
         if: ${{ !cancelled() }}
@@ -247,7 +250,7 @@ jobs:
           path: dist/joplin-md-sync-*
           if-no-files-found: error
           compression-level: 0
-          retention-days: 1
+          retention-days: 7
 
   dependency-review:
     name: Dependency review

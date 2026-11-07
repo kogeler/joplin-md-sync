@@ -1359,23 +1359,21 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             config=actions_config,
         )
     if oauth_config is not None:
-        import base64
-
         from joplin_md_sync.auth import token_values_equal
+        from joplin_md_sync.oauth_config import matches_signing_key, signing_key_encodings
 
-        encoded_key = (
-            base64.urlsafe_b64encode(oauth_config.signing_key).rstrip(b"=").decode("ascii")
-        )
         existing = [value for value in (mcp_token, validation_joplin_token) if value]
         if actions_transport is not None:
             existing.append(actions_transport.token_source.read())
+        # The signing key is compared as key material, so padding or the other
+        # Base64 alphabet cannot disguise reuse; Bearer checks stay byte-exact.
         if any(
-            token_values_equal(new, old)
-            for new in (oauth_config.client_secret, encoded_key)
+            token_values_equal(oauth_config.client_secret, old)
+            or matches_signing_key(old, oauth_config.signing_key)
             for old in existing
         ):
             raise UnsafeOperationError("OAuth secrets must differ from existing credentials")
-        _REDACT_TOKENS.append(encoded_key)
+        _REDACT_TOKENS.extend(signing_key_encodings(oauth_config.signing_key))
     if oauth_config is not None:
         try:
             from joplin_md_sync.legacy_asgi import LegacyContext

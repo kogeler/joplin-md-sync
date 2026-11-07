@@ -20,6 +20,7 @@ from .cli import _VERSION_RE
 from .commands import CommandRunner
 from .common import (
     ToolError,
+    atomic_write,
 )
 from .models import Dependencies, InstallPaths
 
@@ -344,6 +345,20 @@ def download_mcp_binary(
         raise
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def record_mcp_receipt(paths: InstallPaths) -> None:
+    """Record the placed adapter so purge removes only this exact executable."""
+    receipt = {"schema": 1, "path": str(paths.mcp_binary), "sha256": file_sha256(paths.mcp_binary)}
+    atomic_write(paths.mcp_receipt_file, json.dumps(receipt).encode() + b"\n", 0o600)
+
+
 def install_or_update_mcp(
     runner: CommandRunner,
     paths: InstallPaths,
@@ -362,5 +377,6 @@ def install_or_update_mcp(
         paths.mcp_binary.chmod(0o700)
     finally:
         temporary.unlink(missing_ok=True)
+    record_mcp_receipt(paths)
     LOG.info("joplin-md-sync executable: %s", paths.mcp_binary)
     return desired

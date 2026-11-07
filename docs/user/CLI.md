@@ -254,7 +254,8 @@ native executables. See [Claude connector setup](CLAUDE_CONNECTOR.md).
 Check/reset imply OAuth configuration; `mcp serve` requires `--github-oauth`.
 Providing OAuth options to an otherwise disabled service is an error. The
 Client Secret and signing key must differ from each other and from the Joplin,
-MCP and Actions credentials.
+MCP and Actions credentials; the signing key is compared as key material in
+any accepted Base64 form.
 
 | OAuth option | Purpose |
 | --- | --- |

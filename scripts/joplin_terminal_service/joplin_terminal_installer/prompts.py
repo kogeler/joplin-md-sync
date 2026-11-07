@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 
 from .cli import selected_sync_target
+from .common import resolved_path
 from .credentials import load_secret_file
 from .models import SYNC_TARGETS, InstallPaths
 
@@ -72,10 +74,21 @@ class SetupPrompts:
             LOG.warning("answer yes or no")
 
 
+def existing_profile(profile_dir: Path) -> bool:
+    """Detect a non-empty profile directory without opening any Joplin file."""
+    try:
+        return profile_dir.is_dir() and next(profile_dir.iterdir(), None) is not None
+    except OSError:
+        # An unreadable directory is not treated as empty; Joplin reports it.
+        return True
+
+
 def complete_sync_options(
     args: argparse.Namespace,
     prompts: SetupPrompts,
     current: Mapping[str, object] | None = None,
+    *,
+    ask_unconfigured: bool = False,
 ) -> None:
     current = {} if current is None or args.force_reconfigure else current
     current_id = str(current.get("sync.target", ""))
@@ -83,7 +96,11 @@ def complete_sync_options(
         (name for name, target in SYNC_TARGETS.items() if str(target.target_id) == current_id),
         None,
     )
-    if not args.sync_target and current_target:
+    if (
+        not args.sync_target
+        and current_target
+        and not (ask_unconfigured and current_target == "none")
+    ):
         args.sync_target = current_target
     if not args.sync_target:
         prompts.value(
@@ -192,7 +209,16 @@ def complete_setup_options(
                     "sync_interval",
                 },
             )
-        complete_sync_options(args, prompts)
+        # Interrupted setup can leave a profile without units. Its settings are
+        # readable only through the Joplin CLI under the profile lock, so sync
+        # questions wait until then and use the configured values as defaults.
+        args.deferred_sync = (
+            not installed
+            and not args.force_reconfigure
+            and existing_profile(resolved_path(args.profile_dir))
+        )
+        if not args.deferred_sync:
+            complete_sync_options(args, prompts)
         prompts.toggle("allow_remote_mcp", "Allow remote MCP/Actions connections?")
         if not args.no_github_oauth:
             prompts.toggle("github_oauth", "Enable GitHub OAuth for Claude?")

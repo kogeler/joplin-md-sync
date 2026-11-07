@@ -76,6 +76,7 @@ def main() -> int:
         jwt_issuer.time = SimpleNamespace(time=now)
         proxy.time = SimpleNamespace(time=now)
         token_handler.time = SimpleNamespace(time=now)
+        github_oauth.time = SimpleNamespace(time=now)
     if args.listener_file:
         # Bind port zero in the child, rather than guessing an unused port in
         # the parent and leaving a race with other parallel fixtures. Keep the

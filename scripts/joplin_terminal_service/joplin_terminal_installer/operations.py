@@ -18,6 +18,7 @@ from .common import (
 )
 from .managed import (
     managed_purge_paths,
+    owned_mcp_binary,
     validate_purge_paths,
 )
 from .models import InstallPaths
@@ -103,6 +104,10 @@ def dry_run_purge(paths: InstallPaths, env: Mapping[str, str]) -> None:
     validate_purge_paths(paths, env)
     LOG.info("dry-run: would stop and disable %s and %s", ADAPTER_SERVICE_NAME, SERVICE_NAME)
     for path in (*managed_purge_paths(paths), paths.state_dir):
+        if path == paths.mcp_binary and not owned_mcp_binary(paths):
+            if path.exists() or path.is_symlink():
+                LOG.info("dry-run: would preserve unrecorded executable %s", path)
+            continue
         LOG.info("dry-run: would remove managed path %s", path)
     LOG.info("dry-run: remote sync data and the user lingering setting would be unchanged")
 

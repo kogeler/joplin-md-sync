@@ -35,6 +35,10 @@ class MockGitHub:
         self.token_status = 200
         self.token_headers: dict[str, str] = {}
         self.issued: set[str] = set()
+        # Identity failures injected after GitHub has already rotated a grant.
+        self.user_failures_after_refresh: tuple[int, dict[str, str], int] | None = None
+        self.pending_user_failures: list[tuple[int, dict[str, str]]] = []
+        self.revoked_refresh_presented = 0
 
     def client(self) -> httpx2.AsyncClient:
         return httpx2.AsyncClient(transport=httpx2.MockTransport(self.request))
@@ -52,6 +56,9 @@ class MockGitHub:
     def request(self, request: httpx2.Request) -> httpx2.Response:
         if str(request.url) == GITHUB_USER_URL:
             self.user_requests += 1
+            if self.pending_user_failures:
+                status, headers = self.pending_user_failures.pop(0)
+                return httpx2.Response(status, headers=headers)
             if self.user_status != 200:
                 return httpx2.Response(self.user_status, headers=self.user_headers)
             token = request.headers["authorization"].removeprefix("Bearer ")
@@ -87,11 +94,16 @@ class MockGitHub:
             assert "scope" not in params
             identity = self.refresh.pop(params["refresh_token"], None)
             if identity is None:
+                self.revoked_refresh_presented += 1
                 return httpx2.Response(200, json={"error": "bad_refresh_token"})
             previous = self.refresh_access.pop(params["refresh_token"])
             self.access.pop(previous, None)
             self.expires.pop(previous, None)
             self.refresh_count += 1
+            if self.user_failures_after_refresh is not None:
+                status, headers, count = self.user_failures_after_refresh
+                self.pending_user_failures = [(status, headers)] * count
+                self.user_failures_after_refresh = None
         access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         self.access[access], self.refresh[refresh] = identity, identity
         self.refresh_access[refresh] = access

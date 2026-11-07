@@ -41,6 +41,7 @@ from joplin_terminal_installer import (  # noqa: E402
     encryption,
     managed,
     models,
+    operations,
     releases,
     service,
     sync,
@@ -83,6 +84,49 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(args.sync_location, "https://cli.invalid/Joplin")
         self.assertEqual(args.sync_username, "cli-user")
         self.assertEqual(args.api_port, 42345)
+
+    def test_github_oauth_environment_is_a_strict_boolean_and_cli_overrides_it(self) -> None:
+        for value, choice, explicit in (
+            ("1", (True, False), "github_oauth"),
+            ("TRUE", (True, False), "github_oauth"),
+            ("yes", (True, False), "github_oauth"),
+            ("0", (False, True), "no_github_oauth"),
+            ("false", (False, True), "no_github_oauth"),
+            (" No ", (False, True), "no_github_oauth"),
+            ("", (False, False), None),
+        ):
+            with self.subTest(value=value):
+                args = cli.build_parser({"HOME": "/tmp/home", "JOPLIN_GITHUB_OAUTH": value})
+                args = args.parse_args([])
+                self.assertEqual((args.github_oauth, args.no_github_oauth), choice)
+                self.assertEqual(
+                    args.explicit_options & {"github_oauth", "no_github_oauth"},
+                    {explicit} if explicit else set(),
+                )
+                self.assertEqual(args.command_line_options, set())
+        for value in ("maybe", "on", "2"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(ToolError, "JOPLIN_GITHUB_OAUTH must be one of"),
+            ):
+                cli.build_parser({"HOME": "/tmp/home", "JOPLIN_GITHUB_OAUTH": value})
+        for value, flag, choice, explicit in (
+            ("false", "--github-oauth", (True, False), "github_oauth"),
+            ("true", "--no-github-oauth", (False, True), "no_github_oauth"),
+        ):
+            with self.subTest(value=value, flag=flag):
+                parser = cli.build_parser({"HOME": "/tmp/home", "JOPLIN_GITHUB_OAUTH": value})
+                args = parser.parse_args([flag])
+                self.assertEqual((args.github_oauth, args.no_github_oauth), choice)
+                self.assertEqual(
+                    args.explicit_options & {"github_oauth", "no_github_oauth"}, {explicit}
+                )
+        for value in ("", "true", "false"):
+            with self.subTest(conflict=value):
+                parser = cli.build_parser({"HOME": "/tmp/home", "JOPLIN_GITHUB_OAUTH": value})
+                args = parser.parse_args(["--github-oauth", "--no-github-oauth"])
+                with self.assertRaisesRegex(ToolError, "cannot be combined"):
+                    cli.validate_args(args)
 
     def test_defaults_resolve_latest_releases(self) -> None:
         args = cli.build_parser({"HOME": "/tmp/home"}).parse_args([])
@@ -779,6 +823,7 @@ class PurgeTests(unittest.TestCase):
         self.paths.gpt_actions_token_file.write_text("gpt-actions-token\n")
         (self.paths.deploy_dir / "run.py").write_text("pass\n")
         self.paths.mcp_binary.write_text("binary\n")
+        releases.record_mcp_receipt(self.paths)
         self.paths.launcher.symlink_to(self.paths.npm_prefix / "bin" / "joplin")
         self.paths.unit_path.write_text("unit\n")
         self.paths.adapter_unit_path.write_text("adapter unit\n")
@@ -823,6 +868,44 @@ class PurgeTests(unittest.TestCase):
             self.paths,
             self.env,
         )
+
+    def test_purge_removes_the_adapter_only_when_it_matches_the_installer_receipt(self) -> None:
+        operator_file = self.root / "operator-joplin-md-sync"
+        for case in ("pre-receipt", "replaced", "symlink", "other path"):
+            with self.subTest(case=case):
+                self.populate()
+                binary = self.paths.mcp_binary
+                if case == "pre-receipt":
+                    self.paths.mcp_receipt_file.unlink()
+                elif case == "replaced":
+                    binary.write_text("operator build\n")
+                elif case == "symlink":
+                    operator_file.write_text("operator build\n")
+                    binary.unlink()
+                    binary.symlink_to(operator_file)
+                else:
+                    receipt = json.loads(self.paths.mcp_receipt_file.read_text())
+                    receipt["path"] = str(binary.with_name("elsewhere"))
+                    self.paths.mcp_receipt_file.write_text(json.dumps(receipt) + "\n")
+                before = binary.read_bytes()
+                with self.assertLogs("joplin-terminal-installer", logging.INFO) as logs:
+                    operations.dry_run_purge(self.paths, self.env)
+                    managed.purge_installation(
+                        self.stopped_runner(), Path("/systemctl"), self.paths, self.env
+                    )
+                self.assertTrue(binary.exists() or binary.is_symlink())
+                self.assertEqual(binary.read_bytes(), before)
+                self.assertEqual(binary.is_symlink(), case == "symlink")
+                messages = "\n".join(logs.output)
+                self.assertIn(f"would preserve unrecorded executable {binary}", messages)
+                self.assertIn(f"preserving {binary}", messages)
+                self.assertFalse(self.paths.profile_dir.exists())
+                self.assertFalse(self.paths.state_dir.exists())
+                binary.unlink()
+        self.assertEqual(operator_file.read_text(), "operator build\n")
+        self.populate()
+        managed.purge_installation(self.stopped_runner(), Path("/systemctl"), self.paths, self.env)
+        self.assertFalse(self.paths.mcp_binary.exists())
 
     def test_profile_lock_blocks_purge_before_data_removal(self) -> None:
         self.populate()
@@ -1894,6 +1977,212 @@ class ServiceLifecycleTests(unittest.TestCase):
             stop_failed.assert_not_called()
             backup.assert_not_called()
             update_joplin.assert_not_called()
+
+    def test_failed_joplin_upgrade_restores_previous_tree_and_restarts_active_services(
+        self,
+    ) -> None:
+        for active in (
+            {"joplin-terminal.service", "joplin-md-sync.service"},
+            {"joplin-terminal.service"},
+            set(),
+        ):
+            with self.subTest(active=sorted(active)):
+                self._failed_joplin_upgrade_case(active)
+        with self.subTest(restore_fails=True):
+            self._failed_joplin_upgrade_case(
+                {"joplin-terminal.service", "joplin-md-sync.service"}, restore_fails=True
+            )
+
+    def test_upgrade_records_the_replaced_adapter_for_purge(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env = {
+                "HOME": str(root / "home"),
+                "XDG_STATE_HOME": str(root / "state"),
+                "PATH": os.environ["PATH"],
+            }
+            args = cli.build_parser(env).parse_args(
+                [
+                    "--upgrade",
+                    "--no-start-service",
+                    "--joplin-version",
+                    "3.6.2",
+                    "--joplin-md-sync-version",
+                    "1.2.0",
+                    "--joplin-prefix",
+                    str(root / "prefix"),
+                    "--profile-dir",
+                    str(root / "profile"),
+                ]
+            )
+            tool = application.Installer(args, env=env)
+            write_installed_units(tool)
+            tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
+            tool.paths.token_file.write_text("j" * 32)
+            tool.paths.mcp_binary.parent.mkdir(parents=True, exist_ok=True)
+            tool.paths.mcp_binary.write_bytes(b"pre-receipt adapter")
+            self.assertFalse(managed.owned_mcp_binary(tool.paths))
+            prepared = tool.paths.mcp_binary.with_name(".joplin-md-sync.prepared")
+            prepared.write_bytes(b"verified adapter 1.2.0")
+            dependencies = models.Dependencies(
+                Path("/node"), Path("/npm"), Path("/systemctl"), "22.0.0", "10.0.0"
+            )
+            with (
+                mock.patch.object(application, "check_dependencies", return_value=dependencies),
+                mock.patch.object(application, "service_active", return_value=False),
+                mock.patch.object(
+                    application,
+                    "resolve_service_tokens",
+                    return_value=(MCP_TOKEN, GPT_ACTIONS_TOKEN),
+                ),
+                mock.patch.object(application, "installed_mcp_version", return_value="1.1.0"),
+                mock.patch.object(application, "download_mcp_binary", return_value=prepared),
+                mock.patch.object(application, "install_or_update_joplin", return_value="3.6.2"),
+                mock.patch.object(application, "systemctl_command"),
+            ):
+                tool.run()
+            self.assertEqual(tool.paths.mcp_binary.read_bytes(), b"verified adapter 1.2.0")
+            self.assertTrue(managed.owned_mcp_binary(tool.paths))
+            self.assertEqual(stat.S_IMODE(tool.paths.mcp_receipt_file.stat().st_mode), 0o600)
+
+    @staticmethod
+    def _tree(root: Path) -> dict[str, tuple[object, ...]]:
+        entries: dict[str, tuple[object, ...]] = {}
+        for path in sorted(root.rglob("*")):
+            relative = str(path.relative_to(root))
+            mode = stat.S_IMODE(path.lstat().st_mode)
+            if path.is_symlink():
+                entries[relative] = ("link", os.readlink(path))
+            elif path.is_dir():
+                entries[relative] = ("dir", mode)
+            else:
+                entries[relative] = ("file", mode, path.read_bytes())
+        return entries
+
+    def _failed_joplin_upgrade_case(self, active: set[str], *, restore_fails: bool = False) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            env = {
+                "HOME": str(root / "home"),
+                "XDG_STATE_HOME": str(root / "state"),
+                "PATH": os.environ["PATH"],
+            }
+            args = cli.build_parser(env).parse_args(
+                [
+                    "--upgrade",
+                    "--joplin-version",
+                    "3.7.1",
+                    "--joplin-md-sync-version",
+                    "1.2.0",
+                    "--joplin-prefix",
+                    str(root / "prefix"),
+                    "--profile-dir",
+                    str(root / "profile"),
+                ]
+            )
+            tool = application.Installer(args, env=env)
+            write_installed_units(tool)
+            tool.paths.token_file.parent.mkdir(parents=True, exist_ok=True)
+            tool.paths.token_file.write_text("j" * 32)
+            tool.paths.mcp_binary.parent.mkdir(parents=True, exist_ok=True)
+            tool.paths.mcp_binary.write_bytes(b"previous adapter")
+            npm_prefix = tool.paths.npm_prefix
+            package = npm_prefix / "lib" / "node_modules" / "joplin"
+            package.mkdir(parents=True)
+            (package / "main.js").write_bytes(b"previous Joplin \x00\xff")
+            (package / "main.js").chmod(0o755)
+            (npm_prefix / "bin").mkdir()
+            (npm_prefix / "bin" / "joplin").symlink_to("../lib/node_modules/joplin/main.js")
+            (npm_prefix / "fixture-version").write_text("3.6.2")
+            original_tree = self._tree(npm_prefix)
+            original_units = {
+                path: path.read_bytes()
+                for path in (tool.paths.unit_path, tool.paths.adapter_unit_path)
+            }
+            # The real installer path runs this npm; install leaves a partial tree.
+            npm = root / "npm"
+            npm.write_text(
+                f"#!{sys.executable}\n"
+                "import json, sys\nfrom pathlib import Path\n"
+                "args = sys.argv[1:]\nprefix = Path(args[args.index('--prefix') + 1])\n"
+                "marker = prefix / 'fixture-version'\n"
+                "if args[0] == 'list':\n"
+                "    print(json.dumps({'dependencies': {'joplin': {'version': marker.read_text()}}}"
+                " if marker.exists() else {}))\n"
+                "elif args[0] == 'install':\n"
+                "    partial = prefix / 'lib' / 'node_modules' / 'joplin'\n"
+                "    partial.mkdir(parents=True)\n"
+                "    (partial / 'partial.js').write_text('partial')\n"
+                "    sys.exit('npm ERR! fixture registry failure')\n"
+                "else:\n    sys.exit(95)\n"
+            )
+            npm.chmod(0o700)
+            dependencies = models.Dependencies(
+                Path("/node"), npm, Path("/systemctl"), "22.0.0", "10.0.0"
+            )
+            with (
+                mock.patch.object(application, "check_dependencies", return_value=dependencies),
+                mock.patch.object(
+                    application,
+                    "service_active",
+                    side_effect=lambda _runner, _systemctl, unit: unit in active,
+                ),
+                mock.patch.object(
+                    application,
+                    "resolve_service_tokens",
+                    return_value=(MCP_TOKEN, GPT_ACTIONS_TOKEN),
+                ),
+                mock.patch.object(application, "installed_mcp_version", return_value="1.2.0"),
+                mock.patch.object(
+                    application, "download_mcp_binary", side_effect=AssertionError("no download")
+                ),
+                mock.patch.object(
+                    application, "install_or_update_mcp", side_effect=AssertionError("unchanged")
+                ),
+                mock.patch.object(
+                    application,
+                    "remove_managed_path",
+                    side_effect=ToolError("fixture removal failure") if restore_fails else None,
+                    wraps=None if restore_fails else managed.remove_managed_path,
+                ),
+                mock.patch.object(application, "systemctl_command") as systemctl,
+                mock.patch.object(application, "stop_after_startup_failure") as stop_failed,
+                self.assertRaisesRegex(
+                    ToolError,
+                    "command failed"
+                    if restore_fails
+                    else r"Joplin 3\.7\.1 installation failed .*previous Joplin tree",
+                ) as raised,
+            ):
+                tool.run()
+            self.assertIn("fixture registry failure", str(raised.exception))
+            if restore_fails:
+                # Without a restored tree, services stay stopped and the backup is kept.
+                backup = next(tool.paths.state_dir.glob("upgrade-backup-*"))
+                self.assertEqual(self._tree(backup / "npm"), original_tree)
+                self.assertEqual(
+                    [call.args[2] for call in stop_failed.call_args_list],
+                    ["joplin-md-sync.service", "joplin-terminal.service"],
+                )
+                self.assertNotIn("start", [call.args[2] for call in systemctl.call_args_list])
+                return
+            self.assertEqual(self._tree(npm_prefix), original_tree)
+            self.assertEqual({path: path.read_bytes() for path in original_units}, original_units)
+            self.assertEqual(tool.paths.mcp_binary.read_bytes(), b"previous adapter")
+            backups = list(tool.paths.state_dir.glob("upgrade-backup-*"))
+            self.assertEqual(len(backups), 1)
+            self.assertFalse((backups[0] / "npm").exists())
+            stop_failed.assert_not_called()
+            adapter, terminal = "joplin-md-sync.service", "joplin-terminal.service"
+            self.assertEqual(
+                [call.args[2:] for call in systemctl.call_args_list],
+                [
+                    *([("stop", adapter)] if adapter in active else []),
+                    *([("stop", terminal)] if terminal in active else []),
+                    *([("start", terminal)] if terminal in active else []),
+                    *([("start", adapter)] if adapter in active else []),
+                ],
+            )
 
     def test_unexpected_upgrade_failure_stops_both_services(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

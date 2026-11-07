@@ -19,14 +19,21 @@ All notable changes to this project are documented here. The format follows
   support on the existing service unit.
 - Bound OAuth execution, suppress private worker errors after cancellation,
   and distinguish temporary GitHub failures from revoked grants while
-  preserving refresh grants for recovery.
+  preserving refresh grants for recovery, including grants GitHub already
+  rotated before an identity check failed.
+- Keep anonymous registrations pending for 30 minutes (at most 64) until an
+  owner sign-in establishes them, and give registration, token and browser
+  flows separate rate budgets so a registration flood cannot block refresh.
 - Provide Nginx examples for the existing HTTPS hostname that exclude OAuth
   callback codes/state from request logs and match the MCP body limit.
   Document local installation of unpublished CI candidates.
 - Require process/TLS OAuth E2E acceptance for login, all registered tools,
   identity and grant rejection, refresh, restart, state and concurrency limits.
-  Verify the real Joplin Data API and native systemd sandbox separately, and
-  retain downloadable CodeQL dataflow evidence with CI results.
+  Track every required case by exact ID with platform-specific shutdown cases,
+  probe the packaged GitHub TLS client in every distribution, and keep test
+  evidence after failed CI runs. Verify the real Joplin Data API and native
+  systemd sandbox separately, and retain downloadable CodeQL dataflow evidence
+  and native candidates for seven days.
 
 ### Changed
 
@@ -40,7 +47,13 @@ All notable changes to this project are documented here. The format follows
   upgrades and profiles left after interrupted setup. Reuse credentials only
   for matching account/bucket identities, reject incomplete service pairs
   before overwriting configuration, and require secret input without echo and
-  regular credential files that can be read without blocking.
+  regular credential files that can be read without blocking. Read an existing
+  profile's sync settings before offering defaults when its units are missing.
+- Verify a changed adapter before stopping services on every upgrade, restore
+  the previous Joplin tree and restart previously active services when a
+  Joplin install fails, and remove the adapter executable during `--clean` only
+  when it matches the installer's receipt. Treat `JOPLIN_GITHUB_OAUTH` as a
+  strict boolean whose negative values disable OAuth like `--no-github-oauth`.
 - Split the installer into a small entry point and focused Python modules.
   Piped/downloaded runs verify and import the complete bundle in a private
   temporary directory, then remove it on exit. Select an unmerged branch, tag

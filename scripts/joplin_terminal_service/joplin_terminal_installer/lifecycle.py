@@ -37,6 +37,7 @@ from .managed import (
     configure_lingering,
     purge_installation,
     purge_systemctl_path,
+    remove_managed_path,
     validate_purge_paths,
 )
 from .models import GITHUB_OAUTH_FIELDS, SYNC_OPTIONS, Dependencies
@@ -56,6 +57,7 @@ from .releases import (
     installed_joplin_version,
     installed_mcp_version,
     mcp_asset_name,
+    record_mcp_receipt,
     resolve_latest_mcp_version,
     resolve_latest_version,
 )
@@ -109,6 +111,7 @@ class Installer:
         self.paths = build_paths(args, self.env)
         self._upgrade_changed = False
         self._prepared_mcp: Path | None = None
+        self._resume_units: tuple[str, ...] = ()
 
     def _recover_setup(self) -> bool:
         terminal_installed = self.paths.unit_path.is_file()
@@ -170,7 +173,12 @@ class Installer:
 
     def _configure_sync(self) -> None:
         current = read_profile_settings(self.runner, self.paths, self.redactor)
-        complete_sync_options(self.args, SetupPrompts(self.args, self.input_fn), current)
+        complete_sync_options(
+            self.args,
+            SetupPrompts(self.args, self.input_fn),
+            current,
+            ask_unconfigured=getattr(self.args, "deferred_sync", False),
+        )
         validate_sync_args(self.args)
         configuration = resolve_sync_configuration(
             self.args, self.redactor, getpass_fn=self.getpass_fn
@@ -304,31 +312,51 @@ class Installer:
             mcp_version,
         )
         self._upgrade_changed = True
+        stopped: set[str] = set()
         if service_active(self.runner, dependencies.systemctl, ADAPTER_SERVICE_NAME):
             systemctl_command(self.runner, dependencies.systemctl, "stop", ADAPTER_SERVICE_NAME)
+            stopped.add(ADAPTER_SERVICE_NAME)
         if service_active(self.runner, dependencies.systemctl, SERVICE_NAME):
             systemctl_command(self.runner, dependencies.systemctl, "stop", SERVICE_NAME)
+            stopped.add(SERVICE_NAME)
         with ProfileLock(self.paths.lock_file):
             backup = backup_upgrade_files(self.paths)
             # npm otherwise overwrites the only copy of the previous executable.
             # Move only the isolated managed package tree; never copy a profile.
+            previous_tree: Path | None = None
             if (
                 self.paths.npm_prefix.is_dir()
                 and installed_joplin_version(self.runner, dependencies.npm, self.paths.npm_prefix)
                 != joplin_version
             ):
-                os.replace(self.paths.npm_prefix, backup / "npm")
-            installed_joplin = install_or_update_joplin(
-                self.runner,
-                dependencies,
-                self.paths,
-                joplin_version,
-            )
+                previous_tree = backup / "npm"
+                os.replace(self.paths.npm_prefix, previous_tree)
+            try:
+                installed_joplin = install_or_update_joplin(
+                    self.runner,
+                    dependencies,
+                    self.paths,
+                    joplin_version,
+                )
+            except Exception as exc:
+                if previous_tree is None or not self._restore_joplin_tree(previous_tree):
+                    raise
+                # Units, helpers, tokens and the adapter are still unchanged.
+                self._upgrade_changed = False
+                self._resume_units = tuple(
+                    unit for unit in (SERVICE_NAME, ADAPTER_SERVICE_NAME) if unit in stopped
+                )
+                raise ToolError(
+                    f"Joplin {joplin_version} installation failed ({exc}); the previous "
+                    "Joplin tree was restored, units are unchanged and services that were "
+                    "active before the upgrade are restarted"
+                ) from exc
             LOG.info("verified Joplin %s", installed_joplin)
             if self._prepared_mcp is not None:
                 os.replace(self._prepared_mcp, self.paths.mcp_binary)
                 self.paths.mcp_binary.chmod(0o700)
                 self._prepared_mcp = None
+                record_mcp_receipt(self.paths)
                 installed_mcp = mcp_version
             else:
                 installed_mcp = install_or_update_mcp(self.runner, self.paths, mcp_version)
@@ -365,6 +393,25 @@ class Installer:
             return
         self._restart_and_smoke(dependencies, mcp_auth_token, gpt_actions_token)
         LOG.info("Joplin Terminal and joplin-md-sync service upgrade completed")
+
+    def _restore_joplin_tree(self, previous_tree: Path) -> bool:
+        """Replace a partial npm tree with the previous one moved into the backup."""
+        try:
+            remove_managed_path(self.paths.npm_prefix)
+            os.replace(previous_tree, self.paths.npm_prefix)
+        except (OSError, ToolError) as exc:
+            LOG.error("could not restore the previous Joplin tree from %s: %s", previous_tree, exc)
+            return False
+        LOG.info("restored the previous Joplin tree from %s", previous_tree)
+        return True
+
+    def _resume_previous_services(self, systemctl: Path) -> None:
+        for unit in self._resume_units:
+            LOG.info("restarting previously active %s", unit)
+            try:
+                systemctl_command(self.runner, systemctl, "start", unit)
+            except ToolError as exc:
+                LOG.error("could not restart %s: %s", unit, exc)
 
     def run(self) -> None:
         try:
@@ -466,6 +513,9 @@ class Installer:
                         "services are stopped, profile rollback is never automatic",
                         self.paths.state_dir,
                     )
+                else:
+                    # Started only after the profile lock is released.
+                    self._resume_previous_services(dependencies.systemctl)
                 raise
             finally:
                 if self._prepared_mcp is not None:

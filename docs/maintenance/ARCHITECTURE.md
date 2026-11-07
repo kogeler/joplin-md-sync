@@ -120,8 +120,9 @@ The following defaults describe the embedded runtime. They complement the
 | Accepted sockets | 16, with admission before HTTP headers arrive |
 | Incoming request read deadline | 15 seconds, including empty sockets, partial bodies and pipelined requests |
 | Shared synchronous execution | 8 daemon workers; up to 16 admitted running or waiting requests across the interfaces |
-| Public OAuth flow rate | A shared token bucket of 60 requests per minute |
-| Dynamic client registration | Up to 512 live registered client IDs; expired client records release their identifiers, and working grants are never evicted |
+| Public OAuth flow rate | Separate token buckets: registration 30, token 60 and browser flow (`/authorize`, `/consent`, `/auth/callback`) 60 requests per minute |
+| Dynamic client registration | A new client is pending: at most 64 pending clients, each usable for 1800 seconds. A successful owner login (or refresh) establishes it; up to 512 established clients, never evicted. Expired pending and established records release their slots without a reset |
+| Established client lifetime | 15897600 seconds (about 184 days) from establishment, even while in use; a new login then registers again |
 | Request bodies | 16 MiB for `/claude/mcp`, 8 KiB for `/register`, 64 KiB for other OAuth routes |
 | Query string | Up to 8 KiB; ambiguous paths/framing, duplicate authorization/form parameters and deeply nested JSON are rejected |
 | Flow deadline | 9 seconds normally, 25 seconds for refresh; prebuffered registration/form input has a 2-second read limit within that budget |

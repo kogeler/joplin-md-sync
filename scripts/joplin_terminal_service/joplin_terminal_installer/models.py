@@ -132,6 +132,11 @@ class InstallPaths:
     def oauth_state_path(self) -> Path:
         return self.state_dir.parent / "joplin-md-sync" / "oauth"
 
+    @property
+    def mcp_receipt_file(self) -> Path:
+        """Private record of the adapter executable this installer placed."""
+        return self.state_dir / "joplin-md-sync-receipt.json"
+
 
 @dataclass(frozen=True)
 class Dependencies:

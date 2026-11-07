@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import httpx2
@@ -18,6 +20,7 @@ from mcp.server.auth.provider import RegistrationError
 from mcp.shared.auth import OAuthClientInformationFull
 from starlette.testclient import TestClient
 
+from joplin_md_sync import github_oauth
 from joplin_md_sync.github_oauth import CLAUDE_CALLBACK, OwnerGitHubOAuth
 from joplin_md_sync.oauth_boundary import OAuthBoundary
 from tests.oauth.fake_github import MockGitHub
@@ -25,14 +28,14 @@ from tests.oauth.fake_github import MockGitHub
 BASE = "https://joplin.example.invalid"
 
 
-def application(github: MockGitHub):
+def application(github: MockGitHub, storage: MemoryStore | None = None):
     auth = OwnerGitHubOAuth(
         client_id="fixture-client",
         client_secret="fixture-secret",
         user_id="42",
         base_url=BASE,
         signing_key=b"fixture-key-with-at-least-32-bytes",
-        storage=MemoryStore(),
+        storage=storage if storage is not None else MemoryStore(),
         client_factory=github.client,
     )
     mcp = FastMCP("OAuth fixture", auth=auth)
@@ -251,7 +254,20 @@ def test_signed_wrong_audience_issuer_type_and_expired_tokens_are_rejected():
         )
 
 
-def test_registration_capacity_counts_only_live_clients() -> None:
+def registry_states(storage: MemoryStore) -> dict[str, str]:
+    saved = asyncio.run(storage.get("clients", collection=github_oauth.REGISTRY_COLLECTION))
+    return {key: entry["state"] for key, entry in (saved or {"clients": {}})["clients"].items()}
+
+
+def registration(client_id: str) -> OAuthClientInformationFull:
+    return OAuthClientInformationFull(
+        client_id=client_id, redirect_uris=[CLAUDE_CALLBACK], token_endpoint_auth_method="none"
+    )
+
+
+def test_pending_registrations_expire_without_reset(monkeypatch) -> None:
+    clock = [1_000_000.0]
+    monkeypatch.setattr(github_oauth, "time", SimpleNamespace(time=lambda: clock[0]))
     storage = MemoryStore()
     auth = OwnerGitHubOAuth(
         client_id="fixture-client",
@@ -262,28 +278,76 @@ def test_registration_capacity_counts_only_live_clients() -> None:
         storage=storage,
     )
 
-    def client(client_id: str) -> OAuthClientInformationFull:
-        return OAuthClientInformationFull(
-            client_id=client_id, redirect_uris=[CLAUDE_CALLBACK], token_endpoint_auth_method="none"
-        )
-
     async def scenario() -> None:
-        await auth.register_client(client("live"))
-        # Identifiers whose client records expired from storage.
-        expired = ["expired-" + str(index) for index in range(511)]
-        await storage.put(
-            "clients", {"ids": ["live", *expired]}, collection="joplin-registration-limit"
-        )
-        await auth.register_client(client("new"))
-        saved = await storage.get("clients", collection="joplin-registration-limit")
-        assert saved == {"ids": ["live", "new"]}
-        for index in range(510):
-            await auth.register_client(client("filled-" + str(index)))
+        for index in range(github_oauth.MAX_PENDING_CLIENTS):
+            await auth.register_client(registration("pending-" + str(index)))
         with pytest.raises(RegistrationError):
-            await auth.register_client(client("excess"))
-        assert await auth.get_client("live") is not None
-        assert await auth.get_client("excess") is None
-
-    import asyncio
+            await auth.register_client(registration("excess"))
+        assert await auth.get_client("pending-0") is not None
+        clock[0] += github_oauth.PENDING_CLIENT_TTL + 1
+        assert await auth.get_client("pending-0") is None
+        # Expired pending entries release capacity and their stored records.
+        await auth.register_client(registration("after-expiry"))
+        assert await auth._client_store.get(key="pending-0") is None
 
     asyncio.run(scenario())
+    assert registry_states(storage) == {"after-expiry": "pending"}
+
+
+def test_owner_login_establishes_client_and_foreign_or_abandoned_stay_pending() -> None:
+    github = MockGitHub()
+    storage = MemoryStore()
+    with TestClient(application(github, storage), base_url=BASE, follow_redirects=False) as client:
+        abandoned, _, _, _ = begin_authorization(client)
+        owner, verifier, callback = authorize(client, github)
+        assert exchange(client, owner, verifier, callback.headers["location"]).status_code == 200
+        github.user_id = 43
+        foreign, _, returned = authorize(client, github)
+        assert returned.status_code == 403
+    assert registry_states(storage) == {
+        abandoned: "pending",
+        owner: "established",
+        foreign: "pending",
+    }
+
+
+def test_established_cap_refuses_new_owner_clients_without_eviction(monkeypatch) -> None:
+    monkeypatch.setattr(github_oauth, "MAX_ESTABLISHED_CLIENTS", 1)
+    github = MockGitHub()
+    storage = MemoryStore()
+    with TestClient(application(github, storage), base_url=BASE, follow_redirects=False) as client:
+        first, verifier, callback = authorize(client, github)
+        tokens = exchange(client, first, verifier, callback.headers["location"]).json()
+        second, verifier, callback = authorize(client, github)
+        refused = exchange(client, second, verifier, callback.headers["location"])
+        assert refused.status_code == 400
+        assert refused.json()["error"] == "invalid_client"
+        renewed = client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": first,
+                "refresh_token": tokens["refresh_token"],
+            },
+        )
+        assert renewed.status_code == 200
+    assert registry_states(storage) == {first: "established", second: "pending"}
+
+
+def test_unreleased_registration_list_is_read_as_pending() -> None:
+    storage = MemoryStore()
+    asyncio.run(
+        storage.put(
+            "clients", {"ids": ["legacy-client"]}, collection=github_oauth.REGISTRY_COLLECTION
+        )
+    )
+    auth = OwnerGitHubOAuth(
+        client_id="fixture-client",
+        client_secret="fixture-secret",
+        user_id="42",
+        base_url=BASE,
+        signing_key=b"fixture-key-with-at-least-32-bytes",
+        storage=storage,
+    )
+    asyncio.run(auth.register_client(registration("new-client")))
+    assert registry_states(storage) == {"legacy-client": "pending", "new-client": "pending"}

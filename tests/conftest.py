@@ -3,47 +3,66 @@
 from __future__ import annotations
 
 import functools
-import json
+import os
 from collections.abc import Iterable
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import pytest
 
-MATRIX = Path(__file__).parent / "oauth/e2e/requirements.json"
+from scripts.report_oauth_acceptance import (
+    INVENTORY,
+    Inventory,
+    InventoryError,
+    case_id_from_nodeid,
+    collection_problems,
+    load_inventory,
+)
 
 
 def pytest_addoption(parser):
     parser.addoption(
         "--require-oauth-e2e",
         action="store_true",
-        help="require all OAuth E2E scenarios without skips",
+        help="require every inventoried OAuth E2E case exactly, without skips",
+    )
+    parser.addoption(
+        "--oauth-e2e-inventory",
+        type=Path,
+        default=INVENTORY,
+        help="exact OAuth E2E case inventory (default: tests/oauth/e2e/requirements.json)",
     )
 
 
 @functools.cache
-def required_oauth_nodes() -> frozenset[str]:
-    matrix = json.loads(MATRIX.read_text())
-    return frozenset(
-        node for requirement in matrix["requirements"].values() for node in requirement["tests"]
-    )
+def _load(path: Path) -> Inventory:
+    return load_inventory(path)
 
 
-def oauth_e2e_node(nodeid: str) -> str | None:
-    """Return the matrix form ``file.py::function`` of a collected E2E node ID."""
-    path, _, name = nodeid.partition("::")
-    parts = PurePosixPath(path.replace("\\", "/")).parts
-    if parts[-3:-1] != ("oauth", "e2e") or not name:
-        return None
-    return parts[-1] + "::" + name.rsplit("::", 1)[-1].split("[", 1)[0]
+def required_inventory(config) -> Inventory:
+    try:
+        return _load(Path(config.getoption("--oauth-e2e-inventory")).resolve())
+    except InventoryError as error:
+        raise pytest.UsageError(str(error)) from None
 
 
-def check_required_collection(nodeids: Iterable[str]) -> None:
-    collected = {oauth_e2e_node(nodeid) for nodeid in nodeids}
-    missing = required_oauth_nodes() - collected
-    if missing:
-        raise pytest.UsageError(
-            "Required OAuth E2E cases were not collected: " + ", ".join(sorted(missing))
-        )
+def check_required_collection(config, nodeids: Iterable[str]) -> None:
+    problems = collection_problems(required_inventory(config), nodeids)
+    if problems:
+        raise pytest.UsageError("\n".join(problems))
+
+
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("--require-oauth-e2e"):
+        return
+    inventory = required_inventory(config)
+    for item in items:
+        case = case_id_from_nodeid(item.nodeid)
+        if case in inventory.cases and not inventory.applicable(case, os.name):
+            # The inventory owns applicability: another platform's case never
+            # runs, so it cannot count here, whatever the test itself declares.
+            item.add_marker(
+                pytest.mark.skip(reason=f"OAuth E2E case is not applicable on {os.name}")
+            )
 
 
 def pytest_collection_finish(session):
@@ -52,28 +71,30 @@ def pytest_collection_finish(session):
     if session.config.getoption("--require-oauth-e2e") and not hasattr(
         session.config, "workerinput"
     ):
-        check_required_collection(item.nodeid for item in session.items)
+        check_required_collection(session.config, (item.nodeid for item in session.items))
 
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_xdist_node_collection_finished(node, ids):
     if node.config.getoption("--require-oauth-e2e"):
-        check_required_collection(ids)
+        check_required_collection(node.config, ids)
 
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item, call):
     report = yield
+    if not item.config.getoption("--require-oauth-e2e"):
+        return report
+    inventory = required_inventory(item.config)
+    case = case_id_from_nodeid(item.nodeid)
+    listed = case in inventory.cases
     if (
-        item.config.getoption("--require-oauth-e2e")
-        and (
-            item.get_closest_marker("oauth_e2e")
-            or oauth_e2e_node(item.nodeid) in required_oauth_nodes()
-        )
+        (item.get_closest_marker("oauth_e2e") or listed)
+        and (not listed or inventory.applicable(case, os.name))
         and (report.skipped or hasattr(report, "wasxfail"))
     ):
         report.outcome = "failed"
-        report.longrepr = "A mandatory OAuth E2E scenario was skipped or expected to fail"
+        report.longrepr = "A mandatory OAuth E2E case was skipped or expected to fail"
         if hasattr(report, "wasxfail"):
             del report.wasxfail
     return report

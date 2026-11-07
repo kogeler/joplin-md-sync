@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import hmac
 import ipaddress
 import json
 import re
@@ -57,6 +58,26 @@ def add_oauth_cli_arguments(
             else ("PATH" if option.endswith("_file") or option == "state_dir" else "VALUE"),
             help=help_text[option],
         )
+
+
+def decode_signing_key(line: bytes) -> bytes:
+    """Decode either Base64 alphabet, with or without padding, as configured."""
+    return base64.b64decode(line + b"=" * (-len(line) % 4), altchars=b"-_", validate=True)
+
+
+def matches_signing_key(value: str, key: bytes) -> bool:
+    """Whether a credential is any accepted text encoding of the signing key."""
+    try:
+        decoded = decode_signing_key(value.encode("ascii"))
+    except (UnicodeEncodeError, binascii.Error, ValueError):
+        return False
+    return hmac.compare_digest(decoded, key)
+
+
+def signing_key_encodings(key: bytes) -> list[str]:
+    """Accepted text forms of a key, for log redaction."""
+    forms = [base64.urlsafe_b64encode(key), base64.standard_b64encode(key)]
+    return [text.decode("ascii") for form in forms for text in (form, form.rstrip(b"="))]
 
 
 def lookup_github_user_id(login: str) -> str:
@@ -173,9 +194,7 @@ class OAuthConfig:
             key_line = read_protected_token_line(
                 paths["signing_key_file"], label="OAuth signing key"
             )
-            key = base64.b64decode(
-                key_line + b"=" * (-len(key_line) % 4), altchars=b"-_", validate=True
-            )
+            key = decode_signing_key(key_line)
         except (UnicodeDecodeError, binascii.Error):
             raise ValueError("Invalid OAuth secret or signing key format") from None
         if len(key) != 32:
@@ -184,7 +203,7 @@ class OAuthConfig:
             raise ValueError(
                 "GitHub client secret must be bounded printable ASCII without whitespace"
             )
-        if secret.encode() == key_line:
+        if secret.encode() == key_line or matches_signing_key(secret, key):
             raise ValueError("GitHub client secret and OAuth signing key must differ")
         return cls(
             origin.rstrip("/"),

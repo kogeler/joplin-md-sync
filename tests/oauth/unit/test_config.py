@@ -237,3 +237,60 @@ def test_state_quota_invalid_ttl_and_disk_failure_preserve_existing_grants(oauth
 
     with OAuthState(config) as state:
         asyncio.run(exercise(state.store))
+
+
+# Standard and URL-safe encodings of this key differ in every third character.
+REUSED_KEY = bytes([0xFB, 0xFF, 0xBF]) * 10 + b"\xfb\xff"
+URLSAFE_KEY = base64.urlsafe_b64encode(REUSED_KEY).decode()
+STANDARD_KEY = base64.standard_b64encode(REUSED_KEY).decode()
+
+
+@pytest.mark.parametrize(
+    "role,reused",
+    [
+        pytest.param(None, None, id="distinct"),
+        pytest.param("mcp", URLSAFE_KEY, id="mcp-padded"),
+        pytest.param("mcp", URLSAFE_KEY.rstrip("="), id="mcp-unpadded"),
+        pytest.param("actions", URLSAFE_KEY, id="actions-padded"),
+        pytest.param("joplin", URLSAFE_KEY, id="joplin-urlsafe"),
+        pytest.param("joplin", STANDARD_KEY, id="joplin-standard"),
+        pytest.param("joplin", STANDARD_KEY.rstrip("="), id="joplin-standard-unpadded"),
+        pytest.param("client_secret", URLSAFE_KEY, id="secret-urlsafe"),
+        pytest.param("client_secret", STANDARD_KEY.rstrip("="), id="secret-standard-unpadded"),
+    ],
+)
+def test_signing_key_reuse_is_rejected_in_any_accepted_encoding(oauth, role, reused):
+    protected_file(oauth.signing_path, URLSAFE_KEY.rstrip("="))
+    values = {
+        "joplin": TOKEN,
+        "mcp": base64.urlsafe_b64encode(os.urandom(32)).decode(),
+        "actions": base64.urlsafe_b64encode(os.urandom(32)).decode(),
+    }
+    if role == "client_secret":
+        protected_file(oauth.secret_path, reused)
+    elif role is not None:
+        values[role] = reused
+    files = {
+        name: protected_file(oauth.directory / (name + "-credential"), value)
+        for name, value in values.items()
+    }
+    result = run_cli(
+        "mcp",
+        "oauth-check",
+        *oauth.argv(),
+        "--token-file",
+        str(files["joplin"]),
+        "--auth-token-file",
+        str(files["mcp"]),
+        "--gpt-actions",
+        "--gpt-actions-token-file",
+        str(files["actions"]),
+        "--json",
+    )
+    if role is None:
+        assert result.exit_code == 0, result.stdout
+        return
+    assert result.exit_code == 7, result.stdout
+    assert "differ" in json.loads(result.stdout)["error"]
+    assert reused not in result.stdout + result.stderr
+    assert not (oauth.directory / "state").exists()

@@ -35,11 +35,25 @@ def quiet_oauth_libraries() -> None:
         logger.propagate = False
 
 
+# Separate budgets keep an anonymous registration flood from consuming the
+# token budget that established clients need for refresh, and vice versa.
+REGISTRATION_RATE_PER_MINUTE = 30
+TOKEN_RATE_PER_MINUTE = 60
+BROWSER_FLOW_RATE_PER_MINUTE = 60
+BROWSER_FLOW_PATHS = frozenset({"/authorize", "/consent", "/auth/callback"})
+FLOW_PATHS = BROWSER_FLOW_PATHS | {"/register", "/token"}
+
+
 class OAuthBoundary:
     def __init__(self, app: ASGIApp, public_origin: str | None = None) -> None:
         self.app = app
         self.public_origin = public_origin
-        self._flow_rate = TokenBucket(60)
+        browser = TokenBucket(BROWSER_FLOW_RATE_PER_MINUTE)
+        self._flow_rates = {
+            "/register": TokenBucket(REGISTRATION_RATE_PER_MINUTE),
+            "/token": TokenBucket(TOKEN_RATE_PER_MINUTE),
+            **dict.fromkeys(BROWSER_FLOW_PATHS, browser),
+        }
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -110,8 +124,8 @@ class OAuthBoundary:
                         OAuthFault(403, "access_denied", "Origin is not permitted")
                     )
                     return
-            if path in {"/authorize", "/register", "/token", "/consent", "/auth/callback"}:
-                permitted, retry_after = self._flow_rate.consume()
+            if path in FLOW_PATHS:
+                permitted, retry_after = self._flow_rates[path].consume()
                 if not permitted:
                     await JSONResponse(
                         {"error": "temporarily_unavailable"},
@@ -156,7 +170,7 @@ class OAuthBoundary:
                 upstream_receive = replay_body
             else:
                 upstream_receive = bounded_receive
-            if path in {"/authorize", "/register", "/token", "/consent", "/auth/callback"}:
+            if path in FLOW_PATHS:
                 async with asyncio.timeout_at(request_started + flow_budget):
                     await self.app(scope, upstream_receive, safe_send)
             else:

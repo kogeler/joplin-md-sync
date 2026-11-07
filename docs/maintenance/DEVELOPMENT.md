@@ -82,8 +82,9 @@ AMD64 only.
 
 The standard `make test` and `make test-full` targets include mandatory OAuth
 E2E scenarios. Focused runs use `make test-oauth` or `make test-oauth-e2e`.
-The `--require-oauth-e2e` gate rejects missing collection, skipped or xfailed
-required scenarios, and failures.
+The `--require-oauth-e2e` gate compares collected E2E case IDs exactly with
+the inventory, rejecting missing, unlisted or duplicate cases, and fails
+skipped, xfailed, xpassed or failed required cases.
 
 | Check | Coverage |
 | --- | --- |
@@ -92,8 +93,8 @@ required scenarios, and failures.
 | `make test-service-installer` | Real installer processes and controlling TTYs, hidden prompts, update/reconfigure/clean, private files, source-ref selection and temporary bundle cleanup |
 | `make test-live` | OAuth and other agent interfaces against an isolated real Joplin Desktop |
 | `make test-service-live` | Real Terminal installation, signed S3 round trip and the deployed supervisor |
-| `make package` and `make smoke` | Source/wheel/sdist/zipapp runtime behavior, including OAuth off/on, discovery, registration and consent outside the checkout |
-| `make standalone checksums smoke-standalone` | Native executable packaging, integrity metadata and the same runtime smoke |
+| `make package` and `make smoke` | Source/wheel/sdist/zipapp runtime behavior, including OAuth off/on, discovery, registration and consent outside the checkout, and the GitHub TLS client probe in each runtime |
+| `make standalone checksums smoke-standalone` | Native executable packaging, integrity metadata and the same runtime smoke; the TLS probe runs in a probe build with the release PyInstaller options |
 | `make test-oauth-systemd` | The built native executable in a real Linux user sandbox: scoped state writes, surrounding read-only paths, restart, disable/reset and managed purge |
 
 OAuth E2E replaces the external GitHub endpoints and controls the clock while
@@ -104,7 +105,25 @@ readiness also checks the instance's unique Bearer credential. Package smoke
 and native systemd acceptance exercise the standard launcher and bind path.
 
 The [functional matrix](../../tests/oauth/e2e/requirements.json) maps 24 pytest
-requirements to exact test nodes; packaging and systemd have separate gates.
+requirements to exact case IDs, `file.py::function[parameter-id]`; packaging and
+systemd have separate gates. Only genuinely platform-specific cases appear under
+`platforms`, with `os.name` values `posix` or `nt`. Elsewhere the gate skips such
+a case and the report marks it not applicable, so it never counts there; where
+it applies, a skip fails. SIGTERM draining is a POSIX case; Windows has its own
+forced-termination, restart and lock-recovery case.
+
+After an intentional test change, refresh the inventory deliberately from a
+full collection, then review its diff:
+
+```bash
+make oauth-e2e-inventory
+```
+
+The refresh keeps existing mappings, drops removed cases and adds a new
+parameter variant to every requirement that lists its function. Any other new
+case is written under `unmapped`, which the gate rejects: move each such ID into
+the `cases` of every requirement it proves, add a `platforms` entry only if it is
+platform-specific, and run the refresh again.
 The [service contract](../contracts/SERVICE.md) indexes installer evidence.
 `make test-oauth-e2e` writes `.artifacts/oauth-e2e-evidence.json` itself. After
 `make test-full`, generate the report from the complete JUnit results:
@@ -115,9 +134,11 @@ python scripts/report_oauth_acceptance.py \
   --output .artifacts/oauth-e2e-evidence.json
 ```
 
-The report records each requirement's outcome, executed parameterized cases,
-and source hashes. CI uploads it with JUnit and coverage artifacts, and retains
-CodeQL SARIF separately. Functional coverage is distinct from line coverage;
+The report records each requirement's outcome, every case's status, missing,
+unlisted, duplicate and rejected case IDs, and source hashes; missing, malformed
+or incomplete JUnit is an explicit error. Whenever JUnit exists, CI generates
+the report and uploads it with the available JUnit and coverage files, even
+after failed tests, and retains CodeQL SARIF separately. Functional coverage is distinct from line coverage;
 platform-specific skips outside mandatory OAuth E2E remain visible.
 
 A real hosted Claude login is validated through the

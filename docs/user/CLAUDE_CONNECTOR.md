@@ -260,5 +260,8 @@ responses or credentials.
 | `GitHub grant is invalid or expired` | The upstream grant was revoked or expired. Reconnect Claude. |
 | `Only the hosted Claude callback is permitted` | The client used a redirect URI other than `https://claude.ai/api/mcp/auth_callback`. |
 | `Invalid Host` | The proxy did not forward the configured public host; keep `proxy_set_header Host $http_host`. |
-| `503 temporarily_unavailable` | GitHub timed out, failed or rate limited the request. Retry after `Retry-After`; refresh grants are kept. |
-| `Client registration capacity exceeded` | 512 registered clients are still live. Expired client records free their slots automatically; otherwise stop the service, run `mcp oauth-reset --confirm-reset`, which revokes every local grant, and reconnect. |
+| `503 temporarily_unavailable` | GitHub timed out, failed or rate limited the request. Retry after `Retry-After`. Refresh grants are kept, including when GitHub already rotated the grant before the identity check failed. An outage during the first sign-in needs a new sign-in. |
+| `Client registration capacity exceeded; retry later` | 64 registrations are waiting for an owner sign-in, usually from a registration flood. Unused registrations expire after 30 minutes and free their slots; established connections keep working. |
+| `Client capacity exceeded` (`invalid_client`) | 512 established clients are still live. Expired records free their slots; otherwise stop the service, run `mcp oauth-reset --confirm-reset`, which revokes every local grant, and reconnect. |
+| `429` with `Retry-After` | The registration, token or browser-flow rate budget is exhausted. Each budget is separate, so a registration flood does not block refresh. |
+| Sign-in requested again after about six months | An established client record lives 15897600 seconds (about 184 days) from its first sign-in, even while in use. Sign in again; Claude registers a new client. |

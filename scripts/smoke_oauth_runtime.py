@@ -3,6 +3,11 @@
 
 No GitHub or Joplin account is needed. Discovery, DCR and consent exercise the
 real SDK, encrypted storage, crypto metadata and templates in the artifact.
+
+With ``--probe-python`` (plus ``--probe-zipapp``) or ``--probe-executable``,
+the GitHub TLS client probe also runs inside the built runtime: the production
+GitHub client completes one HTTPS request to a local server whose test CA only
+the probe adds, and rejects a certificate from an untrusted CA.
 """
 
 from __future__ import annotations
@@ -25,6 +30,8 @@ import urllib.request
 from pathlib import Path
 
 ORIGIN = "https://oauth-smoke.invalid"
+REPO = Path(__file__).resolve().parents[1]
+PROBE = REPO / "tests" / "oauth" / "packaging_probe.py"
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -229,11 +236,50 @@ def smoke(command: list[str]) -> None:
         print("OAuth off/on, legacy routes, discovery, encrypted DCR and consent: OK")
 
 
+def tls_client_probe(python: Path | None, zipapp: Path | None, executable: Path | None) -> None:
+    """Run the GitHub TLS client probe in the runtime that will ship."""
+    if executable is not None:
+        # A one-file executable cannot run arbitrary code; its probe build uses
+        # the release PyInstaller options with the probe as the only entry.
+        command = [str(executable), "--tls-client"]
+    else:
+        assert python is not None
+        # Isolated mode keeps the checkout and PYTHONPATH off the import path.
+        command = [str(python), "-I", str(PROBE), "--tls-client"]
+        if zipapp is not None:
+            command.extend(["--import-path", str(zipapp)])
+    env = {name: value for name, value in os.environ.items() if name != "PYTHONPATH"}
+    with tempfile.TemporaryDirectory(prefix="joplin-tls-probe-") as temporary:
+        completed = subprocess.run(
+            command, cwd=temporary, env=env, capture_output=True, text=True, timeout=120
+        )
+    assert completed.returncode == 0, "GitHub TLS client probe failed:\n" + completed.stderr[-4000:]
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result["tls_client"] == "ok"
+    module = Path(result["module"])
+    assert not module.is_relative_to(REPO / "src"), "The probe imported the checkout"
+    if executable is not None:
+        assert result["frozen"], "The probe did not run in the frozen runtime"
+    elif zipapp is not None:
+        assert str(module).startswith(str(zipapp)), "The probe did not import the zipapp"
+    else:
+        assert module.is_relative_to(result["prefix"]), "The probe did not import the artifact"
+    print(f"GitHub TLS client trust ({result['trust']}), redirect and untrusted CA rejection: OK")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    probe = parser.add_mutually_exclusive_group()
+    probe.add_argument("--probe-python", type=Path, help="interpreter of the built runtime")
+    probe.add_argument("--probe-executable", type=Path, help="native probe build to run")
+    parser.add_argument("--probe-zipapp", type=Path, help="zipapp to import in --probe-python")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("provide an absolute executable command after --")
+    if args.probe_zipapp is not None and args.probe_python is None:
+        parser.error("--probe-zipapp requires --probe-python")
     smoke(command)
+    if args.probe_python is not None or args.probe_executable is not None:
+        tls_client_probe(args.probe_python, args.probe_zipapp, args.probe_executable)

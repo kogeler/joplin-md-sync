@@ -283,24 +283,19 @@ def test_disconnected_client_does_not_replay_started_mutation(app):
         app.backend.set_before_request(None)
 
 
+# The inventory marks each shutdown case for its platform, so neither case can
+# stand in for the other and an applicable one cannot be skipped.
+@pytest.mark.skipif(os.name != "posix", reason="POSIX SIGTERM draining contract")
 def test_sigterm_drains_started_request_and_releases_state_lock(app):
-    if os.name != "posix":
-        # Windows TerminateProcess has no POSIX SIGTERM draining contract.
-        app.start()
-        _, tokens = app.login()
-        app.stop()
-        assert (
-            run_cli("mcp", "oauth-reset", *app.oauth.argv(), "--confirm-reset", "--json").exit_code
-            == 0
-        )
-        return
     app.start()
     _, tokens = app.login()
     folder = app.backend.store.add_folder("Graceful shutdown")
     entered, release = threading.Event(), threading.Event()
+    attempts = []
 
     def hold(method, path, query):
         if method == "POST" and path == "/notes":
+            attempts.append(path)
             entered.set()
             assert release.wait(5)
 
@@ -314,13 +309,83 @@ def test_sigterm_drains_started_request_and_releases_state_lock(app):
                 {"parent_id": folder, "title": "Drained mutation"},
             )
             assert entered.wait(3)
-            app.process.terminate()
+            app.process.send_signal(signal.SIGTERM)
             release.set()
+            # The mutation started before SIGTERM completes and is answered.
             assert pending.result(timeout=6)["note"]["title"] == "Drained mutation"
+            # Bounded exit: graceful shutdown ends well before its 30 s ceiling.
             app.process.wait(timeout=8)
             assert app.process.returncode in {0, -signal.SIGTERM}
             app.process = None
+        assert attempts == ["/notes"]
         assert len(app.backend.store.notes) == 1
+        # Reset needs the exclusive state lock, so it proves the lock was released.
+        assert (
+            run_cli("mcp", "oauth-reset", *app.oauth.argv(), "--confirm-reset", "--json").exit_code
+            == 0
+        )
+        app.assert_private_data_not_logged()
+    finally:
+        release.set()
+        app.backend.set_before_request(None)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows forced termination contract")
+def test_forced_termination_restarts_and_recovers_state_lock(app):
+    # Windows TerminateProcess cannot drain, so this claims no draining: only a
+    # bounded forced exit, then restart with the same lock, state and grants.
+    app.start()
+    _, tokens = app.login()
+    folder = app.backend.store.add_folder("Forced termination")
+    entered, release = threading.Event(), threading.Event()
+    attempts = []
+
+    def hold(method, path, query):
+        if method == "POST" and path == "/notes":
+            attempts.append(path)
+            entered.set()
+            assert release.wait(5)
+
+    app.backend.set_before_request(hold)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(
+                app.client.post,
+                "/claude/mcp",
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "joplin_create_note",
+                        "arguments": {"parent_id": folder, "title": "Interrupted mutation"},
+                    },
+                },
+                headers={
+                    "Authorization": "Bearer " + tokens["access_token"],
+                    "Accept": "application/json, text/event-stream",
+                },
+                timeout=5,
+            )
+            assert entered.wait(3)
+            process = app.process
+            started = time.monotonic()
+            # The fixture force-terminates the whole process tree on Windows.
+            app.stop()
+            assert process.returncode is not None
+            assert time.monotonic() - started < 15
+            release.set()
+            # The interrupted call may fail or finish; it must only end.
+            pending.exception(timeout=10)
+        app.backend.set_before_request(None)
+        # The forced exit left valid state; the restart takes the released lock.
+        assert check(app).exit_code == 0
+        app.start()
+        assert resource(app, tokens["access_token"]).status_code == 200
+        # Neither the forced exit nor the restart replays the started mutation.
+        assert attempts == ["/notes"]
+        assert len(app.backend.store.notes) <= 1
+        app.stop()
         assert (
             run_cli("mcp", "oauth-reset", *app.oauth.argv(), "--confirm-reset", "--json").exit_code
             == 0
@@ -386,16 +451,20 @@ def test_dcr_registration_capacity_preserves_existing_owner_grant(app):
 
     from mcp.shared.auth import OAuthClientInformationFull
 
-    from joplin_md_sync.github_oauth import CLAUDE_CALLBACK, OwnerGitHubOAuth
+    from joplin_md_sync.github_oauth import (
+        CLAUDE_CALLBACK,
+        MAX_PENDING_CLIENTS,
+        PENDING_CLIENT_TTL,
+        OwnerGitHubOAuth,
+    )
     from joplin_md_sync.oauth_store import OAuthState
 
     app.start()
-    _, tokens = app.login()
+    client_id, tokens = app.login()
     app.stop()
-    # Prepare the capacity boundary in stopped encrypted storage through the
-    # provider's own registration path. Expired registrations would not count,
-    # so every fixture client is a live record; the owner's genuinely issued
-    # registration/grant is retained and never fabricated.
+    # Fill the pending capacity in stopped encrypted storage through the
+    # provider's own registration path; the owner's login established its
+    # client, which pending registrations can never displace.
     config = app.oauth.config()
     with OAuthState(config) as state:
         provider = OwnerGitHubOAuth(
@@ -408,26 +477,41 @@ def test_dcr_registration_capacity_preserves_existing_owner_grant(app):
         )
 
         async def fill():
-            for index in range(511):
+            for index in range(MAX_PENDING_CLIENTS):
                 await provider.register_client(
                     OAuthClientInformationFull(
-                        client_id="capacity-fixture-" + str(index),
+                        client_id="pending-fixture-" + str(index),
                         redirect_uris=[CLAUDE_CALLBACK],
                         token_endpoint_auth_method="none",
                     )
                 )
 
         asyncio.run(fill())
-    app.start()
-    for _ in range(2):
-        response = app.client.post(
+
+    def register():
+        return app.client.post(
             "/register",
             json={
                 "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
                 "token_endpoint_auth_method": "none",
             },
         )
-        assert response.status_code == 400
-        assert resource(app, tokens["access_token"]).status_code == 200
-        app.stop()
-        app.start()
+
+    app.start()
+    # A registration flood is refused or rate limited without touching the
+    # token budget, so the established client keeps refreshing.
+    flood = [register().status_code for _ in range(70)]
+    assert set(flood) <= {400, 429} and 429 in flood
+    renewed = refresh(app, client_id, tokens["refresh_token"])
+    assert renewed.status_code == 200, renewed.text
+    access = renewed.json()["access_token"]
+    assert resource(app, access).status_code == 200
+    # Abandoned registrations expire and release capacity across a restart,
+    # without a state reset.
+    app.stop()
+    app.advance(PENDING_CLIENT_TTL + 1)
+    app.start()
+    assert register().status_code == 201
+    assert resource(app, access).status_code == 200
+    legacy = app.rpc(app.mcp_token, "tools/list", path="/mcp")
+    assert legacy["tools"]

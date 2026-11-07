@@ -39,6 +39,14 @@ selection and startup choices. It does not repeat setup questions. For example,
 adding `--github-oauth` asks only for missing OAuth settings and its hidden
 Client Secret. Existing OAuth settings are reused.
 
+If an earlier setup stopped after creating the profile but before installing
+both services, rerun the same command. The installer reads that profile's sync
+settings through Joplin before asking sync questions, so accepting the defaults
+keeps its target, location, account and saved password. Only an unconfigured
+profile asks for the sync backend again. An explicit sync option or
+`--reconfigure` still changes the configuration; an empty profile directory is
+treated as a new installation.
+
 `--reconfigure` starts a complete configuration flow using only this run's CLI,
 environment and interactive answers. Optional features default to no. Disabled
 features lose their active settings and installer-owned secrets/grants; inactive
@@ -171,7 +179,7 @@ installer, not root's home.
 | `~/.config/joplin-md-sync/oauth-settings.json` | Saved OAuth values and secret-file paths, without secret values. |
 | `~/.config/joplin-md-sync/oauth-secrets/` | Owner-only Client Secret/signing-key files created by interactive setup. |
 | `~/.config/joplin-md-sync/gpt-actions-token` | Separate bearer credential for ChatGPT Actions at `/api/gpt/v1/*`. |
-| `~/.local/state/joplin-agent/` | Profile lock and retained upgrade backups. |
+| `~/.local/state/joplin-agent/` | Profile lock, retained upgrade backups and the `joplin-md-sync` ownership receipt. |
 | `~/.local/state/joplin-md-sync/oauth/` | Default encrypted OAuth grants when GitHub OAuth is enabled. |
 
 All three token files are owner-only (`0600`). The installer prints their
@@ -256,7 +264,7 @@ the profile is modified.
 | `--joplin-prefix PATH` | Program prefix. Default: `~/.local`. Does **not** relocate the profile, config, or state. | `JOPLIN_INSTALL_PREFIX` |
 | `--api-port PORT` | Private loopback API port, passed to both services. Default: `41185`. | `JOPLIN_API_PORT` |
 | `--mcp-port PORT` | Shared MCP/Actions port. Default: `8765`; must differ from the API port. Both ports accept `1..65535`. | `JOPLIN_MCP_PORT` |
-| `--github-oauth` | Enable built-in GitHub OAuth on the existing port. Upgrade preserves installed settings. See [Claude setup](CLAUDE_CONNECTOR.md). | `JOPLIN_GITHUB_OAUTH` (`1`, `true` or `yes`) |
+| `--github-oauth` | Enable built-in GitHub OAuth on the existing port. Upgrade preserves installed settings. See [Claude setup](CLAUDE_CONNECTOR.md). | `JOPLIN_GITHUB_OAUTH` (`1`, `true` or `yes`; `0`, `false` or `no` acts as `--no-github-oauth`; other values are rejected) |
 | `--github-oauth-public-url URL` | Public HTTPS origin for discovery and callbacks; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_PUBLIC_URL` |
 | `--github-oauth-client-id ID` | GitHub OAuth App Client ID; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_CLIENT_ID` |
 | `--github-oauth-client-secret-file PATH` | Protected Client Secret file. Default: hidden prompt, saved under `oauth-secrets/`. | `JOPLIN_GITHUB_OAUTH_CLIENT_SECRET_FILE` |
@@ -292,7 +300,7 @@ before import. An inconsistent bundle fails before setup starts.
 | `--enable-linger`, `--no-enable-linger` | Select whether setup enables systemd user lingering. Without it, interactive install asks; non-interactive install only warns if lingering is off. |
 | `--enable-service`, `--no-enable-service` | Enable/disable automatic startup. Interactive default: no; updates preserve the saved choice. |
 | `--start-service`, `--no-start-service` | Start services and run smoke checks, or leave them stopped. Interactive default: no; updates preserve the saved choice. |
-| `--no-github-oauth` | Disable OAuth in the existing unit while preserving configuration, secret files and grants. Cannot be combined with an explicit OAuth config. |
+| `--no-github-oauth` | Disable OAuth in the existing unit while preserving configuration, secret files and grants. Cannot be combined with an explicit OAuth config or `--github-oauth`. `JOPLIN_GITHUB_OAUTH=false` (or `0`/`no`) has the same effect; either command-line flag overrides the variable. |
 | `--allow-remote-mcp` | Bind the **shared** authenticated adapter to `0.0.0.0` instead of loopback. Does not expose the Joplin Data API or configure HTTPS/firewall rules. |
 | `--no-allow-remote-mcp` | Explicitly bind the adapter to loopback, including on upgrade. First install defaults to loopback; upgrade inherits installed policy. |
 | `--verbose` | Enable redacted debug logging; sensitive Joplin responses remain suppressed. |
@@ -356,7 +364,7 @@ smoke-tested native artifact for your architecture from the successful
 [CI run](https://github.com/kogeler/joplin-md-sync/actions/workflows/ci.yml)
 of the selected commit. Use it as a local release source; no extra server or
 port is needed. The CI artifacts `standalone-linux-amd64` and
-`standalone-linux-arm64` are ZIP archives retained for one day.
+`standalone-linux-arm64` are ZIP archives retained for seven days.
 
 For Linux amd64, extract `joplin-md-sync-linux-amd64` into
 `$HOME/joplin-candidate/download/v1.8.0/`, using the version the candidate
@@ -532,6 +540,7 @@ With all defaults, the complete managed layout is:
 └── state/
     ├── joplin-agent/
     │   ├── profile-*.lock         exclusive lock, keyed by profile
+    │   ├── joplin-md-sync-receipt.json  path and SHA-256 of the installed adapter
     │   └── upgrade-backup-*/      previous program/helper/unit files
     └── joplin-md-sync/oauth/      default OAuth grants (with OAuth only)
 
@@ -713,8 +722,11 @@ deliberately leaves them stopped and skips runtime checks.
 Previous binaries, helpers, and units remain under
 `~/.local/state/joplin-agent/upgrade-backup-*/` (or the custom state home).
 When Joplin changes version, its old isolated npm tree is retained there too.
-Failure after services are stopped leaves both stopped and reports the backup
-location; there is no automatic rollback. **These are program backups, not
+If the new Joplin package cannot be installed, that tree is moved back, the
+units stay unchanged, and services that were running before the upgrade are
+started again; the installer still reports the failure. Any later failure after
+services are stopped leaves both stopped and reports the backup location; the
+profile is never rolled back automatically. **These are program backups, not
 note backups.** The profile is not copied and Joplin may migrate its schema.
 Keep a verified JEX export before downgrading; selecting an older executable
 does not prove that an existing profile can safely be downgraded.
@@ -761,6 +773,11 @@ Repeat with `--clean` and without `--dry-run` to remove the selected setup witho
 disables both services, verifies they are inactive, acquires the exclusive
 profile lock, and deletes only managed local paths. Unrelated files under
 the prefix/config directories remain. Repeating purge is safe.
+`bin/joplin-md-sync` is deleted only when it is the exact file the installer
+last placed there, as recorded by its private receipt. A symlink, a changed
+file, or an executable that this installer accepted but never replaced (for
+example, one installed by an earlier installer release) is kept with a message;
+remove it yourself if nothing else uses it.
 
 If only one unit file remains, or the units cannot supply consistent paths,
 normal setup refuses to overwrite the installation. Restore the units, or use `--clean` with
