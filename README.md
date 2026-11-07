@@ -13,6 +13,7 @@ history.
 
 **[Website](https://joplin-mcp.romancello.net/)** ·
 **[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
+**[Connect Claude](https://joplin-mcp.romancello.net/user/CLAUDE_CONNECTOR/)** ·
 **[MCP: local stdio & HTTP](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
 **[Deploy headless](https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/)**
 
@@ -24,6 +25,9 @@ history.
 - **Typed MCP tools.** Local stdio and Streamable HTTP transports give
   compatible clients structured note operations plus attachment upload,
   download, replacement, and relationship traversal.
+- **Claude with GitHub sign-in.** The built-in `/claude/mcp` interface permits
+  one configured numeric GitHub account on the existing service port. Configure
+  it with individual CLI flags and private secret-file options.
 - **A headless Joplin service.** The rootless Linux installer deploys Joplin
   Terminal, recurrent sync, and the combined MCP/Actions adapter as coordinated
   systemd user services. Joplin Desktop does not need to remain running.
@@ -88,7 +92,7 @@ The supported boundaries and deployment choices are documented in
 From a checkout matching the deployed release, run the setup assistant:
 
 ```bash
-git clone --depth 1 --branch v1.7.1 \
+git clone --depth 1 --branch v1.8.0 \
   https://github.com/kogeler/joplin-md-sync.git
 cd joplin-md-sync
 python3 scripts/prepare_chatgpt_action.py
@@ -140,7 +144,7 @@ instead. Stdio opens no MCP or Actions port and therefore needs no bearer token
 for those interfaces; its Joplin token authenticates only to Joplin:
 
 ```bash
-pipx install "joplin-md-sync==1.7.1"
+pipx install "joplin-md-sync==1.8.0"
 export JOPLIN_TOKEN=...
 joplin-md-sync mcp serve
 ```
@@ -205,12 +209,12 @@ operating a Markdown workspace should also follow
 Python installations require CPython 3.13 or 3.14 on Windows or Linux:
 
 ```bash
-python -m pip install "joplin-md-sync==1.7.1"
-# or: pipx install "joplin-md-sync==1.7.1"
+python -m pip install "joplin-md-sync==1.8.0"
+# or: pipx install "joplin-md-sync==1.8.0"
 ```
 
-GitHub Releases also provide a standalone zipapp and native executables that
-include Python:
+Native executables from GitHub Releases include Python and the standard service
+runtime. A Python zipapp is also available for a prepared Python environment:
 
 | Platform | Asset |
 | --- | --- |
@@ -227,6 +231,7 @@ Download them with `SHA256SUMS.txt` from the
 | Goal | Interface |
 | --- | --- |
 | Work with current Joplin notes in ChatGPT | Authenticated ChatGPT Actions |
+| Connect hosted Claude with GitHub sign-in | Built-in OAuth MCP at `/claude/mcp` |
 | Give an editor or assistant typed note tools | MCP |
 | Run without a desktop session | Headless Joplin Terminal plus MCP/Actions |
 | Review every broad agent edit before applying it | Markdown workspace |
@@ -249,8 +254,9 @@ make docs-screenshots
 make help
 ```
 
-Runtime dependencies are empty by design. Development, test, package, and docs
-tools use purpose-specific hash-verified locks. See
+The standard installation includes the HTTP and GitHub OAuth runtime; CLI flags
+enable the interfaces. Development, test, package, and docs tools use separate
+dependency groups from the single hash-verified `uv.lock`. See
 [Development](https://joplin-mcp.romancello.net/maintenance/DEVELOPMENT/) and
 [Dependency maintenance](https://joplin-mcp.romancello.net/maintenance/DEPENDENCIES/).
 On Linux AMD64, `make test-live` provisions a checksum-pinned Joplin Desktop

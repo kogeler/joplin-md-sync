@@ -1,0 +1,277 @@
+{
+  "requirements": {
+    "T01": {
+      "description": "Legacy MCP lifecycle and OAuth off/on",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke",
+        "test_oauth_lifecycle.py::test_oauth_off_on_preserves_legacy_and_existing_grants"
+      ]
+    },
+    "T02": {
+      "description": "Actions and legacy credential independence",
+      "cases": [
+        "test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation"
+      ]
+    },
+    "T03": {
+      "description": "One production listener and bounded sockets",
+      "cases": [
+        "test_oauth_transport.py::test_real_listener_admission_includes_sockets_without_headers",
+        "test_oauth_transport.py::test_real_listener_admits_exactly_sixteen_keep_alive_connections"
+      ]
+    },
+    "T04": {
+      "description": "Anonymous challenge and HTTPS discovery",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke"
+      ]
+    },
+    "T05": {
+      "description": "Owner login and all advertised tools",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke",
+        "test_oauth_tools.py::test_every_advertised_tool_executes_and_preserves_binary_data"
+      ]
+    },
+    "T06": {
+      "description": "Foreign account blocked at issuance, resource and refresh",
+      "cases": [
+        "test_oauth_flow.py::test_foreign_github_account_cannot_issue_access_or_mutate",
+        "test_oauth_lifecycle.py::test_refresh_is_bound_to_registered_client_and_verified_owner"
+      ]
+    },
+    "T07": {
+      "description": "Verified numeric identity, rename and signed claims",
+      "cases": [
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[read:user]",
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[user]",
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[read:user, gist]",
+        "test_oauth_security.py::test_repository_scope_and_claims_cannot_replace_verified_identity",
+        "test_oauth_security.py::test_signed_wrong_claims_never_reach_tool_execution[changes0]",
+        "test_oauth_security.py::test_signed_wrong_claims_never_reach_tool_execution[changes1]",
+        "test_oauth_security.py::test_signed_wrong_claims_never_reach_tool_execution[changes2]",
+        "test_oauth_security.py::test_signed_wrong_claims_never_reach_tool_execution[changes3]"
+      ]
+    },
+    "T08": {
+      "description": "Independent credentials and duplicate authorization",
+      "cases": [
+        "test_oauth_flow.py::test_public_oauth_rejects_host_origin_oversized_input_and_duplicate_auth",
+        "test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation"
+      ]
+    },
+    "T09": {
+      "description": "Exact callback and safe DCR metadata",
+      "cases": [
+        "test_oauth_security.py::test_redirect_allowlist_is_exact[http://claude.ai/api/mcp/auth_callback]",
+        "test_oauth_security.py::test_redirect_allowlist_is_exact[https://claude.ai/api/mcp/auth_callback/]",
+        "test_oauth_security.py::test_redirect_allowlist_is_exact[https://claude.ai/api/mcp/auth_callback?x=1]",
+        "test_oauth_security.py::test_redirect_allowlist_is_exact[https://attacker.invalid/callback]",
+        "test_oauth_security.py::test_redirect_allowlist_is_exact[http://localhost/callback]",
+        "test_oauth_security.py::test_dcr_metadata_is_escaped_and_never_fetched"
+      ]
+    },
+    "T10": {
+      "description": "PKCE, state, consent, CSRF and code replay",
+      "cases": [
+        "test_oauth_flow.py::test_invalid_pkce_state_code_replay_and_redirect",
+        "test_oauth_security.py::test_consent_requires_csrf_and_browser_binding[missing-csrf]",
+        "test_oauth_security.py::test_consent_requires_csrf_and_browser_binding[wrong-csrf]",
+        "test_oauth_security.py::test_consent_requires_csrf_and_browser_binding[missing-cookie]",
+        "test_oauth_security.py::test_authorization_code_binding_expiry_and_pkce_downgrade[expired-code]",
+        "test_oauth_security.py::test_authorization_code_binding_expiry_and_pkce_downgrade[wrong-client]",
+        "test_oauth_security.py::test_authorization_code_binding_expiry_and_pkce_downgrade[missing-pkce]",
+        "test_oauth_security.py::test_authorization_code_binding_expiry_and_pkce_downgrade[plain-pkce]",
+        "test_oauth_security.py::test_authorization_code_binding_expiry_and_pkce_downgrade[changed-callback]"
+      ]
+    },
+    "T11": {
+      "description": "Expiry, rotation, revocation and upstream failures",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke",
+        "test_oauth_lifecycle.py::test_expiry_and_downstream_refresh_with_controlled_time",
+        "test_oauth_lifecycle.py::test_transparent_refresh_racing_explicit_refresh_keeps_replay_closed",
+        "test_oauth_recovery.py::test_explicit_refresh_survives_identity_outage_after_rotation[unavailable]",
+        "test_oauth_recovery.py::test_explicit_refresh_survives_identity_outage_after_rotation[rate-limited]",
+        "test_oauth_recovery.py::test_explicit_refresh_survives_identity_outage_after_rotation[secondary-rate-limit]",
+        "test_oauth_recovery.py::test_explicit_refresh_recovery_survives_restart",
+        "test_oauth_recovery.py::test_transparent_refresh_survives_identity_outage_without_running_tools",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[503-headers0-callback]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[503-headers0-refresh]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[429-headers1-callback]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[429-headers1-refresh]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[403-headers2-callback]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[403-headers2-refresh]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[403-headers3-callback]",
+        "test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens[403-headers3-refresh]",
+        "test_oauth_security.py::test_refresh_scope_escalation_is_rejected_without_consuming_grant"
+      ]
+    },
+    "T12": {
+      "description": "Restart, key and owner changes, reset/reconnect",
+      "cases": [
+        "test_oauth_flow.py::test_changed_owner_and_explicit_local_reset_deny_old_grants",
+        "test_oauth_lifecycle.py::test_wrong_signing_key_fails_closed_and_reset_allows_reconnect",
+        "test_oauth_recovery.py::test_explicit_refresh_recovery_survives_restart"
+      ]
+    },
+    "T13": {
+      "description": "Registry schemas, errors and complete tool dispatch",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke",
+        "test_oauth_tools.py::test_every_advertised_tool_executes_and_preserves_binary_data"
+      ]
+    },
+    "T14": {
+      "description": "Concurrent create across three interfaces",
+      "cases": [
+        "test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation"
+      ]
+    },
+    "T15": {
+      "description": "Outage, partial writes, cancellation and no replay",
+      "cases": [
+        "test_oauth_flow.py::test_github_outage_fails_closed_without_interrupting_legacy",
+        "test_oauth_lifecycle.py::test_disconnected_client_does_not_replay_started_mutation",
+        "test_oauth_recovery.py::test_transparent_refresh_survives_identity_outage_without_running_tools",
+        "test_oauth_security.py::test_identity_outage_or_rate_limit_is_retryable_and_independent[503-headers0]",
+        "test_oauth_security.py::test_identity_outage_or_rate_limit_is_retryable_and_independent[429-headers1]",
+        "test_oauth_security.py::test_identity_outage_or_rate_limit_is_retryable_and_independent[403-headers2]",
+        "test_oauth_tools.py::test_joplin_outage_partial_write_and_recovery_are_structured"
+      ]
+    },
+    "T16": {
+      "description": "Individual CLI flags, missing/invalid values, private distinct secrets",
+      "cases": [
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[client_id-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[client_secret_file-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[signing_key_file-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[state_dir-None]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-http://example.invalid]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-https://user@example.invalid]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-https://example.invalid/extra]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-https://example.invalid?x=1]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[public_base_url-https://example.invalid/#x]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[client_id-../invalid]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id-*]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id-042]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id-\\uff14\\uff12]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id--1]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_user_id-]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[allowed_github_login-https://attacker.invalid]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[state_dir-relative]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[client_secret_file-relative]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[signing_key_file-relative]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[access_token_ttl_seconds-599]",
+        "test_oauth_security.py::test_cli_invalid_or_missing_values_fail_before_binding[access_token_ttl_seconds-3601]",
+        "test_oauth_security.py::test_cli_requires_enable_flag_and_distinct_private_credentials",
+        "test_oauth_security.py::test_private_secret_permissions_are_enforced_by_real_cli",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/claude/mcp]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/auth/callback]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/token]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/healthz]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/api/gpt/v1/tools/x]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp/]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp%2F]",
+        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp//alias]",
+        "test_oauth_security.py::test_account_lookup_uses_github_http_and_returns_only_numeric_identity"
+      ]
+    },
+    "T17": {
+      "description": "Secret-free logs and bounded inputs/rate/execution",
+      "cases": [
+        "test_oauth_flow.py::test_public_oauth_rejects_host_origin_oversized_input_and_duplicate_auth",
+        "test_oauth_lifecycle.py::test_dcr_registration_capacity_preserves_existing_owner_grant",
+        "test_oauth_security.py::test_flow_rate_limit_is_bounded_without_github_or_notes",
+        "test_oauth_tools.py::test_tool_execution_is_bounded_without_dropping_waiting_calls",
+        "test_oauth_transport.py::test_real_listener_admission_includes_sockets_without_headers",
+        "test_oauth_transport.py::test_real_listener_admits_exactly_sixteen_keep_alive_connections"
+      ]
+    },
+    "T18": {
+      "description": "Large Unicode and binary results, applied/ambiguous writes",
+      "cases": [
+        "test_oauth_flow.py::test_large_oauth_write_read_and_ambiguous_mutation_preserve_legacy_semantics",
+        "test_oauth_tools.py::test_every_advertised_tool_executes_and_preserves_binary_data"
+      ]
+    },
+    "T20": {
+      "description": "Normal runtime CLI off/on and shutdown with active mutation",
+      "cases": [
+        "test_oauth_lifecycle.py::test_oauth_off_on_preserves_legacy_and_existing_grants",
+        "test_oauth_lifecycle.py::test_sigterm_drains_started_request_and_releases_state_lock",
+        "test_oauth_lifecycle.py::test_forced_termination_restarts_and_recovers_state_lock"
+      ]
+    },
+    "T21": {
+      "description": "Raw framing, deadlines, Host/Origin/forwarding, aliases and health",
+      "cases": [
+        "test_oauth_flow.py::test_public_oauth_rejects_host_origin_oversized_input_and_duplicate_auth",
+        "test_oauth_security.py::test_forwarding_path_aliases_duplicate_form_and_json_limits",
+        "test_oauth_transport.py::test_raw_ambiguous_framing_fails_before_side_effects[Content-Length: 0\\r\\nTransfer-Encoding: chunked\\r\\n]",
+        "test_oauth_transport.py::test_raw_ambiguous_framing_fails_before_side_effects[Content-Length: 0\\r\\nContent-Length: 5\\r\\n]",
+        "test_oauth_transport.py::test_actual_read_deadline_covers_empty_partial_and_pipelined_requests"
+      ]
+    },
+    "T22": {
+      "description": "Concurrent one-use code and refresh persisted across restart",
+      "cases": [
+        "test_oauth_lifecycle.py::test_transparent_refresh_racing_explicit_refresh_keeps_replay_closed",
+        "test_oauth_lifecycle.py::test_concurrent_client_code_and_refresh_have_one_success_across_restart"
+      ]
+    },
+    "T23": {
+      "description": "Realistic GitHub scopes, TTL fields and missing refresh profile",
+      "cases": [
+        "test_oauth_security.py::test_malformed_github_token_profile_cannot_issue_client_tokens[expires_in-0]",
+        "test_oauth_security.py::test_malformed_github_token_profile_cannot_issue_client_tokens[expires_in-True]",
+        "test_oauth_security.py::test_malformed_github_token_profile_cannot_issue_client_tokens[refresh_token_expires_in--1]",
+        "test_oauth_security.py::test_malformed_github_token_profile_cannot_issue_client_tokens[refresh_token-]",
+        "test_oauth_security.py::test_malformed_github_token_profile_cannot_issue_client_tokens[access_token-]",
+        "test_oauth_security.py::test_nonexpiring_github_app_is_rejected_before_client_issuance",
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[read:user]",
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[user]",
+        "test_oauth_security.py::test_normalized_scopes_and_renamed_login_keep_numeric_owner[read:user, gist]"
+      ]
+    },
+    "T24": {
+      "description": "Encrypted state, exclusive ownership, corruption/quota/read-only/symlink/reset",
+      "cases": [
+        "test_oauth_lifecycle.py::test_state_is_encrypted_and_another_process_cannot_own_it",
+        "test_oauth_lifecycle.py::test_corrupt_schema_and_unsafe_state_preserve_data_and_fail_check",
+        "test_oauth_lifecycle.py::test_read_only_store_rejects_new_registration_preserving_existing_access",
+        "test_oauth_lifecycle.py::test_disk_quota_exhaustion_preserves_existing_grants",
+        "test_oauth_lifecycle.py::test_linked_state_and_unconfirmed_reset_do_not_touch_target",
+        "test_oauth_security.py::test_sync_workspace_state_is_never_used_for_oauth"
+      ]
+    },
+    "T26": {
+      "description": "Complete TLS/process login to Joplin CRUD, refresh and restart",
+      "cases": [
+        "test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke",
+        "test_oauth_flow.py::test_foreign_github_account_cannot_issue_access_or_mutate",
+        "test_oauth_flow.py::test_invalid_pkce_state_code_replay_and_redirect"
+      ]
+    }
+  },
+  "platforms": {
+    "test_oauth_lifecycle.py::test_sigterm_drains_started_request_and_releases_state_lock": [
+      "posix"
+    ],
+    "test_oauth_lifecycle.py::test_forced_termination_restarts_and_recovers_state_lock": [
+      "nt"
+    ]
+  },
+  "external": {
+    "T19": {
+      "description": "Standard source/wheel/sdist/zipapp/native OAuth off/on/DCR/consent",
+      "command": "make smoke"
+    },
+    "T25": {
+      "description": "Real systemd native sandbox, lifecycle, disable/reset/managed purge",
+      "command": "make test-oauth-systemd"
+    }
+  }
+}

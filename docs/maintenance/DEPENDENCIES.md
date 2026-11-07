@@ -5,7 +5,8 @@
 Development dependencies use standard `pyproject.toml` groups and one native
 `uv.lock`. The [dependency contract](../contracts/DEPENDENCIES.md) defines the
 boundaries; uv handles resolution, platform markers, hashes, and lock validity.
-The installed joplin-md-sync package still has no runtime dependencies.
+The standard installation includes the HTTP/GitHub OAuth runtime. CLI flags
+activate interfaces; no OAuth installation extra is required.
 
 ## Install the tools
 
@@ -16,15 +17,17 @@ minimum rather than requiring Dependabot's updater to use that exact binary.
 
 | Make target | Group | Purpose |
 | --- | --- | --- |
-| `make venv` | none | Editable runtime package only |
-| `make venv-dev` | `quality` | Ruff, mypy, Bandit, pip-audit |
-| `make venv-test` | `test` | pytest, coverage, parallel tests |
-| `make venv-package` | `build` | Distribution tools and build backend |
+| `make venv` | none | Editable package and all runtime requirements |
+| `make venv-dev` | `quality` | Runtime plus Ruff, mypy, Bandit, pip-audit |
+| `make venv-test` | `test` | Runtime plus pytest, coverage, parallel tests |
+| `make venv-package` | `build` | Runtime plus distribution tools and build backend |
 | `make venv-docs` | `docs` | MkDocs site |
 
 Every environment stays under its host/user-specific `.venvs/<key>/` path.
 Make passes that path through `UV_PROJECT_ENVIRONMENT` and selects only the
-required group. A shared lock does not install every tool in every job.
+required group alongside the standard runtime for quality, test and build.
+Docs-only jobs install only their documentation group. A shared lock does not
+install every tool in every job.
 Third-party tools use wheels; the release build uses its locked backend with
 build isolation disabled, rather than resolving another backend version.
 The uv cache also tracks `.version`, so a release version change refreshes

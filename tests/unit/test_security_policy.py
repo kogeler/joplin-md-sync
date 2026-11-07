@@ -1,4 +1,4 @@
-"""Static security invariants for the dependency-free runtime package."""
+"""Static security invariants for the runtime package."""
 
 from __future__ import annotations
 

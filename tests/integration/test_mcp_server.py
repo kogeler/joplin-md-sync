@@ -65,6 +65,8 @@ EXPECTED_MCP_TOOLS = {
 
 
 class McpHttpTest(WorkspaceTestCase):
+    server_factory = staticmethod(McpHttpServer)
+
     def setUp(self) -> None:
         super().setUp()
         self.available = True
@@ -78,7 +80,7 @@ class McpHttpTest(WorkspaceTestCase):
 
         service = JoplinMcpService(client_factory, availability_timeout=0, retry_delay=0.001)
         self.dispatcher = McpDispatcher(service)
-        self.httpd = McpHttpServer(("127.0.0.1", 0), self.dispatcher)
+        self.httpd = self.server_factory(("127.0.0.1", 0), self.dispatcher)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_mcp)
@@ -716,7 +718,7 @@ class McpHttpTest(WorkspaceTestCase):
             token_file.write_text(first_token + "\n", encoding="utf-8")
             if os.name == "posix":
                 token_file.chmod(0o600)
-            auth_httpd = McpHttpServer(
+            auth_httpd = self.server_factory(
                 ("127.0.0.1", 0),
                 self.dispatcher,
                 token_source=BearerTokenSource(token_file),
@@ -779,8 +781,16 @@ class McpHttpTest(WorkspaceTestCase):
                 auth_httpd.server_close()
                 thread.join(timeout=2)
 
+    def wait_for_connection_slot(self, server) -> None:
+        deadline = time.monotonic() + 1
+        while server._request_slots.acquire(blocking=False):
+            server._request_slots.release()
+            if time.monotonic() >= deadline:
+                self.fail("stalled request did not occupy the bounded handler slot")
+            time.sleep(0.01)
+
     def test_pre_auth_connection_count_is_bounded(self) -> None:
-        limited = McpHttpServer(
+        limited = self.server_factory(
             ("127.0.0.1", 0),
             self.dispatcher,
             max_http_connections=1,
@@ -790,12 +800,7 @@ class McpHttpTest(WorkspaceTestCase):
         thread.start()
         stalled = socket.create_connection(limited.server_address, timeout=2)
         stalled.sendall(b"GET /mcp HTTP/1.1\r\nHost: localhost\r\n")
-        deadline = time.monotonic() + 1
-        while limited._request_slots.acquire(blocking=False):
-            limited._request_slots.release()
-            if time.monotonic() >= deadline:
-                self.fail("stalled request did not occupy the bounded handler slot")
-            time.sleep(0.01)
+        self.wait_for_connection_slot(limited)
 
         rejected = socket.create_connection(limited.server_address, timeout=2)
         try:

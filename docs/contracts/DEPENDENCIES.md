@@ -8,10 +8,13 @@
 
 **Contract:** `pyproject.toml` MUST own development requirements through the
 standard `dependency-groups` table: `quality`, `test`, `build`, and `docs`.
-Published runtime dependencies MUST remain empty unless a reviewed runtime
-dependency policy is introduced. Development groups MUST NOT become published
+The HTTP and GitHub OAuth dependencies MUST be standard published runtime
+requirements in `project.dependencies`, installed with the package and bundled
+in native executables. OAuth activation MUST be controlled by CLI configuration,
+not by an installation extra. Development groups MUST NOT become published
 extras or runtime requirements. Build-backend requirements MUST remain in the
 standard `build-system` table; release builds MUST use the locked build group.
+Runtime and development requirements MUST use the same root manifest and lock.
 
 **Evidence:**
 
@@ -35,8 +38,10 @@ to compensate for host-specific locking.
 
 **Contract:** Make environments MUST use `uv sync --locked` with the selected
 Python interpreter and dedicated project-environment path. Tool environments
-MUST select only their own group and require third-party wheels. CI MUST NOT
-silently rewrite the lock or install an independently maintained tool list.
+MUST select only their own group and the standard project runtime needed for
+testing, typing or native packaging, and require third-party wheels. Docs-only
+environments MAY select just the docs group. CI MUST NOT silently rewrite the
+lock or install an independently maintained tool list.
 The reviewed CI uv executable version MUST have one owner in `.tool-versions`;
 the project minimum MUST NOT force Dependabot to use that exact CLI build.
 
@@ -51,7 +56,9 @@ the project minimum MUST NOT force Dependabot to use that exact CLI build.
 
 **Contract:** Linux quality MUST select the quality group. Compatibility jobs
 on Windows and Linux MUST select the test group; distribution jobs MUST select
-the build group; Pages MUST select the docs group. Each supported platform and
+the build group; Pages MUST select the docs group. Quality, compatibility, and
+distribution environments MUST include the standard runtime dependencies.
+The normal test target MUST include mandatory mocked OAuth E2E tests. Each supported platform and
 CPython combination MUST install and execute its real tests rather than rely
 on a locally simulated platform resolver.
 
@@ -77,7 +84,7 @@ CI MUST NOT implement an additional definition of lock equivalence.
 
 ### `DEP-006` - Every locked group is audited
 
-**Contract:** Linux CI MUST audit all locked groups for known vulnerabilities.
+**Contract:** Linux CI MUST audit all locked groups and runtime dependencies for known vulnerabilities.
 The audit input MUST be a temporary native uv export of the committed lock,
 not a second committed requirements file or a separately resolved environment.
 Known vulnerabilities MUST remain blocking. Dependency review MUST remain in

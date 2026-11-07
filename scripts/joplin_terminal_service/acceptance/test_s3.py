@@ -25,7 +25,16 @@ from unittest import mock
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import install_joplin_terminal as installer
+from joplin_terminal_installer import (
+    cli,
+    commands,
+    common,
+    models,
+    prompts,
+    releases,
+    service,
+    sync,
+)
 
 # Public synthetic fixture values, never real cloud credentials.
 ACCESS_KEY = "fixture-access-key"
@@ -179,11 +188,11 @@ class RealJoplinS3Tests(unittest.TestCase):
             self.addCleanup(server.server_close)
             self.addCleanup(server.shutdown)
             for filename, value in (("access-key", ACCESS_KEY), ("secret-key", SECRET_KEY)):
-                installer.atomic_write(root / filename, (value + "\n").encode(), 0o600)
+                common.atomic_write(root / filename, (value + "\n").encode(), 0o600)
             # The image build installs through the real installer, including
             # native npm modules. Reuse that tree for offline runtime tests.
             env = {**os.environ, "HOME": str(root)}
-            args = installer.build_parser(env).parse_args(
+            args = cli.build_parser(env).parse_args(
                 [
                     "--sync-target",
                     "s3",
@@ -200,42 +209,53 @@ class RealJoplinS3Tests(unittest.TestCase):
                     str(root / "sender"),
                 ]
             )
-            installer.validate_args(args)
-            paths = installer.build_paths(args, env)
+            cli.validate_args(args)
+            paths = cli.build_paths(args, env)
             shutil.copytree(os.environ["JOPLIN_TEST_PREFIX"], paths.prefix, symlinks=True)
-            redactor = installer.SecretRedactor()
-            runner = installer.CommandRunner(redactor, env)
-            dependencies = installer.Dependencies(
+            redactor = common.SecretRedactor()
+            runner = commands.CommandRunner(redactor, env)
+            dependencies = models.Dependencies(
                 Path(shutil.which("node")),
                 Path(shutil.which("npm")),
                 Path("/usr/bin/systemctl"),
                 "22",
                 "10",
             )
-            installer.install_or_update_joplin(
+            releases.install_or_update_joplin(
                 runner, dependencies, paths, os.environ["JOPLIN_TEST_VERSION"]
             )
             prompt = mock.Mock(side_effect=[ACCESS_KEY, SECRET_KEY])
-            configuration = installer.resolve_sync_configuration(args, redactor, getpass_fn=prompt)
+            configuration = sync.resolve_sync_configuration(args, redactor, getpass_fn=prompt)
             self.assertEqual(
                 prompt.call_args_list, [mock.call("S3 access key: "), mock.call("S3 secret key: ")]
             )
-            installer.configure_profile(runner, paths, args, configuration)
-            saved = json.loads(
-                runner.run(installer.joplin_command(paths, "config", "--export")).stdout
-            )
+            sync.configure_profile(runner, paths, args, configuration)
+            saved = json.loads(runner.run(sync.joplin_command(paths, "config", "--export")).stdout)
             self.assertEqual(saved["sync.8.username"], ACCESS_KEY)
             self.assertEqual(saved["sync.8.password"], SECRET_KEY)
 
-            # These go through supported CLI commands, never DB/profile reads.
-            def cli(*command: str) -> str:
-                return runner.run(installer.joplin_command(paths, *command)).stdout
+            reused = cli.build_parser(env).parse_args(["--non-interactive"])
+            current = sync.read_profile_settings(runner, paths, redactor)
+            no_prompt = mock.Mock(
+                side_effect=AssertionError("stored credentials must not be requested")
+            )
+            prompts.complete_sync_options(reused, prompts.SetupPrompts(reused, no_prompt), current)
+            cli.validate_sync_args(reused)
+            reused_configuration = sync.resolve_sync_configuration(
+                reused, redactor, getpass_fn=no_prompt
+            )
+            self.assertEqual(reused_configuration, configuration)
+            no_prompt.assert_not_called()
 
-            cli("mkbook", "S3 acceptance")
-            cli("use", "S3 acceptance")
-            cli("mknote", "Round-trip sentinel")
-            with mock.patch.object(installer, "SYNC_TIMEOUT", 90):
-                installer.run_sync(runner, paths, "upload fixture note")
+            # These go through supported CLI commands, never DB/profile reads.
+            def joplin_cli(*command: str) -> str:
+                return runner.run(sync.joplin_command(paths, *command)).stdout
+
+            joplin_cli("mkbook", "S3 acceptance")
+            joplin_cli("use", "S3 acceptance")
+            joplin_cli("mknote", "Round-trip sentinel")
+            with mock.patch.object(sync, "SYNC_TIMEOUT", 90):
+                sync.run_sync(runner, paths, "upload fixture note")
             self.assertEqual(server.rejected, 0, server.rejection_reason)
             self.assertIn("info.json", server.objects)
             self.assertTrue(
@@ -245,38 +265,36 @@ class RealJoplinS3Tests(unittest.TestCase):
             args.sync_username_file = str(root / "access-key")
             args.sync_secret_file = str(root / "secret-key")
             args.non_interactive = True
-            installer.validate_args(args)
+            cli.validate_args(args)
             no_prompt = mock.Mock(side_effect=AssertionError("credential files must skip prompts"))
-            configuration = installer.resolve_sync_configuration(
-                args, redactor, getpass_fn=no_prompt
-            )
+            configuration = sync.resolve_sync_configuration(args, redactor, getpass_fn=no_prompt)
             no_prompt.assert_not_called()
-            paths = installer.build_paths(args, env)
-            installer.configure_profile(runner, paths, args, configuration)
-            with mock.patch.object(installer, "SYNC_TIMEOUT", 90):
-                installer.run_sync(runner, paths, "download fixture note")
-            cli("use", "S3 acceptance")
-            self.assertIn("Round-trip sentinel", cli("ls"))
-            exported = json.loads(cli("config", "--export"))
+            paths = cli.build_paths(args, env)
+            sync.configure_profile(runner, paths, args, configuration)
+            with mock.patch.object(sync, "SYNC_TIMEOUT", 90):
+                sync.run_sync(runner, paths, "download fixture note")
+            joplin_cli("use", "S3 acceptance")
+            self.assertIn("Round-trip sentinel", joplin_cli("ls"))
+            exported = json.loads(joplin_cli("config", "--export"))
             self.assertEqual(exported["sync.8.password"], SECRET_KEY)
             self.assertEqual(exported["sync.8.region"], REGION)
             self.assertTrue(exported["sync.8.forcePathStyle"])
             self.assertEqual(server.rejected, 0)
-            installer.write_setting(
+            sync.write_setting(
                 runner, paths, "sync.8.password", "incorrect-fixture-key", secret=True
             )
             with (
-                mock.patch.object(installer, "SYNC_TIMEOUT", 90),
-                self.assertRaises(installer.ToolError),
+                mock.patch.object(sync, "SYNC_TIMEOUT", 90),
+                self.assertRaises(common.ToolError),
             ):
-                installer.run_sync(runner, paths, "reject wrong S3 secret")
+                sync.run_sync(runner, paths, "reject wrong S3 secret")
             self.assertGreater(server.rejected, 0)
-            installer.write_setting(runner, paths, "sync.8.password", SECRET_KEY, secret=True)
+            sync.write_setting(runner, paths, "sync.8.password", SECRET_KEY, secret=True)
             with socket.socket() as listener:
                 listener.bind(("127.0.0.1", 0))
                 api_port = listener.getsockname()[1]
-            installer.write_setting(runner, paths, "api.port", str(api_port))
-            supervisor = Path(__file__).resolve().parents[1] / "run_joplin_terminal.py"
+            sync.write_setting(runner, paths, "api.port", str(api_port))
+            supervisor, _common = service.deploy_supervisor(paths)
             process = subprocess.Popen(
                 [
                     sys.executable,
@@ -297,7 +315,7 @@ class RealJoplinS3Tests(unittest.TestCase):
                 env=runner.env,
             )
             try:
-                installer.wait_for_api(api_port, timeout=20)
+                service.wait_for_api(api_port, timeout=20)
             finally:
                 process.terminate()
                 try:
@@ -306,7 +324,7 @@ class RealJoplinS3Tests(unittest.TestCase):
                     process.kill()
                     process.wait(timeout=5)
             self.assertEqual(process.returncode, 0)
-            self.assertFalse(installer.ping_api(api_port, timeout=1).ok)
+            self.assertFalse(common.ping_api(api_port, timeout=1).ok)
 
 
 if __name__ == "__main__":

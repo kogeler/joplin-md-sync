@@ -359,6 +359,7 @@ class _Handler(BaseHTTPRequestHandler):
                 for note in store.notes.values()
                 if not note.get("deleted_time")
                 and not note.get("is_conflict")
+                and (not raw_query.startswith("id:") or note["id"] == raw_query[3:])
                 and all(
                     term in f"{note.get('title', '')}\n{note.get('body', '')}".lower()
                     for term in terms
