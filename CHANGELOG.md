@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format follows
   evidence after failed CI runs. Verify the real Joplin Data API and native
   systemd sandbox separately, and retain downloadable CodeQL dataflow evidence
   and native candidates for seven days.
+- Publish every push of a pull request that changes `.version` as an automatic
+  prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
+  executables and checksums, installable with the normal installer; keep only
+  the newest candidate per pull request and delete it on close.
 
 ### Changed
 

@@ -71,6 +71,7 @@ def test_workflow_set_is_event_driven_and_every_action_is_sha_pinned() -> None:
         "ci.yml",
         "pages.yml",
         "pr-body.yml",
+        "pr-candidate.yml",
         "release.yml",
     }
     for path in WORKFLOWS.glob("*.yml"):
@@ -337,3 +338,38 @@ def test_pr_body_is_the_only_pull_request_target_write_boundary() -> None:
     )[0]
     assert "persist-credentials: false" in checkout
     assert "ref:" not in checkout
+
+
+def _jobs(workflow: str) -> dict[str, str]:
+    body = workflow.split("\njobs:\n", 1)[1]
+    parts = re.split(r"^  ([a-z][a-z0-9-]*):\n", body, flags=re.MULTILINE)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def test_pr_candidates_are_gated_prereleases_with_isolated_write_jobs() -> None:
+    candidate = _workflow("pr-candidate.yml")
+    trigger = candidate.split("\npermissions:", 1)[0]
+    assert "  pull_request:\n" in trigger
+    assert "pull_request_target" not in candidate
+    assert "permissions:\n  contents: read\n" in candidate
+    jobs = _jobs(candidate)
+    assert set(jobs) == {"gate", "build", "publish", "cleanup"}
+    same_repository = "github.event.pull_request.head.repo.full_name == github.repository"
+    assert same_repository in jobs["gate"] and same_repository in jobs["cleanup"]
+    # Every push is a candidate once .version differs from the merge base.
+    assert "merge_base_commit" in jobs["gate"]
+    assert "headVersion !== baseVersion" in jobs["gate"]
+    assert "needs.gate.outputs.publish == 'true'" in jobs["build"]
+    assert "JOPLIN_MD_SYNC_BUILD_VERSION" in jobs["build"]
+    assert "make standalone smoke-standalone" in jobs["build"]
+    assert "contents: write" not in jobs["gate"] + jobs["build"]
+    for name in ("publish", "cleanup"):
+        assert "contents: write" in jobs[name]
+        # The write token never checks out or executes pull request code.
+        assert "actions/checkout" not in jobs[name]
+        assert "make " not in jobs[name]
+    assert "--prerelease" in jobs["publish"] and "--latest=false" in jobs["publish"]
+    assert '--target "$HEAD_SHA"' in jobs["publish"]
+    pattern = r'"^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$"'
+    assert pattern in jobs["publish"] and pattern in jobs["cleanup"]
+    assert "--cleanup-tag" in jobs["publish"] and "--cleanup-tag" in jobs["cleanup"]

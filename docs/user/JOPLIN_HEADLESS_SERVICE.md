@@ -359,16 +359,35 @@ independent of `--joplin-version` and `--joplin-md-sync-version`.
 ### Test an unpublished runtime candidate
 
 Selecting an installer branch does not download an unreleased adapter from
-that branch. To test an adapter before its release is published, obtain the
-smoke-tested native artifact for your architecture from the successful
-[CI run](https://github.com/kogeler/joplin-md-sync/actions/workflows/ci.yml)
-of the selected commit. Use it as a local release source; no extra server or
-port is needed. The CI artifacts `standalone-linux-amd64` and
-`standalone-linux-arm64` are ZIP archives retained for seven days.
+that branch. Instead, a pull request from this repository whose `.version`
+differs from its merge base publishes every push automatically as a GitHub
+prerelease `vX.Y.Z-prN.gSHORTSHA`, for example `v1.8.0-pr48.g7bd6520`. It
+contains the smoke-tested Linux amd64/arm64 executables and `SHA256SUMS.txt`;
+the executable reports the same candidate version. Only the newest candidate of
+a pull request is kept, and closing the pull request removes it. Candidates are
+never the latest release, so `latest` installs and update checks ignore them.
 
-For Linux amd64, extract `joplin-md-sync-linux-amd64` into
-`$HOME/joplin-candidate/download/v1.8.0/`, using the version the candidate
-reports, then run:
+The candidate's release notes contain the exact command, which runs the
+installer from the same commit:
+
+```bash
+installer_ref='FULL_COMMIT_SHA'
+set -o pipefail
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  "https://raw.githubusercontent.com/kogeler/joplin-md-sync/${installer_ref}/scripts/joplin_terminal_service/install_joplin_terminal.py" \
+  | python3 - --installer-ref "$installer_ref" --joplin-md-sync-version 'X.Y.Z-prN.gSHORTSHA'
+```
+
+An existing installation keeps its configured settings; add only the options
+you want to change, such as `--github-oauth`, and `--joplin-version` to pin
+Joplin. The installer verifies the checksum, executable version and OAuth
+preflight before replacing a healthy service.
+
+For a build without a candidate prerelease, such as a fork pull request or a
+local `make standalone`, serve the executable from a local release layout. For
+Linux amd64, place `joplin-md-sync-linux-amd64` in
+`$HOME/joplin-candidate/download/v1.8.0/`, using the version it reports, then
+run:
 
 ```bash
 candidate_root="$HOME/joplin-candidate"
@@ -385,11 +404,9 @@ curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
       --joplin-md-sync-version "$candidate_version"
 ```
 
-For Linux arm64, use the `joplin-md-sync-linux-arm64` artifact and asset name.
-Keep the artifact and installer ref on the intended commit. The installer still
-verifies the checksum, executable identity/version and OAuth preflight before
-replacing a healthy service. The local checksum describes the CI artifact you
-selected; it does not authenticate an artifact from an unknown source.
+For Linux arm64, use the `joplin-md-sync-linux-arm64` asset name. The local
+checksum describes the file you selected; it does not authenticate an
+executable from an unknown source.
 
 ### Review or pin the installer
 
