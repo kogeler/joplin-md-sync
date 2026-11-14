@@ -58,12 +58,23 @@ New registry releases do not make an existing lock stale. CI installs with
 `--locked`, so a missing/incompatible lock fails instead of being rewritten.
 There is no second text-based lock comparison or unit-test lock parser.
 
+Runtime requirements also have upper bounds. They become the wheel's metadata,
+and `pip`/`pipx` installs resolve them at install time without the lock, so a
+published release must not accept future versions that were never tested.
+Packages whose internal extension points the adapter overrides are bounded more
+tightly than the rest; `pyproject.toml` is the only place that states the
+ranges. Dependency groups are never published and keep only lower bounds. To
+adopt a newer release, raise the bound together with the lock and run the full
+test suite; native executables always use the lock.
+
 ## Dependabot
 
 The root project uses `package-ecosystem: uv`. Dependabot updates direct and
 transitive packages together in one Python version-update group, with weekly
 checks, a seven-day version cooldown, one open version-update PR, and automatic
-rebasing. Actions have their own group. GitHub security alerts and grouped
+rebasing. `versioning-strategy: increase-if-necessary` keeps in-range releases
+lock-only and raises a runtime upper bound in the same PR when a release falls
+outside it, so CI tests the new range before merge. Actions have their own group. GitHub security alerts and grouped
 security updates remain enabled in repository settings; their queue is
 separate from the ordinary version-update schedule.
 

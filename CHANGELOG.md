@@ -74,6 +74,9 @@ All notable changes to this project are documented here. The format follows
   together. Replace custom lock parsing, text drift checks, dependency submission,
   and updater simulation tests with native lock validation and real application,
   platform, distribution, documentation, and security checks.
+- Bound runtime requirements to tested minor or major versions so PyPI installs
+  never resolve untested releases, and let Dependabot raise a bound in the same
+  update when a release falls outside it.
 - Replace the headless-service guide with a task-oriented Joplin Headless
   Service runbook: direct remote Nextcloud/S3 install and purge commands first,
   followed by installed paths, the complete installer CLI, and advanced

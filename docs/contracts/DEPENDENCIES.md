@@ -112,6 +112,8 @@ verify GitHub's hosted ingestion or scheduling.
 
 **Contract:** Dependabot MUST use the `uv` ecosystem for the root Python
 project and include direct and transitive updates without package allowlists.
+Python updates MUST use `increase-if-necessary`, so a release outside a runtime
+upper bound raises that bound in the same update instead of being skipped.
 Python and Actions version updates MUST each form a group, allow at most one
 open version-update PR, and enable automatic rebasing. Security groups MUST
 remain separate from version groups and their weekly schedule. CI MUST validate
