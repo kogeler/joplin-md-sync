@@ -165,6 +165,8 @@ MUST NOT leak private exception details into asyncio logs. Temporary GitHub
 identity and token-endpoint failures, including rate limits, MUST
 fail closed with `503` and a safe Retry-After while legacy credentials remain
 independent. Invalid grants MUST NOT be treated as a temporary GitHub outage.
+Each established client MUST have its own token-endpoint budget, so anonymous
+token requests or another client cannot block its refresh.
 
 **Evidence:**
 
@@ -175,3 +177,5 @@ independent. Invalid grants MUST NOT be treated as a temporary GitHub outage.
 - [`test_cancelled_request_retrieves_late_worker_failure_without_logging_private_data`](../../tests/oauth/unit/test_execution.py) - `tests/oauth/unit/test_execution.py::test_cancelled_request_retrieves_late_worker_failure_without_logging_private_data`
 - [`test_token_endpoint_outage_does_not_issue_or_replay_tokens`](../../tests/oauth/e2e/test_oauth_security.py) - `tests/oauth/e2e/test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens`
 - [`test_github_outage_fails_closed_without_interrupting_legacy`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_github_outage_fails_closed_without_interrupting_legacy`
+- [`test_anonymous_token_flood_does_not_block_established_refresh`](../../tests/oauth/e2e/test_oauth_security.py) - `tests/oauth/e2e/test_oauth_security.py::test_anonymous_token_flood_does_not_block_established_refresh`
+- [`test_established_clients_have_separate_token_budgets`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_established_clients_have_separate_token_budgets`

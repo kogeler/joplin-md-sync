@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import socket
 import subprocess
@@ -24,6 +25,8 @@ from tests.oauth.helpers import OAuthArguments, child_environment, protected_fil
 from tests.oauth.integration.test_provider_flow import authorize, exchange
 
 REPO = Path(__file__).resolve().parents[3]
+# Audit lines carry only a fixed event name and whitelisted validated fields.
+AUDIT_LINE = re.compile(r"oauth_audit event=[a-z_]+( [a-z_]+=[A-Za-z0-9_-]{1,32})*")
 LOCAL_HOSTS = {None, "127.0.0.1", "::1", "localhost", b"127.0.0.1", b"::1", b"localhost"}
 pytestmark = pytest.mark.oauth_e2e("core")
 
@@ -66,8 +69,9 @@ class RunningApplication:
 
     def track_response(self, response):
         response.read()
-        location = response.headers.get("location", "")
-        self.log_canaries.update(parse_qs(urlsplit(location).query).get("code", []))
+        query = parse_qs(urlsplit(response.headers.get("location", "")).query)
+        for name in ("code", "state", "txn_id"):
+            self.log_canaries.update(query.get(name, []))
         if response.request.url.path == "/token" and response.status_code == 200:
             self.log_canaries.update(
                 value
@@ -184,6 +188,12 @@ class RunningApplication:
         log = (self.directory / "server.log").read_text(encoding="utf-8")
         for canary in self.log_canaries | self.github.github.issued:
             assert canary not in log, "Private OAuth or note data appeared in server logs"
+        for line in self.audit_log().splitlines():
+            assert AUDIT_LINE.search(line).group(0) == line[line.index("oauth_audit") :], line
+
+    def audit_log(self):
+        log = (self.directory / "server.log").read_text(encoding="utf-8")
+        return "\n".join(line for line in log.splitlines() if "oauth_audit event=" in line)
 
     def login(self):
         challenge = self.client.post("/oauth/mcp", json={})
@@ -345,6 +355,7 @@ def test_foreign_github_account_cannot_issue_access_or_mutate(app):
     assert "location" not in callback.headers
     assert app.client.post("/oauth/mcp", json={}).status_code == 401
     assert not app.backend.store.notes
+    assert "oauth_audit event=foreign_account github_id=43" in app.audit_log()
 
 
 @pytest.mark.oauth_e2e("invalid-flow")

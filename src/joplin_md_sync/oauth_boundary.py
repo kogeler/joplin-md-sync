@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from joplin_md_sync.github_oauth import GitHubUnavailable
+from joplin_md_sync.github_oauth import MAX_ESTABLISHED_CLIENTS, GitHubUnavailable
 from joplin_md_sync.gpt_actions import TokenBucket
 from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.mcp_server import MAX_REQUEST_BYTES
+from joplin_md_sync.oauth_audit import audit
 from joplin_md_sync.oauth_errors import OAuthFault, record_fault, request_faults
 
 
@@ -39,23 +41,52 @@ def quiet_oauth_libraries() -> None:
 # token budget that established clients need for refresh, and vice versa.
 REGISTRATION_RATE_PER_MINUTE = 30
 TOKEN_RATE_PER_MINUTE = 60
+# Established clients refresh from their own budgets, so anonymous token
+# traffic cannot stop a connected client, and one client cannot stop another.
+ESTABLISHED_CLIENT_TOKEN_RATE_PER_MINUTE = 20
 BROWSER_FLOW_RATE_PER_MINUTE = 60
 # Client-neutral, so a future client allowlist does not change the public URL.
 OAUTH_MCP_PATH = "/oauth/mcp"
 BROWSER_FLOW_PATHS = frozenset({"/authorize", "/consent", "/auth/callback"})
 FLOW_PATHS = BROWSER_FLOW_PATHS | {"/register", "/token"}
+ClientClassifier = Callable[[str], Awaitable[bool]]
 
 
 class OAuthBoundary:
-    def __init__(self, app: ASGIApp, public_origin: str | None = None) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        public_origin: str | None = None,
+        client_classifier: ClientClassifier | None = None,
+    ) -> None:
         self.app = app
         self.public_origin = public_origin
-        browser = TokenBucket(BROWSER_FLOW_RATE_PER_MINUTE)
+        self.client_classifier = client_classifier
+        browser = (TokenBucket(BROWSER_FLOW_RATE_PER_MINUTE), "browser")
         self._flow_rates = {
-            "/register": TokenBucket(REGISTRATION_RATE_PER_MINUTE),
-            "/token": TokenBucket(TOKEN_RATE_PER_MINUTE),
+            "/register": (TokenBucket(REGISTRATION_RATE_PER_MINUTE), "register"),
+            "/token": (TokenBucket(TOKEN_RATE_PER_MINUTE), "token_anonymous"),
             **dict.fromkeys(BROWSER_FLOW_PATHS, browser),
         }
+        self._client_rates: dict[str, TokenBucket] = {}
+
+    async def _token_rate(self, form: dict[str, list[str]]) -> tuple[TokenBucket, str]:
+        client_ids = form.get("client_id", [])
+        client_id = client_ids[0] if len(client_ids) == 1 else ""
+        if (
+            not client_id
+            or self.client_classifier is None
+            or not await self.client_classifier(client_id)
+        ):
+            return self._flow_rates["/token"]
+        bucket = self._client_rates.get(client_id)
+        if bucket is None:
+            if len(self._client_rates) >= MAX_ESTABLISHED_CLIENTS:
+                del self._client_rates[next(iter(self._client_rates))]
+            bucket = self._client_rates[client_id] = TokenBucket(
+                ESTABLISHED_CLIENT_TOKEN_RATE_PER_MINUTE
+            )
+        return bucket, "token_client"
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -68,12 +99,32 @@ class OAuthBoundary:
         request_started = asyncio.get_running_loop().time()
         flow_budget = 9.0
         path = scope["path"]
+        status = 0
+        authorized = any(name.lower() == b"authorization" for name, _ in scope["headers"])
         limit = (
             MAX_REQUEST_BYTES
             if path == OAUTH_MCP_PATH
             else (8192 if path == "/register" else 65536)
         )
         body = bytearray()
+
+        async def tracked_send(event: Message) -> None:
+            nonlocal status
+            if event["type"] == "http.response.start":
+                status = event["status"]
+            await send(event)
+
+        async def rate_limited(rate: tuple[TokenBucket, str]) -> bool:
+            permitted, retry_after = rate[0].consume()
+            if permitted:
+                return False
+            audit("rate_limited", bucket=rate[1])
+            await JSONResponse(
+                {"error": "temporarily_unavailable"},
+                status_code=429,
+                headers={"Retry-After": str(retry_after), "Cache-Control": "no-store"},
+            )(scope, receive, tracked_send)
+            return True
 
         async def fault_response(fault: OAuthFault) -> None:
             headers = {"Cache-Control": "no-store"}
@@ -83,7 +134,7 @@ class OAuthBoundary:
                 {"error": fault.error, "error_description": fault.description},
                 status_code=fault.status,
                 headers=headers,
-            )(scope, receive, send)
+            )(scope, receive, tracked_send)
 
         async def bounded_receive() -> Message:
             event = await receive()
@@ -108,7 +159,7 @@ class OAuthBoundary:
                     await fault_response(faults[0])
                     return
                 started = True
-            await send(event)
+            await tracked_send(event)
 
         try:
             if self.public_origin is not None:
@@ -128,15 +179,10 @@ class OAuthBoundary:
                         OAuthFault(403, "access_denied", "Origin is not permitted")
                     )
                     return
-            if path in FLOW_PATHS:
-                permitted, retry_after = self._flow_rates[path].consume()
-                if not permitted:
-                    await JSONResponse(
-                        {"error": "temporarily_unavailable"},
-                        status_code=429,
-                        headers={"Retry-After": str(retry_after), "Cache-Control": "no-store"},
-                    )(scope, receive, send)
-                    return
+            token_form = scope["method"] == "POST" and path == "/token"
+            # A token form is charged after its bounded read identifies the client.
+            if path in FLOW_PATHS and not token_form and await rate_limited(self._flow_rates[path]):
+                return
             if len(scope.get("query_string", b"")) > 8192:
                 await fault_response(OAuthFault(414, "invalid_request", "Query is too large"))
                 return
@@ -154,6 +200,8 @@ class OAuthBoundary:
                 cached_body = bytes(body)
                 if path != "/register":
                     form = parse_qs(cached_body.decode("utf-8"), keep_blank_values=True)
+                    if token_form and await rate_limited(await self._token_rate(form)):
+                        return
                     if path == "/token" and form.get("grant_type") == ["refresh_token"]:
                         flow_budget = 25.0
                     if any(len(values) != 1 for values in form.values()):
@@ -205,3 +253,6 @@ class OAuthBoundary:
                 await fault_response(OAuthFault(500, "server_error", "OAuth request failed"))
         finally:
             request_faults.reset(token)
+            # Anonymous challenges are normal discovery; presented tokens are not.
+            if path == OAUTH_MCP_PATH and authorized and status in {401, 403}:
+                audit("resource_denied", reason="forbidden" if status == 403 else "invalid_token")

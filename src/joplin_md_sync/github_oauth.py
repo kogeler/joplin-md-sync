@@ -12,11 +12,13 @@ from collections.abc import Callable
 from contextvars import ContextVar, Token
 from types import TracebackType
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx2
 from fastmcp.server.auth import OAuthProxy, TokenVerifier
 from fastmcp.server.auth.auth import AccessToken
 from fastmcp.server.auth.oauth_proxy.upstream import AsyncOAuth2Client, OAuthError
+from fastmcp.utilities.ui import create_secure_html_response
 from key_value.aio.protocols import AsyncKeyValue
 from mcp.server.auth.provider import (
     AuthorizationCode,
@@ -27,7 +29,10 @@ from mcp.server.auth.provider import (
     TokenError,
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, RedirectResponse
 
+from joplin_md_sync.oauth_audit import audit
 from joplin_md_sync.oauth_errors import record_fault
 
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
@@ -43,6 +48,17 @@ PENDING_CLIENT_TTL = 1800
 MAX_PENDING_CLIENTS = 64
 MAX_ESTABLISHED_CLIENTS = 512
 REGISTRY_TTL = 15897600
+# The consent page shows a requester-supplied client name, so a phishing
+# registration can look exactly like the owner's own connector.
+CONSENT_HEADING = b"<h1>Application Access Request</h1>"
+CONSENT_WARNING = (
+    b'<div role="alert" style="margin:0 0 16px;padding:12px 16px;border-radius:8px;'
+    b'border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;text-align:left">'
+    b"<strong>Only continue if you started this.</strong> Allow access only if you "
+    b"began connecting Claude to this Joplin server yourself in the last few minutes. "
+    b"The application name on this page is supplied by the requester and is not "
+    b"verified. If someone sent you this link, choose Deny.</div>"
+)
 ClientFactory = Callable[[], httpx2.AsyncClient]
 
 
@@ -53,8 +69,9 @@ def github_http_client() -> httpx2.AsyncClient:
 class GitHubUnavailable(Exception):
     """Transient upstream failure, with no provider response or credential data."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, *, stage: str) -> None:
         record_fault(503, "temporarily_unavailable", message)
+        audit("github_unavailable", stage=stage)
         super().__init__(message)
 
 
@@ -115,26 +132,35 @@ class GitHubIdentityVerifier(TokenVerifier):
                 )
         except httpx2.RequestError:
             raise GitHubUnavailable(
-                "GitHub identity verification is temporarily unavailable"
+                "GitHub identity verification is temporarily unavailable", stage="identity"
             ) from None
         if response.status_code == 429 or response.status_code >= 500:
-            raise GitHubUnavailable("GitHub identity verification is temporarily unavailable")
+            raise GitHubUnavailable(
+                "GitHub identity verification is temporarily unavailable", stage="identity"
+            )
         if response.status_code == 403 and (
             response.headers.get("x-ratelimit-remaining") == "0"
             or "retry-after" in response.headers
         ):
-            raise GitHubUnavailable("GitHub identity verification is rate limited")
+            raise GitHubUnavailable(
+                "GitHub identity verification is rate limited", stage="identity"
+            )
         if response.status_code != 200:
             return None
         try:
             data = response.json()
             identity = data["id"]
         except (ValueError, KeyError, TypeError):
-            raise GitHubUnavailable("GitHub returned an invalid identity response") from None
+            raise GitHubUnavailable(
+                "GitHub returned an invalid identity response", stage="identity"
+            ) from None
         if type(identity) is not int or identity <= 0:
-            raise GitHubUnavailable("GitHub returned an invalid identity response")
+            raise GitHubUnavailable(
+                "GitHub returned an invalid identity response", stage="identity"
+            )
         if str(identity) != self.user_id:
             record_fault(403, "access_denied", "GitHub account is not permitted")
+            audit("foreign_account", github_id=identity)
             return None
         scopes = {item.strip() for item in response.headers.get("x-oauth-scopes", "").split(",")}
         if not scopes.intersection({"read:user", "user"}):
@@ -187,14 +213,20 @@ class GitHubTokenClient(AsyncOAuth2Client):
                     headers={"Accept": "application/json"},
                 )
         except httpx2.RequestError:
-            raise GitHubUnavailable("GitHub token exchange is temporarily unavailable") from None
+            raise GitHubUnavailable(
+                "GitHub token exchange is temporarily unavailable", stage="token"
+            ) from None
         if response.status_code == 429 or response.status_code >= 500:
-            raise GitHubUnavailable("GitHub token exchange is temporarily unavailable")
+            raise GitHubUnavailable(
+                "GitHub token exchange is temporarily unavailable", stage="token"
+            )
         if response.status_code == 403 and (
             response.headers.get("x-ratelimit-remaining") == "0"
             or "retry-after" in response.headers
         ):
-            raise GitHubUnavailable("GitHub token exchange is rate limited")
+            raise GitHubUnavailable("GitHub token exchange is rate limited", stage="token")
+        refresh = params.get("grant_type") == "refresh_token"
+        denied = "refresh_denied" if refresh else "login_denied"
         try:
             tokens = response.json()
             if isinstance(tokens, dict) and tokens.get("error") in {
@@ -203,6 +235,7 @@ class GitHubTokenClient(AsyncOAuth2Client):
                 "bad_refresh_token",
             }:
                 record_fault(401, "invalid_grant", "GitHub grant is invalid or expired")
+                audit(denied, reason="revoked" if refresh else "invalid_code")
                 raise OAuthError(
                     error="invalid_grant", description="GitHub grant is invalid or expired"
                 )
@@ -213,6 +246,7 @@ class GitHubTokenClient(AsyncOAuth2Client):
                 # Operator configuration, not the grant: clients keep their
                 # refresh tokens and the operator sees an accurate cause.
                 record_fault(500, "server_error", "GitHub rejected the OAuth App configuration")
+                audit(denied, reason="app_configuration")
                 raise OAuthError(
                     error="server_error",
                     description="GitHub rejected the OAuth App configuration",
@@ -228,6 +262,7 @@ class GitHubTokenClient(AsyncOAuth2Client):
                     raise ValueError
         except (ValueError, TypeError):
             record_fault(400, "invalid_grant", "GitHub expiring token profile required")
+            audit(denied, reason="nonexpiring_profile")
             raise OAuthError(
                 error="invalid_grant", description="GitHub expiring token profile required"
             ) from None
@@ -235,9 +270,7 @@ class GitHubTokenClient(AsyncOAuth2Client):
         # rotated pair before `_extract_upstream_claims` (explicit refresh) or
         # per-request verification (transparent refresh) checks the owner, so
         # an identity outage after GitHub rotated the grant stays retryable.
-        if params.get("grant_type") != "refresh_token" and (
-            await self.verifier.verify_token(tokens["access_token"]) is None
-        ):
+        if not refresh and await self.verifier.verify_token(tokens["access_token"]) is None:
             raise OAuthError(error="access_denied", description="GitHub account is not permitted")
         tokens["refresh_expires_in"] = tokens["refresh_token_expires_in"]
         # The upstream wire scopes may be normalized to `user` by GitHub.
@@ -339,6 +372,7 @@ class OwnerGitHubOAuth(OAuthProxy):
         if not client_info.redirect_uris or any(
             str(uri) != CLAUDE_CALLBACK for uri in client_info.redirect_uris
         ):
+            audit("registration_rejected", reason="redirect_uri")
             raise RegistrationError(
                 "invalid_redirect_uri", "Only the hosted Claude callback is permitted"
             )
@@ -352,6 +386,7 @@ class OwnerGitHubOAuth(OAuthProxy):
                 await self._client_store.delete(key=expired)
             pending = sum(entry["state"] == "pending" for entry in registry.values())
             if client_id not in registry and pending >= MAX_PENDING_CLIENTS:
+                audit("registration_rejected", reason="capacity")
                 raise RegistrationError(
                     "invalid_client_metadata",
                     "Client registration capacity exceeded; retry later",
@@ -364,6 +399,24 @@ class OwnerGitHubOAuth(OAuthProxy):
                 await self._client_store.put(key=client_id, value=stored, ttl=PENDING_CLIENT_TTL)
             registry[client_id] = {"state": "pending", "since": int(now)}
             await self._save_registry(registry)
+        audit(
+            "client_registered",
+            client=client_id,
+            pending=sum(entry["state"] == "pending" for entry in registry.values()),
+        )
+
+    async def is_established_client(self, client_id: str) -> bool:
+        """In-memory check that an owner login or refresh established the client."""
+        entry = (await self._client_registry()).get(client_id)
+        return entry is not None and entry["state"] == "established"
+
+    async def announce_started(self) -> None:
+        states = [entry["state"] for entry in (await self._client_registry()).values()]
+        audit(
+            "service_started",
+            established=states.count("established"),
+            pending=states.count("pending"),
+        )
 
     async def _client_registry(self) -> dict[str, dict[str, Any]]:
         async with self._registry_lock:
@@ -451,7 +504,11 @@ class OwnerGitHubOAuth(OAuthProxy):
         self, client: OAuthClientInformationFull, refresh_token: str
     ) -> RefreshToken | None:
         async with asyncio.timeout(9), self._exchange_lock:
-            return await super().load_refresh_token(client, refresh_token)
+            loaded = await super().load_refresh_token(client, refresh_token)
+        if loaded is None:
+            # Replayed after rotation, expired, revoked or bound to another client.
+            audit("refresh_denied", reason="unknown_token")
+        return loaded
 
     async def exchange_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
@@ -459,10 +516,13 @@ class OwnerGitHubOAuth(OAuthProxy):
         assert client.client_id is not None
         async with asyncio.timeout(9), self._exchange_lock:
             if not await self._established_capacity(client.client_id):
+                audit("login_denied", reason="capacity")
                 raise TokenError("invalid_client", "Client capacity exceeded")
+            new_client = not await self.is_established_client(client.client_id)
             with self.identity.request_scope():
                 tokens = await super().exchange_authorization_code(client, authorization_code)
             await self._establish(client.client_id)
+            audit("token_issued", client=client.client_id, new_client="yes" if new_client else "no")
             return tokens
 
     async def exchange_refresh_token(
@@ -475,6 +535,7 @@ class OwnerGitHubOAuth(OAuthProxy):
             # A verified refresh proves the grant came from an owner login.
             if await self._established_capacity(client.client_id):
                 await self._establish(client.client_id)
+            audit("refresh_succeeded", client=client.client_id)
             return tokens
 
     async def load_access_token(self, token: str) -> AccessToken | None:
@@ -483,8 +544,53 @@ class OwnerGitHubOAuth(OAuthProxy):
             with self.identity.request_scope():
                 loaded = await super().load_access_token(token)
                 if loaded is not None and not isinstance(loaded, AccessToken):
-                    raise GitHubUnavailable("Incompatible OAuth token result")
+                    raise GitHubUnavailable("Incompatible OAuth token result", stage="identity")
                 return loaded
+
+    async def _show_consent_page(self, request: Request) -> HTMLResponse | RedirectResponse:
+        response = await super()._show_consent_page(request)
+        if isinstance(response, RedirectResponse) or response.status_code != 200:
+            return response
+        body = bytes(response.body)
+        if body.count(CONSENT_HEADING) != 1:
+            # Never show an approval page without the phishing warning.
+            audit("consent_warning_missing")
+            return create_secure_html_response(
+                "<h1>Error</h1><p>The consent page is unavailable</p>", status_code=500
+            )
+        response.body = body.replace(CONSENT_HEADING, CONSENT_HEADING + CONSENT_WARNING)
+        response.headers["content-length"] = str(len(response.body))
+        return response
+
+    async def _submit_consent(self, request: Request) -> HTMLResponse | RedirectResponse:
+        txn_id = str((await request.form()).get("txn_id", ""))
+        transaction = await self._transaction_store.get(key=txn_id) if txn_id else None
+        client = transaction.client_id if transaction is not None else ""
+        response = await super()._submit_consent(request)
+        if isinstance(response, RedirectResponse):
+            location = response.headers.get("location", "")
+            approved = location.startswith(GITHUB_AUTHORIZE_URL + "?")
+            audit("consent_approved" if approved else "consent_denied", client=client)
+        else:
+            # 403 is the double-submit cookie mismatch of a forged submission.
+            reason = "session" if response.status_code == 403 else "invalid"
+            audit("consent_rejected", reason=reason)
+        return response
+
+    async def _handle_idp_callback(self, request: Request) -> HTMLResponse | RedirectResponse:
+        response = await super()._handle_idp_callback(request)
+        if isinstance(response, RedirectResponse):
+            query = parse_qs(urlsplit(response.headers.get("location", "")).query)
+            if "error" in query:
+                audit("callback_rejected", reason="upstream_error")
+        elif response.status_code == 403:
+            # The browser that approved consent did not complete the login.
+            audit("callback_rejected", reason="binding")
+        elif response.status_code == 400:
+            audit("callback_rejected", reason="transaction")
+        else:
+            audit("callback_rejected", reason="upstream_error")
+        return response
 
 
 def _pending_expired(entry: dict[str, Any], now: float) -> bool:

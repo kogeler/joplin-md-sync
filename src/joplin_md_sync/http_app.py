@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from starlette.applications import Starlette
 from starlette.responses import Response
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from joplin_md_sync.gpt_actions import ACTIONS_NAMESPACE
 
@@ -12,9 +14,17 @@ from joplin_md_sync.gpt_actions import ACTIONS_NAMESPACE
 class CombinedHttpApp:
     """Dispatch whole ASGI applications, retaining OAuth middleware/lifespan."""
 
-    def __init__(self, legacy: ASGIApp, oauth: Starlette, *, mcp_path: str = "/mcp") -> None:
+    def __init__(
+        self,
+        legacy: ASGIApp,
+        oauth: Starlette,
+        *,
+        mcp_path: str = "/mcp",
+        on_startup: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self.legacy = legacy
         self.oauth = oauth
+        self.on_startup = on_startup
         self.oauth_paths = frozenset(
             path for route in oauth.routes if isinstance(path := getattr(route, "path", None), str)
         )
@@ -34,8 +44,15 @@ class CombinedHttpApp:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
+            on_startup = self.on_startup
+
+            async def started(message: Message) -> None:
+                await send(message)
+                if message["type"] == "lifespan.startup.complete" and on_startup is not None:
+                    await on_startup()
+
             # Explicitly drive the child, rather than assuming Mount starts it.
-            await self.oauth(scope, receive, send)
+            await self.oauth(scope, receive, started)
             return
         if scope["type"] != "http":
             return

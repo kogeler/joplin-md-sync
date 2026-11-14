@@ -244,6 +244,9 @@ Then add a custom connector in hosted Claude with the URL
 Client Secret fields in its advanced settings empty; never enter the GitHub App
 values there. Claude registers a downstream client through DCR. Approve the
 service's consent screen, then sign in to GitHub with the configured account.
+The consent screen warns you to approve only a connection you started yourself
+in the last few minutes; the application name it shows is chosen by the
+requester. If you did not just add the connector, choose Deny.
 See [Claude connector authentication](https://claude.com/docs/connectors/building/authentication).
 
 Validate the deployed connection with these checks:
@@ -301,6 +304,29 @@ state snapshot can restore revoked refresh grants: invalidate those grants by
 rotating the signing key and resetting state before reconnecting. Application
 rollback does not reverse already applied note changes.
 
+## Monitor OAuth access
+
+The service writes security events to its log at default verbosity, without
+tokens, codes, secrets or request content. On a headless installation:
+
+```bash
+journalctl --user -u joplin-md-sync -g oauth_audit
+```
+
+| Event | Meaning |
+| --- | --- |
+| `service_started`, `client_registered`, `consent_approved`, `token_issued`, `refresh_succeeded` | Normal connection activity; `client` is the first 8 characters of the client ID |
+| `consent_denied` | The consent screen was answered with Deny |
+| `consent_rejected reason=session`, `callback_rejected reason=binding` | A consent or login completed in a browser that did not start it: a forged or shared link |
+| `foreign_account github_id=N` | A different GitHub account tried to sign in |
+| `refresh_denied reason=unknown_token` | A rotated, expired or revoked refresh token was presented; repeated events can mean a stolen token |
+| `resource_denied`, `rate_limited`, `registration_rejected` | Rejected tokens, exhausted rate budgets or refused registrations |
+| `github_unavailable`, `login_denied`, `state_reset` | GitHub outages, refused logins and local grant resets |
+
+Events that anyone can trigger are written at most once per minute per reason;
+the next line reports the `suppressed` count. To revoke access after a
+suspicious event, stop the service and run `mcp oauth-reset` as described above.
+
 ## Troubleshoot sign-in
 
 OAuth errors return a safe `error` and `error_description` without provider
@@ -317,5 +343,5 @@ responses or credentials.
 | `503 temporarily_unavailable` | GitHub timed out, failed or rate limited the request. Retry after `Retry-After`. Refresh grants are kept, including when GitHub already rotated the grant before the identity check failed. An outage during the first sign-in needs a new sign-in. |
 | `Client registration capacity exceeded; retry later` | 64 registrations are waiting for an owner sign-in, usually from a registration flood. Unused registrations expire after 30 minutes and free their slots; established connections keep working. |
 | `Client capacity exceeded` (`invalid_client`) | 512 established clients are still live. Expired records free their slots; otherwise stop the service, run `mcp oauth-reset --confirm-reset`, which revokes every local grant, and reconnect. |
-| `429` with `Retry-After` | The registration, token or browser-flow rate budget is exhausted. Each budget is separate, so a registration flood does not block refresh. |
+| `429` with `Retry-After` | The registration, token or browser-flow rate budget is exhausted. Each budget is separate, so a registration flood does not block refresh, and each connected client refreshes from its own token budget. `rate_limited` events name the exhausted budget. |
 | Sign-in requested again after about six months | An established client record lives 15897600 seconds (about 184 days) from its first sign-in, even while in use. Sign in again; Claude registers a new client. |

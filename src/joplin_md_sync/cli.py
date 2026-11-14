@@ -57,6 +57,7 @@ from joplin_md_sync.metadata import (
     parse_note_file,
     serialize_header,
 )
+from joplin_md_sync.oauth_audit import AUDIT_LOGGER, audit
 from joplin_md_sync.planner import build_plan, classify
 from joplin_md_sync.sync import Executor, build_remote_snapshot, finalize_run
 from joplin_md_sync.workspace import Workspace, write_file_atomic
@@ -438,17 +439,32 @@ def _close_logging_handlers() -> None:
         handler.close()
 
 
+class _VisibilityFilter(logging.Filter):
+    """OAuth security events stay visible at default verbosity."""
+
+    def __init__(self, level: int, audit_level: int) -> None:
+        super().__init__()
+        self.level = level
+        self.audit_level = audit_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        minimum = self.audit_level if record.name == AUDIT_LOGGER else self.level
+        return record.levelno >= minimum
+
+
 def _setup_logging(args: argparse.Namespace) -> None:
     _close_logging_handlers()
     root = logging.getLogger("joplin_md_sync")
     root.setLevel(logging.DEBUG)
     stderr = logging.StreamHandler(sys.stderr)
     if getattr(args, "quiet", False):
-        stderr.setLevel(logging.ERROR)
+        level, audit_level = logging.ERROR, logging.WARNING
     elif getattr(args, "verbose", False):
-        stderr.setLevel(logging.DEBUG)
+        level, audit_level = logging.DEBUG, logging.DEBUG
     else:
-        stderr.setLevel(logging.WARNING)
+        level, audit_level = logging.WARNING, logging.INFO
+    stderr.setLevel(min(level, audit_level))
+    stderr.addFilter(_VisibilityFilter(level, audit_level))
     stderr.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     stderr.addFilter(_RedactionFilter())
     root.addHandler(stderr)
@@ -1184,6 +1200,7 @@ def cmd_mcp(args: argparse.Namespace) -> CommandOutput:
             config = OAuthConfig.from_cli(args)
             with OAuthState(config) as state:
                 state.reset()
+            audit("state_reset")
         except (ValueError, OSError) as exc:
             raise UnsafeOperationError(str(exc)) from None
         except ImportError:

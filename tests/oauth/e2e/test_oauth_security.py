@@ -311,6 +311,8 @@ def test_consent_requires_csrf_and_browser_binding(app, tampering):
 
 
 def test_dcr_metadata_is_escaped_and_never_fetched(app):
+    # Client metadata is attacker-controlled text and never reaches the logs.
+    app.log_canaries.add("fixture-xss")
     app.start()
     # Client-supplied URLs point at a reachable local listener, so any server
     # side fetch would be observed as a connection instead of a DNS failure.
@@ -324,6 +326,9 @@ def test_dcr_metadata_is_escaped_and_never_fetched(app):
         )
         assert "<script>fixture-xss</script>" not in page.text
         assert "&lt;script&gt;fixture-xss" in page.text
+        # The requester names itself, so the page warns before any approval.
+        assert page.text.count("Only continue if you started this.") == 1
+        assert page.headers["x-frame-options"] == "DENY"
         assert app.github.github.user_requests == 0
         fields["action"] = "deny"
         response = app.client.post("/consent", data=fields)
@@ -332,6 +337,7 @@ def test_dcr_metadata_is_escaped_and_never_fetched(app):
         assert not app.github.github.codes
         with pytest.raises(BlockingIOError):
             listener.accept()
+    assert "oauth_audit event=consent_denied client=" in app.audit_log()
 
 
 def test_forwarding_path_aliases_duplicate_form_and_json_limits(app):
@@ -385,6 +391,64 @@ def test_flow_rate_limit_is_bounded_without_github_or_notes(app):
     ]
     assert 429 in responses
     assert app.github.github.user_requests == 0
+    assert not app.backend.store.notes
+
+
+def refresh(app, client_id, refresh_token):
+    return app.client.post(
+        "/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "refresh_token": refresh_token,
+        },
+    )
+
+
+def test_anonymous_token_flood_does_not_block_established_refresh(app):
+    app.start()
+    client_id, tokens = app.login()
+    flood = [refresh(app, "unknown-client", "fixture-refresh").status_code for _ in range(65)]
+    assert 429 in flood
+    # The connected client refreshes from its own budget.
+    assert refresh(app, client_id, tokens["refresh_token"]).status_code == 200
+    log = app.audit_log()
+    assert "oauth_audit event=rate_limited bucket=token_anonymous" in log
+    assert f"oauth_audit event=refresh_succeeded client={client_id[:8]}" in log
+    assert not app.backend.store.notes
+
+
+def test_security_events_are_recorded_without_credentials(app):
+    app.start()
+    client_id, tokens = app.login()
+    assert refresh(app, client_id, tokens["refresh_token"]).status_code == 200
+    # The rotated refresh token is replayed.
+    replayed = refresh(app, client_id, tokens["refresh_token"])
+    assert (replayed.status_code, replayed.json()["error"]) == (401, "invalid_grant")
+    # A forged consent submission comes from a browser without the state cookie.
+    _, _, fields, _ = begin_authorization(app.client)
+    app.client.cookies.clear()
+    assert app.client.post("/consent", data={**fields, "action": "approve"}).status_code == 403
+    # Another browser completes a login that this browser approved.
+    _, _, fields, _ = begin_authorization(app.client)
+    consent = app.client.post("/consent", data={**fields, "action": "approve"})
+    assert consent.status_code == 302
+    callback = app.github.authorize(consent.headers["location"])
+    app.client.cookies.clear()
+    assert app.client.get(callback).status_code == 403
+    client = client_id[:8]
+    log = app.audit_log()
+    for expected in (
+        "event=service_started established=0 pending=0",
+        f"event=client_registered client={client} pending=1",
+        f"event=consent_approved client={client}",
+        f"event=token_issued client={client} new_client=yes",
+        f"event=refresh_succeeded client={client}",
+        "event=refresh_denied reason=unknown_token",
+        "event=consent_rejected reason=session",
+        "event=callback_rejected reason=binding",
+    ):
+        assert "oauth_audit " + expected in log, expected
     assert not app.backend.store.notes
 
 

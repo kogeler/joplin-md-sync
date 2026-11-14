@@ -25,6 +25,14 @@ All notable changes to this project are documented here. The format follows
 - Keep anonymous registrations pending for 30 minutes (at most 64) until an
   owner sign-in establishes them, and give registration, token and browser
   flows separate rate budgets so a registration flood cannot block refresh.
+- Warn on the OAuth consent screen to approve only a connection the owner
+  started, and refuse to render an approval page without that warning.
+- Record OAuth security events (registrations, consent decisions and forgery
+  attempts, foreign accounts, token issuance, refresh replay, rate limiting,
+  outages and resets) as credential-free, throttled `oauth_audit` log lines
+  visible at default verbosity.
+- Give each established OAuth client its own token-endpoint budget, so
+  anonymous token floods cannot block a connected client's refresh.
 - Provide Nginx examples for the existing HTTPS hostname that exclude OAuth
   callback codes/state from request logs and match the MCP body limit.
   Document local installation of unpublished CI candidates.

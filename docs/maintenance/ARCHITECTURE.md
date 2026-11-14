@@ -120,7 +120,8 @@ The following defaults describe the embedded runtime. They complement the
 | Accepted sockets | 16, with admission before HTTP headers arrive |
 | Incoming request read deadline | 15 seconds, including empty sockets, partial bodies and pipelined requests |
 | Shared synchronous execution | 8 daemon workers; up to 16 admitted running or waiting requests across the interfaces |
-| Public OAuth flow rate | Separate token buckets: registration 30, token 60 and browser flow (`/authorize`, `/consent`, `/auth/callback`) 60 requests per minute |
+| Public OAuth flow rate | Separate token buckets: registration 30, anonymous token 60 and browser flow (`/authorize`, `/consent`, `/auth/callback`) 60 requests per minute; each established client refreshes from its own 20-per-minute token bucket |
+| Security audit log | Fixed `oauth_audit` events with validated fields on the service log at default verbosity; anonymous-triggerable events at most once per minute per reason, with a suppressed count |
 | Dynamic client registration | A new client is pending: at most 64 pending clients, each usable for 1800 seconds. A successful owner login (or refresh) establishes it; up to 512 established clients, never evicted. Expired pending and established records release their slots without a reset |
 | Established client lifetime | 15897600 seconds (about 184 days) from establishment, even while in use; a new login then registers again |
 | Request bodies | 16 MiB for `/oauth/mcp`, 8 KiB for `/register`, 64 KiB for other OAuth routes |

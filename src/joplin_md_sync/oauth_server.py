@@ -70,8 +70,17 @@ def create_http_app(
     )
     # FastMCP appends http_app(middleware=...) inside its authentication stack.
     # The boundary must cover authentication as well as endpoint execution.
-    oauth.add_middleware(OAuthBoundary, public_origin=config.public_base_url)
-    return CombinedHttpApp(LegacyAsgiApp(context, budget), oauth, mcp_path=context.endpoint)
+    oauth.add_middleware(
+        OAuthBoundary,
+        public_origin=config.public_base_url,
+        client_classifier=auth.is_established_client,
+    )
+    return CombinedHttpApp(
+        LegacyAsgiApp(context, budget),
+        oauth,
+        mcp_path=context.endpoint,
+        on_startup=auth.announce_started,
+    )
 
 
 def check_oauth(config: OAuthConfig, context: LegacyContext) -> dict[str, object]:

@@ -185,6 +185,8 @@
         "test_oauth_flow.py::test_public_oauth_rejects_host_origin_oversized_input_and_duplicate_auth",
         "test_oauth_lifecycle.py::test_dcr_registration_capacity_preserves_existing_owner_grant",
         "test_oauth_security.py::test_flow_rate_limit_is_bounded_without_github_or_notes",
+        "test_oauth_security.py::test_anonymous_token_flood_does_not_block_established_refresh",
+        "test_oauth_security.py::test_security_events_are_recorded_without_credentials",
         "test_oauth_tools.py::test_tool_execution_is_bounded_without_dropping_waiting_calls",
         "test_oauth_transport.py::test_real_listener_admission_includes_sockets_without_headers",
         "test_oauth_transport.py::test_real_listener_admits_exactly_sixteen_keep_alive_connections"

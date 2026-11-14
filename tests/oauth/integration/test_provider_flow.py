@@ -20,7 +20,7 @@ from mcp.server.auth.provider import RegistrationError
 from mcp.shared.auth import OAuthClientInformationFull
 from starlette.testclient import TestClient
 
-from joplin_md_sync import github_oauth
+from joplin_md_sync import github_oauth, gpt_actions
 from joplin_md_sync.github_oauth import CLAUDE_CALLBACK, OwnerGitHubOAuth
 from joplin_md_sync.oauth_boundary import OAuthBoundary
 from tests.oauth.fake_github import MockGitHub
@@ -351,3 +351,89 @@ def test_unreleased_registration_list_is_read_as_pending() -> None:
     )
     asyncio.run(auth.register_client(registration("new-client")))
     assert registry_states(storage) == {"legacy-client": "pending", "new-client": "pending"}
+
+
+def test_consent_page_warns_once_and_keeps_its_security_headers() -> None:
+    github = MockGitHub()
+    with TestClient(application(github), base_url=BASE, follow_redirects=False) as client:
+        _, _, _, page = begin_authorization(client)
+        assert page.text.count("Only continue if you started this.") == 1
+        assert page.headers["x-frame-options"] == "DENY"
+        assert page.headers["content-length"] == str(len(page.content))
+        assert any(name.startswith("__Host-MCP_CONSENT_STATE_") for name in page.cookies)
+        # The warning does not change the approval itself.
+        client_id, verifier, callback = authorize(client, github)
+        assert callback.status_code == 302
+        tokens = exchange(client, client_id, verifier, callback.headers["location"])
+        assert tokens.status_code == 200
+
+
+def test_consent_page_without_its_heading_fails_closed(monkeypatch, caplog) -> None:
+    from fastmcp.server.auth.oauth_proxy import consent
+
+    original = consent.create_consent_html
+    monkeypatch.setattr(
+        consent,
+        "create_consent_html",
+        lambda **fields: original(**fields).replace("Application Access Request", "Changed"),
+    )
+    github = MockGitHub()
+    with (
+        caplog.at_level("INFO", logger="joplin_md_sync.oauth.audit"),
+        TestClient(application(github), base_url=BASE, follow_redirects=False) as client,
+    ):
+        register = client.post(
+            "/register",
+            json={"redirect_uris": [CLAUDE_CALLBACK], "token_endpoint_auth_method": "none"},
+        )
+        start = client.get(
+            "/authorize",
+            params={
+                "client_id": register.json()["client_id"],
+                "redirect_uri": CLAUDE_CALLBACK,
+                "response_type": "code",
+                "state": "fixture-client-state",
+                "code_challenge": "x" * 43,
+                "code_challenge_method": "S256",
+            },
+        )
+        page = client.get(start.headers["location"])
+    assert page.status_code == 500
+    assert "Allow Access" not in page.text
+    assert "oauth_audit event=consent_warning_missing" in caplog.text
+
+
+def boundary_client(established: set[str]) -> TestClient:
+    async def reached(scope, receive, send):
+        await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b""})
+
+    async def classify(client_id: str) -> bool:
+        return client_id in established
+
+    return TestClient(OAuthBoundary(reached, client_classifier=classify))
+
+
+def test_established_clients_have_separate_token_budgets(monkeypatch) -> None:
+    # A fixed clock keeps the buckets from refilling on a slow runner.
+    monkeypatch.setattr(gpt_actions, "time", SimpleNamespace(monotonic=lambda: 0.0))
+    client = boundary_client({"owner", "second"})
+
+    def status(**form: str) -> int:
+        return client.post("/token", data={"grant_type": "refresh_token", **form}).status_code
+
+    # Unknown, missing and duplicate client IDs share the anonymous budget.
+    anonymous = [status(client_id="unknown") for _ in range(30)]
+    anonymous += [status() for _ in range(30)]
+    duplicate = client.post(
+        "/token",
+        content="grant_type=refresh_token&client_id=owner&client_id=owner",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert anonymous == [200] * 60 and duplicate.status_code == 429
+    assert status(client_id="owner") == 200
+    owner = [status(client_id="owner") for _ in range(20)]
+    assert owner[-1] == 429 and owner.count(200) == 19
+    # Each established client has its own budget.
+    assert status(client_id="second") == 200

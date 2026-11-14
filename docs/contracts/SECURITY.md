@@ -138,7 +138,9 @@ budgets. Client credentials MUST remain independent across OAuth, legacy MCP,
 Actions and Joplin, comparing the signing key as key material in every accepted
 encoding. Codes, credentials and note bodies MUST NOT enter application/SDK
 logs. GitHub expiring access and refresh token formats MUST be validated before
-issuing client credentials.
+issuing client credentials. The consent page MUST warn the owner not to approve
+a connection they did not start, and MUST fail closed instead of rendering an
+approval without that warning.
 
 **Evidence:**
 
@@ -153,6 +155,8 @@ issuing client credentials.
 - [`test_pending_registrations_expire_without_reset`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_pending_registrations_expire_without_reset`
 - [`test_dcr_registration_capacity_preserves_existing_owner_grant`](../../tests/oauth/e2e/test_oauth_lifecycle.py) - `tests/oauth/e2e/test_oauth_lifecycle.py::test_dcr_registration_capacity_preserves_existing_owner_grant`
 - [`test_signing_key_reuse_is_rejected_in_any_accepted_encoding`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_signing_key_reuse_is_rejected_in_any_accepted_encoding`
+- [`test_consent_page_warns_once_and_keeps_its_security_headers`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_consent_page_warns_once_and_keeps_its_security_headers`
+- [`test_consent_page_without_its_heading_fails_closed`](../../tests/oauth/integration/test_provider_flow.py) - `tests/oauth/integration/test_provider_flow.py::test_consent_page_without_its_heading_fails_closed`
 
 ### `SEC-009` - OAuth state is private, encrypted and exclusively managed
 
@@ -170,3 +174,23 @@ storage failures MUST NOT evict existing valid grants to admit new ones.
 - [`test_corruption_and_wrong_key_preserve_state`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_corruption_and_wrong_key_preserve_state`
 - [`test_state_quota_invalid_ttl_and_disk_failure_preserve_existing_grants`](../../tests/oauth/unit/test_config.py) - `tests/oauth/unit/test_config.py::test_state_quota_invalid_ttl_and_disk_failure_preserve_existing_grants`
 - [`test_changed_owner_and_explicit_local_reset_deny_old_grants`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_changed_owner_and_explicit_local_reset_deny_old_grants`
+
+### `SEC-010` - OAuth security events are recorded without credentials
+
+**Contract:** The OAuth service MUST record registrations, consent decisions
+and forgery attempts, callback binding failures, foreign GitHub accounts,
+token issuance, refresh success and replay, rejected resource tokens, rate
+limiting, GitHub outages and local resets as single-line audit events. Events
+MUST contain only a fixed name and whitelisted, validated fields, and MUST NOT
+contain tokens, codes, `state`, transaction or CSRF values, secrets, request
+content, client metadata or forwarded addresses. Anonymous-triggerable events
+MUST be throttled per event and reason with a suppressed count. Audit events
+MUST be visible at default service verbosity.
+
+**Evidence:**
+
+- [`test_security_events_are_recorded_without_credentials`](../../tests/oauth/e2e/test_oauth_security.py) - `tests/oauth/e2e/test_oauth_security.py::test_security_events_are_recorded_without_credentials`
+- [`test_foreign_github_account_cannot_issue_access_or_mutate`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_foreign_github_account_cannot_issue_access_or_mutate`
+- [`test_only_whitelisted_and_valid_values_are_written`](../../tests/oauth/unit/test_audit.py) - `tests/oauth/unit/test_audit.py::test_only_whitelisted_and_valid_values_are_written`
+- [`test_anonymous_events_are_throttled_with_suppressed_counts`](../../tests/oauth/unit/test_audit.py) - `tests/oauth/unit/test_audit.py::test_anonymous_events_are_throttled_with_suppressed_counts`
+- [`test_cli_logging_shows_security_events_without_verbose`](../../tests/oauth/unit/test_audit.py) - `tests/oauth/unit/test_audit.py::test_cli_logging_shows_security_events_without_verbose`
