@@ -9,6 +9,11 @@ failure, authentication, and resource-limit behavior is defined by the
 Both transports use the same tools and Joplin Data API service. Neither needs a
 sync workspace or reads or writes `.joplin-sync/`.
 
+For hosted Claude with GitHub login, use the
+[Claude connector guide](CLAUDE_CONNECTOR.md). The standard service enables
+`/claude/mcp` with `--github-oauth` on the existing listener;
+legacy `/mcp` retains its Bearer credential.
+
 ## Endpoint and transport
 
 ### Local stdio

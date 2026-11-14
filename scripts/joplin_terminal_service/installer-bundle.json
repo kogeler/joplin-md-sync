@@ -1,0 +1,93 @@
+{
+  "files": {
+    "joplin_terminal_common.py": {
+      "sha256": "1ba2b8783870cfe3d2db5e457b5725b1d5c97f285cc4341a7c48ca8cb973fb46",
+      "size": 2409
+    },
+    "joplin_terminal_installer/__init__.py": {
+      "sha256": "9f33d80e9cb7312a78b678a3f5d5e6bce9beca5d627619c5705e379e1600b3f8",
+      "size": 72
+    },
+    "joplin_terminal_installer/application.py": {
+      "sha256": "bf017fafe3a4056401b7de5b9f6e8d41491a0e1e4fb043c51f150df4ac6bf09d",
+      "size": 1784
+    },
+    "joplin_terminal_installer/assets.py": {
+      "sha256": "7c94d725e3d7a602a2c64dd75c676162220b537c680ede0b40e2cde207ad842a",
+      "size": 930
+    },
+    "joplin_terminal_installer/cli.py": {
+      "sha256": "e1d750a5de6efbb5a6b7f3ddb05b10fb35156e6c57daf8a1eac1fcde7d57fa23",
+      "size": 20424
+    },
+    "joplin_terminal_installer/commands.py": {
+      "sha256": "acad7787600da423678468879360366b5bbbb6b6ba596af8ba0d9a20ea224778",
+      "size": 10353
+    },
+    "joplin_terminal_installer/common.py": {
+      "sha256": "fc2400adc8ff874fafbf4f931088ef808260dd4015d5fbef8303d557b73da9f9",
+      "size": 9164
+    },
+    "joplin_terminal_installer/credentials.py": {
+      "sha256": "5a7a224c52f0e9439711c43e7db578cbf569dff4eadcd0f295c36e7df6d7b080",
+      "size": 10570
+    },
+    "joplin_terminal_installer/encryption.py": {
+      "sha256": "c846f85878efdb23f5c7820b5ee537e13934490e112f899df55166f011248539",
+      "size": 7892
+    },
+    "joplin_terminal_installer/lifecycle.py": {
+      "sha256": "45025261a82102ac5576aca6c837f5a15a8bc77a2f03292c4cc64990ae740b1e",
+      "size": 25050
+    },
+    "joplin_terminal_installer/managed.py": {
+      "sha256": "bf0d46224eb78030628d82bc041bfd4fd131d3cc98066d4fbce52d4b3a112557",
+      "size": 8667
+    },
+    "joplin_terminal_installer/models.py": {
+      "sha256": "16c440af1c0962f3742e3b15bc33de690390ec0ae3773907aa757fe76311ce9e",
+      "size": 4992
+    },
+    "joplin_terminal_installer/oauth.py": {
+      "sha256": "b2605bdee3a78078c2d12b19b75df841dc7e024f17c0771923c2ddb13cc0fedd",
+      "size": 11728
+    },
+    "joplin_terminal_installer/operations.py": {
+      "sha256": "f67a93cff7f570109a0975d795874aa3861d303a3f6038978ec4025100e06710",
+      "size": 5326
+    },
+    "joplin_terminal_installer/prompts.py": {
+      "sha256": "d84ccfcbb5ce710f8b5ea699b97976faec8186bea0270d973dca307f9b9a078e",
+      "size": 8890
+    },
+    "joplin_terminal_installer/releases.py": {
+      "sha256": "d4ebbee43f48b1e773d69a28532a98c165e16ea18761418b3c7453f273f00805",
+      "size": 14292
+    },
+    "joplin_terminal_installer/service.py": {
+      "sha256": "f5d3607303163e6e0c1e88e311d17772923f9bac9a350018b65fd6b667d19941",
+      "size": 19889
+    },
+    "joplin_terminal_installer/settings.py": {
+      "sha256": "b1fa601cd1fc6878484c1107cb18b46b5115db83a5f0a69afddb1cd331508ca6",
+      "size": 1856
+    },
+    "joplin_terminal_installer/sync.py": {
+      "sha256": "498aa5a4dc75853f2cdf7c045bdf96a5336ea1297c49f46a36b8b503ccfac01a",
+      "size": 15406
+    },
+    "run_joplin_terminal.py": {
+      "sha256": "b326afbaae4d24f84ad1671c80f2ef52aeef12d6ce64f0580761b392ac8755f2",
+      "size": 14470
+    },
+    "systemd/joplin-md-sync.service": {
+      "sha256": "e585bb5a137d454088719e3d1721bccaab6e3ad3a3be5663778015a964817eb7",
+      "size": 615
+    },
+    "systemd/joplin-terminal.service": {
+      "sha256": "adf85b6f39352f536b81ed61ab35506238faedc864e8348680a3f48f8ad6f2b0",
+      "size": 438
+    }
+  },
+  "schema": 1
+}

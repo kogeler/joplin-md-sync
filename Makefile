@@ -23,6 +23,8 @@ PROJECT_PYTHON := $(shell $(PY) -c "import sys; print(sys.executable)")
 
 ARCH ?= $(shell $(PY) -c "from scripts.build_standalone import standalone_architecture; print(standalone_architecture())" 2>/dev/null)
 STANDALONE := dist/joplin-md-sync-$(PLATFORM)-$(ARCH)$(EXE)
+# Release PyInstaller options with the GitHub TLS client probe as the entry.
+OAUTH_PROBE := .artifacts/oauth-probe/dist/oauth-packaging-probe$(EXE)
 # Environments are private to one OS machine identity and local user, so one
 # checkout on a shared or network drive can serve several hosts.
 VENV_ROOT := $(shell $(PY) -I scripts/venv_root.py)
@@ -58,10 +60,10 @@ CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/n
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs lock lock-check refresh-dependencies \
 	docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	test test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
+	test test-oauth test-oauth-e2e oauth-e2e-inventory test-oauth-systemd test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
 	validate-actions release-notes check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
-	verify-release clean
+	verify-release oauth-packaging-probe clean
 
 help: ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
@@ -70,14 +72,14 @@ help: ## list available targets
 venv: ## runtime-only editable installation from the project lock
 	UV_PROJECT_ENVIRONMENT="$(VENV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups
 
-venv-dev: ## quality tools, without installing the project or other groups
-	UV_PROJECT_ENVIRONMENT="$(VENV_DEV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group quality --no-build
+venv-dev: ## quality tools and OAuth types, without installing the project
+	UV_PROJECT_ENVIRONMENT="$(VENV_DEV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group quality --no-install-project --no-build
 
 venv-test: ## portable test tools from the same universal lock
-	UV_PROJECT_ENVIRONMENT="$(VENV_TEST)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group test --no-build
+	UV_PROJECT_ENVIRONMENT="$(VENV_TEST)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group test --no-install-project --no-build
 
 venv-package: ## release tools and build backend from the same lock
-	UV_PROJECT_ENVIRONMENT="$(VENV_PACKAGE)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group build --no-build
+	UV_PROJECT_ENVIRONMENT="$(VENV_PACKAGE)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group build --no-install-project --no-build
 
 venv-docs: ## documentation tools from the same lock
 	UV_PROJECT_ENVIRONMENT="$(VENV_DOCS)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group docs --no-build
@@ -122,12 +124,30 @@ syntax: venv-dev ## compile Python sources and parse maintained shell scripts
 	$(PYTHON_DEV) -m compileall -q $(PYTHON_SOURCES)
 	bash -n scripts/joplin_terminal_service/collect_joplin_debug.sh
 
-test: venv-test ## full test suite in parallel
-	$(PYTHON_TEST) -m pytest $(PYTEST_XDIST) tests
+test: venv-test ## all runtime tests, including mandatory mocked OAuth E2E
+	$(PYTHON_TEST) -m pytest $(PYTEST_XDIST) tests --require-oauth-e2e
 
-test-full: venv-test ## full test suite with coverage reports and gate
+test-oauth: venv-test ## focused OAuth suite with mandatory E2E
+	$(PYTHON_TEST) -m pytest $(PYTEST_XDIST) tests/oauth --require-oauth-e2e
+
+test-oauth-e2e: venv-test ## full OAuth flow with mock GitHub and fake Joplin
 	mkdir -p $(ARTIFACTS)
-	$(PYTHON_TEST) -m pytest $(PYTEST_XDIST) tests \
+	$(PYTHON_TEST) -m pytest -q $(PYTEST_XDIST) tests/oauth/e2e --require-oauth-e2e --junitxml=$(ARTIFACTS)/oauth-e2e.xml
+	$(PY) scripts/report_oauth_acceptance.py --junit $(ARTIFACTS)/oauth-e2e.xml --output $(ARTIFACTS)/oauth-e2e-evidence.json
+
+oauth-e2e-inventory: venv-test ## deliberately rewrite exact OAuth E2E case IDs from a full collection
+	$(PYTHON_TEST) scripts/report_oauth_acceptance.py --write-inventory
+
+test-oauth-systemd: ## exercise the built native executable in the real systemd user sandbox
+	$(PY) scripts/test_oauth_systemd.py --executable "$(abspath $(STANDALONE))"
+
+oauth-packaging-probe: venv-package ## native and zipapp feasibility smoke outside checkout
+	$(PYTHON_PACKAGE) scripts/build_oauth_probe.py
+
+test-full: venv-test ## full runtime suite with coverage reports and gate
+	mkdir -p $(ARTIFACTS)
+	$(PYTHON_TEST) -m pytest $(PYTEST_XDIST) tests --require-oauth-e2e \
+		--junitxml=$(ARTIFACTS)/test-results.xml \
 		--cov=src/joplin_md_sync --cov-report=term-missing \
 		--cov-report=xml:$(ARTIFACTS)/coverage.xml --cov-fail-under=$(COVERAGE_MIN)
 	$(PYTHON_TEST) -m coverage report --format=markdown > $(ARTIFACTS)/coverage-report.md
@@ -140,6 +160,7 @@ test-live-stdio-standalone: standalone venv-test ## native stdio acceptance agai
 		$(PYTHON_TEST) -m pytest -q tests_live/test_mcp_stdio_live.py
 
 test-service-installer: venv-test ## Linux headless service installer tests
+	$(PY) scripts/joplin_terminal_service/build_bundle_manifest.py
 	$(PYTHON_TEST) -m unittest discover -s scripts/joplin_terminal_service/tests -v
 
 test-service-live: ## real Terminal installation and offline S3 round trip in an isolated container
@@ -192,9 +213,11 @@ package: build zipapp ## build all current-platform release artifacts
 smoke-wheel: ## install and exercise the already-built wheel
 	rm -rf $(VENV_SMOKE)
 	$(PY) -m venv $(VENV_SMOKE)
-	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet --no-deps dist/joplin_md_sync-$(VERSION)-py3-none-any.whl
+	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet dist/joplin_md_sync-$(VERSION)-py3-none-any.whl
 	$(VENV_SMOKE)/$(BIN)/joplin-md-sync version
 	$(VENV_SMOKE)/$(BIN)/python -m joplin_md_sync capabilities --json > /dev/null
+	$(PY) scripts/smoke_oauth_runtime.py --probe-python $(abspath $(VENV_SMOKE)/$(BIN)/python) \
+		-- $(abspath $(VENV_SMOKE)/$(BIN)/joplin-md-sync)
 	$(VENV_SMOKE)/$(BIN)/joplin-md-sync gpt-actions export-openapi --server-url https://joplin.example.invalid --output $(VENV_SMOKE)/chatgpt-action.openapi.json > /dev/null
 	$(VENV_SMOKE)/$(BIN)/python -c "import json, pathlib; doc=json.loads(pathlib.Path('$(VENV_SMOKE)/chatgpt-action.openapi.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -rf $(VENV_SMOKE)
@@ -202,22 +225,30 @@ smoke-wheel: ## install and exercise the already-built wheel
 smoke-sdist: ## install and exercise the already-built source distribution
 	rm -rf $(VENV_SMOKE)
 	$(PY) -m venv $(VENV_SMOKE)
-	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet --no-deps \
+	$(VENV_SMOKE)/$(BIN)/python -m pip install --quiet \
 		dist/joplin_md_sync-$(VERSION).tar.gz
 	$(VENV_SMOKE)/$(BIN)/joplin-md-sync version
 	$(VENV_SMOKE)/$(BIN)/python -m joplin_md_sync capabilities --json > /dev/null
+	$(PY) scripts/smoke_oauth_runtime.py --probe-python $(abspath $(VENV_SMOKE)/$(BIN)/python) \
+		-- $(abspath $(VENV_SMOKE)/$(BIN)/joplin-md-sync)
 	rm -rf $(VENV_SMOKE)
 
-smoke-zipapp: ## exercise the already-built standalone zipapp
-	$(PY) dist/joplin-md-sync.pyz version
-	$(PY) dist/joplin-md-sync.pyz capabilities --json > /dev/null
-	$(PY) dist/joplin-md-sync.pyz gpt-actions export-openapi --server-url https://joplin.example.invalid --output dist/chatgpt-action-zipapp.json > /dev/null
+smoke-zipapp: venv-package ## exercise the already-built zipapp in the standard runtime
+	$(PYTHON_PACKAGE) dist/joplin-md-sync.pyz version
+	$(PYTHON_PACKAGE) dist/joplin-md-sync.pyz capabilities --json > /dev/null
+	$(PY) scripts/smoke_oauth_runtime.py --probe-python $(abspath $(PYTHON_PACKAGE)) \
+		--probe-zipapp $(abspath dist/joplin-md-sync.pyz) \
+		-- $(abspath $(PYTHON_PACKAGE)) $(abspath dist/joplin-md-sync.pyz)
+	$(PYTHON_PACKAGE) dist/joplin-md-sync.pyz gpt-actions export-openapi --server-url https://joplin.example.invalid --output dist/chatgpt-action-zipapp.json > /dev/null
 	$(PY) -c "import json, pathlib; doc=json.loads(pathlib.Path('dist/chatgpt-action-zipapp.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -f dist/chatgpt-action-zipapp.json
 
-smoke-standalone: ## exercise the current-platform native executable
+smoke-standalone: venv-package ## exercise the current-platform native executable
 	$(STANDALONE) version
 	$(STANDALONE) capabilities --json > /dev/null
+	$(PYTHON_PACKAGE) scripts/build_oauth_probe.py --native-only
+	$(PY) scripts/smoke_oauth_runtime.py --probe-executable $(abspath $(OAUTH_PROBE)) \
+		-- $(abspath $(STANDALONE))
 	$(STANDALONE) gpt-actions export-openapi --server-url https://joplin.example.invalid --output dist/chatgpt-action-standalone.json > /dev/null
 	$(PY) -c "import json, pathlib; doc=json.loads(pathlib.Path('dist/chatgpt-action-standalone.json').read_text()); assert doc['openapi'] == '3.1.0'; assert doc['servers'] == [{'url': 'https://joplin.example.invalid'}]; assert doc['paths']"
 	rm -f dist/chatgpt-action-standalone.json

@@ -40,7 +40,7 @@ owned by [`CLI-001`](../contracts/CLI.md#cli-001-json-output-is-deterministic-an
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.7.1",
+  "tool_version": "1.8.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -210,6 +210,8 @@ Joplin connection options are the normal `--base-url`, `--port`,
   `--gpt-actions-max-response-chars N`,
   `--gpt-actions-max-concurrency N`, and
   `--gpt-actions-rate-limit REQUESTS_PER_MINUTE`
+- `--github-oauth` and its settings flags; see
+  [GitHub OAuth](#github-oauth-on-the-existing-mcp-listener)
 
 The command intentionally stays in the foreground. Full protocol behavior,
 security guidance, MCP client configuration, and service-manager examples are
@@ -232,3 +234,39 @@ and `output`.
 The repository does not store a generated contract. Export it with the real
 public hostname immediately before importing or updating a Custom GPT. See
 [ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md).
+
+### GitHub OAuth on the existing MCP listener
+
+`mcp serve --github-oauth` enables GitHub OAuth at `/claude/mcp` on the existing
+listener. Configure it with the individual flags below. OAuth requires
+`--auth-token-file` even on loopback. It ships in the standard package and
+native executables. See [Claude connector setup](CLAUDE_CONNECTOR.md).
+
+- `mcp github-user-id --login USER [--json]` resolves a public GitHub username
+  through GitHub's HTTPS API during setup. Save the returned numeric ID.
+- `mcp oauth-check` accepts the same OAuth flags and MCP/Actions/connection
+  options as `mcp serve`. It validates values, private secret files and routes
+  without network requests, a listener, state creation or migration.
+- `mcp oauth-reset --confirm-reset [--json]` accepts the same OAuth settings
+  flags and revokes local grants with the exclusive state lock while the service
+  is stopped. Secret files remain. It makes no GitHub revoke request.
+
+Check/reset imply OAuth configuration; `mcp serve` requires `--github-oauth`.
+Providing OAuth options to an otherwise disabled service is an error. The
+Client Secret and signing key must differ from each other and from the Joplin,
+MCP and Actions credentials; the signing key is compared as key material in
+any accepted Base64 form.
+
+| OAuth option | Purpose |
+| --- | --- |
+| `--github-oauth` | Enable the built-in OAuth interface on the existing listener |
+| `--github-oauth-public-url URL` | Required public HTTPS origin |
+| `--github-oauth-client-id ID` | Required GitHub OAuth App Client ID |
+| `--github-oauth-client-secret-file PATH` | Required private Client Secret file |
+| `--github-oauth-signing-key-file PATH` | Required private base64-encoded 32-byte signing key file |
+| `--github-oauth-allowed-user-id ID` | Required single positive numeric GitHub account ID |
+| `--github-oauth-login-hint USER` | Optional login hint; never an access rule |
+| `--github-oauth-state-dir PATH` | Required absolute, dedicated private state directory outside `.joplin-sync` |
+| `--github-oauth-access-token-ttl SECONDS` | Access lifetime from 600 to 3600; default 3600 |
+| `--confirm-reset` | Explicitly confirm revoking all local OAuth grants |
+| `--login USER` | Username for the explicit account-ID lookup command |

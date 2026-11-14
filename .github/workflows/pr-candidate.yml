@@ -1,0 +1,247 @@
+# Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT.
+
+name: PR candidate
+
+# A pull request from this repository whose .version differs from its merge
+# base publishes every push as a prerelease candidate, so live setups can
+# install unmerged code with the normal installer. Candidates are never stable
+# or latest releases; only the newest one per pull request is kept, and closing
+# the pull request removes it.
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-candidate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  EXPECTED_REPOSITORY: kogeler/joplin-md-sync
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  gate:
+    name: Candidate eligibility
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.check.outputs.publish }}
+      version: ${{ steps.check.outputs.version }}
+      head_sha: ${{ steps.check.outputs.head_sha }}
+      short_sha: ${{ steps.check.outputs.short_sha }}
+    steps:
+      - name: Compare .version with the merge base
+        id: check
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            if (repository !== process.env.EXPECTED_REPOSITORY) {
+              throw new Error(`Refusing to build candidates for ${repository}`);
+            }
+            const pull = context.payload.pull_request;
+            const head = pull.head.sha;
+            if (!/^[0-9a-f]{40}$/.test(head)) {
+              throw new Error("Pull request head SHA is invalid");
+            }
+            const comparison = await github.rest.repos.compareCommitsWithBasehead({
+              ...context.repo,
+              basehead: `${pull.base.sha}...${head}`,
+              per_page: 1,
+            });
+            const mergeBase = comparison.data.merge_base_commit.sha;
+            async function versionAt(ref) {
+              const response = await github.rest.repos.getContent({
+                ...context.repo,
+                path: ".version",
+                ref,
+              });
+              const file = response.data;
+              if (Array.isArray(file) || file.type !== "file" || file.encoding !== "base64") {
+                throw new Error(`.version at ${ref} is not a regular Base64-encoded file`);
+              }
+              return Buffer.from(file.content.replace(/\n/g, ""), "base64").toString("utf8").trim();
+            }
+            const headVersion = await versionAt(head);
+            const baseVersion = await versionAt(mergeBase);
+            if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(headVersion)) {
+              throw new Error(".version is not a stable semantic version");
+            }
+            // Every push after the pull request changed .version is a candidate,
+            // whether the change came with the first push or a later one.
+            const publish = headVersion !== baseVersion;
+            const short = head.slice(0, 7);
+            core.setOutput("publish", String(publish));
+            core.setOutput("version", `${headVersion}-pr${pull.number}.g${short}`);
+            core.setOutput("head_sha", head);
+            core.setOutput("short_sha", short);
+            core.notice(
+              publish
+                ? `Candidate ${headVersion}-pr${pull.number}.g${short} (base ${baseVersion})`
+                : `No candidate: .version ${headVersion} is unchanged from the merge base`,
+            );
+
+  build:
+    name: Candidate (linux-${{ matrix.arch }})
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            arch: amd64
+            python_arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            python_arch: arm64
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+          architecture: ${{ matrix.python_arch }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version-file: .tool-versions
+          enable-cache: true
+
+      - name: Build and smoke-test the candidate executable
+        env:
+          JOPLIN_MD_SYNC_BUILD_VERSION: ${{ needs.gate.outputs.version }}
+          CANDIDATE_ASSET: dist/joplin-md-sync-linux-${{ matrix.arch }}
+        run: |
+          make standalone smoke-standalone PY=python
+          reported="$("$CANDIDATE_ASSET" version --json \
+            | python -c 'import json, sys; print(json.load(sys.stdin)["tool_version"])')"
+          if [[ "$reported" != "$JOPLIN_MD_SYNC_BUILD_VERSION" ]]; then
+            echo "Candidate reports $reported, expected $JOPLIN_MD_SYNC_BUILD_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Upload smoke-tested candidate executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-candidate-linux-${{ matrix.arch }}
+          path: dist/joplin-md-sync-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  # Writes only release metadata and verified files; never checks out or runs
+  # pull request code with the write token.
+  publish:
+    name: Publish prerelease candidate
+    needs:
+      - gate
+      - build
+    if: needs.gate.outputs.publish == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download candidate executables
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: pr-candidate-linux-*
+          path: candidate
+          merge-multiple: true
+
+      - name: Replace this pull request's candidate prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
+          SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          test "$GH_REPO" = "$EXPECTED_REPOSITORY"
+          cd candidate
+          assets=(joplin-md-sync-linux-amd64 joplin-md-sync-linux-arm64)
+          chmod 0755 "${assets[@]}"
+          sha256sum "${assets[@]}" > SHA256SUMS.txt
+          tag="v$VERSION"
+          base_version="${VERSION%%-*}"
+          cat > notes.md <<NOTES
+          Automated candidate build of [pull request #$PR_NUMBER]($PR_URL) at commit
+          \`$HEAD_SHA\`. This is not a release and must not be used as one. A later
+          push replaces it, and closing the pull request removes it.
+
+          Install or update a headless service with the installer from the same commit:
+
+          \`\`\`bash
+          installer_ref='$HEAD_SHA'
+          set -o pipefail
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \\
+            "https://raw.githubusercontent.com/$GH_REPO/\${installer_ref}/scripts/joplin_terminal_service/install_joplin_terminal.py" \\
+            | python3 - --installer-ref "\$installer_ref" --joplin-md-sync-version '$VERSION'
+          \`\`\`
+          NOTES
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release delete "$tag" --cleanup-tag --yes
+          fi
+          gh release create "$tag" "${assets[@]}" SHA256SUMS.txt \
+            --prerelease \
+            --latest=false \
+            --target "$HEAD_SHA" \
+            --title "$base_version candidate · PR #$PR_NUMBER · $SHORT_SHA" \
+            --notes-file notes.md
+          # Keep only the newest candidate of this pull request.
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' \
+            | { grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$" || true; } \
+            | while read -r old; do
+                if [[ "$old" != "$tag" ]]; then
+                  gh release delete "$old" --cleanup-tag --yes
+                fi
+              done
+          echo "Published $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup:
+    name: Remove closed pull request candidates
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Delete candidate prereleases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          test "$GH_REPO" = "$EXPECTED_REPOSITORY"
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' \
+            | { grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$" || true; } \
+            | while read -r old; do
+                gh release delete "$old" --cleanup-tag --yes
+              done

@@ -6,8 +6,67 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-05
+
+### Added
+
+- Include the GitHub OAuth and ASGI runtime in every standard installation
+  and native executable. Enable GitHub login for one configured numeric account
+  ID with `mcp serve --github-oauth` on the existing HTTP port.
+- Configure OAuth with individual CLI flags and protected secret-file options.
+  Add account-ID lookup, read-only `mcp oauth-check`, and locked local
+  `mcp oauth-reset`, with encrypted persistent grants and installer lifecycle
+  support on the existing service unit.
+- Bound OAuth execution, suppress private worker errors after cancellation,
+  and distinguish temporary GitHub failures from revoked grants while
+  preserving refresh grants for recovery, including grants GitHub already
+  rotated before an identity check failed.
+- Keep anonymous registrations pending for 30 minutes (at most 64) until an
+  owner sign-in establishes them, and give registration, token and browser
+  flows separate rate budgets so a registration flood cannot block refresh.
+- Provide Nginx examples for the existing HTTPS hostname that exclude OAuth
+  callback codes/state from request logs and match the MCP body limit.
+  Document local installation of unpublished CI candidates.
+- Require process/TLS OAuth E2E acceptance for login, all registered tools,
+  identity and grant rejection, refresh, restart, state and concurrency limits.
+  Track every required case by exact ID with platform-specific shutdown cases,
+  probe the packaged GitHub TLS client in every distribution, and keep test
+  evidence after failed CI runs. Verify the real Joplin Data API and native
+  systemd sandbox separately, and retain downloadable CodeQL dataflow evidence
+  and native candidates for seven days.
+- Publish every push of a pull request that changes `.version` as an automatic
+  prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
+  executables and checksums, installable with the normal installer; keep only
+  the newest candidate per pull request and delete it on close.
+
 ### Changed
 
+- Make the headless installer work without setup flags: ask for missing values,
+  hide secrets, preserve configured settings on automatic updates, and fill new
+  OAuth configuration interactively. Add `--reconfigure` for a fresh setup
+  selection and `--clean` for prompt-free removal; clear disabled managed
+  credentials and grants while retaining external operator-owned files. Use
+  the same disabled startup defaults in dry-run and the actual setup flow.
+- Share sync configuration and credential cleanup across new installations,
+  upgrades and profiles left after interrupted setup. Reuse credentials only
+  for matching account/bucket identities, reject incomplete service pairs
+  before overwriting configuration, and require secret input without echo and
+  regular credential files that can be read without blocking. Read an existing
+  profile's sync settings before offering defaults when its units are missing.
+- Verify a changed adapter before stopping services on every upgrade, restore
+  the previous Joplin tree and restart previously active services when a
+  Joplin install fails, and remove the adapter executable during `--clean` only
+  when it matches the installer's receipt. Treat `JOPLIN_GITHUB_OAUTH` as a
+  strict boolean whose negative values disable OAuth like `--no-github-oauth`.
+- Split the installer into a small entry point and focused Python modules.
+  Piped/downloaded runs verify and import the complete bundle in a private
+  temporary directory, then remove it on exit. Select an unmerged branch, tag
+  or commit with `--installer-ref`/`--ref`, keeping `main` as the default and
+  downloading every module from the same selection. Local runs use sibling modules.
+- Require explicit user authorization for agent commits and pushes, and English
+  for all project-authored material. Keep working plans outside published docs;
+  consolidate OAuth design, runtime limits, test evidence and deployment
+  validation in the maintained architecture, development and connector guides.
 - Use native uv dependency groups and one universal `uv.lock` for development,
   tests, packaging, and documentation. Install each group into its existing
   host-private environment and let Dependabot update the manifest and lock

@@ -30,14 +30,14 @@ for a server without a desktop session, use the
 === "pipx"
 
     ```bash
-    pipx install "joplin-md-sync==1.7.1"
+    pipx install "joplin-md-sync==1.8.0"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "joplin-md-sync==1.7.1"
+    python -m pip install "joplin-md-sync==1.8.0"
     joplin-md-sync version --json
     ```
 

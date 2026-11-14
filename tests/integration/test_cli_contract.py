@@ -70,6 +70,9 @@ class JsonContractTest(WorkspaceTestCase):
                 "resources pull",
                 "mcp serve",
                 "mcp stdio",
+                "mcp oauth-check",
+                "mcp oauth-reset",
+                "mcp github-user-id",
                 "gpt-actions export-openapi",
             ],
         )

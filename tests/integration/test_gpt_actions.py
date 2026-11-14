@@ -34,6 +34,8 @@ ACTIONS_TOKEN = "actions-token-0123456789abcdef-0123456789ab"
 
 
 class GptActionsHttpTest(WorkspaceTestCase):
+    server_factory = staticmethod(McpHttpServer)
+
     def setUp(self) -> None:
         super().setUp()
         self._auth_tmp = tempfile.TemporaryDirectory(prefix="gpt-actions-auth-")
@@ -58,7 +60,7 @@ class GptActionsHttpTest(WorkspaceTestCase):
             ActionsTokenSource(self.token_file),
             config=ActionsConfig(rate_limit_per_minute=1_000),
         )
-        self.httpd = McpHttpServer(("127.0.0.1", 0), dispatcher, actions_transport=transport)
+        self.httpd = self.server_factory(("127.0.0.1", 0), dispatcher, actions_transport=transport)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_actions)

@@ -8,10 +8,12 @@ import logging
 import socket
 import threading
 import urllib.parse
+from email.message import Message
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BufferedIOBase
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from joplin_md_sync import __version__
 from joplin_md_sync.auth import (
@@ -252,8 +254,32 @@ class McpHttpServer(ThreadingHTTPServer):
             self._request_slots.release()
 
 
-class McpRequestHandler(BaseHTTPRequestHandler):
-    server: McpHttpServer
+class LegacyServerContext(Protocol):
+    dispatcher: McpDispatcher
+    endpoint: str
+    token_source: BearerTokenSource
+    allowed_origins: frozenset[str]
+    actions_transport: GptActionsTransport | None
+    server_address: Any
+
+
+class LegacyHttpLogic:
+    """Shared HTTP checks and dispatch, independent of socket ownership."""
+
+    server: LegacyServerContext
+    if TYPE_CHECKING:
+        headers: Message
+        path: str
+        close_connection: bool
+        client_address: tuple[str, int]
+        rfile: BufferedIOBase
+        wfile: BufferedIOBase
+
+        def send_response(self, code: int, message: str | None = None) -> None: ...
+        def send_header(self, keyword: str, value: str) -> None: ...
+        def end_headers(self) -> None: ...
+        def address_string(self) -> str: ...
+
     protocol_version = "HTTP/1.1"
     server_version = f"joplin-md-sync/{__version__}"
     sys_version = ""
@@ -463,6 +489,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._empty(HTTPStatus.ACCEPTED)
         else:
             self._json(HTTPStatus.OK, response)
+
+
+class McpRequestHandler(LegacyHttpLogic, BaseHTTPRequestHandler):
+    server: McpHttpServer
 
 
 def serve_mcp_http(

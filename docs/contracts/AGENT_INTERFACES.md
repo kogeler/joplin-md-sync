@@ -134,3 +134,44 @@ result but MUST NOT be reported as a failed write.
 - [`test_request_limit_and_result_limit_semantics`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_request_limit_and_result_limit_semantics`
 - [`test_concurrency_capacity_and_authenticated_rate_limit`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_concurrency_capacity_and_authenticated_rate_limit`
 - [`test_json_nesting_limit_is_independent_of_parser_recursion_behavior`](../../tests/unit/test_json_safety.py) - `tests/unit/test_json_safety.py::test_json_nesting_limit_is_independent_of_parser_recursion_behavior`
+
+### `AIF-009` - Standard GitHub OAuth shares one listener and tool executor
+
+**Contract:** The standard package and native executable MUST include the
+GitHub OAuth runtime. `mcp serve --github-oauth` MUST enable
+`/claude/mcp` and OAuth endpoints on the existing listener and port, preserving
+legacy MCP and Actions authentication. OAuth tools MUST use the common registry,
+dispatcher, executor and Joplin service with the same schemas, annotations and
+structured results. Concurrent creates across all interfaces MUST retain the
+existing duplicate prevention. The OAuth transport MUST remain stateless and
+MUST NOT require a second service or listener.
+
+**Evidence:**
+
+- [`test_owner_crud_refresh_restart_and_revoke`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke`
+- [`test_mixed_interface_create_race_and_credential_isolation`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation`
+- [`test_oauth_metadata_and_challenge_on_one_real_listener`](../../tests/oauth/integration/test_socket_bounds.py) - `tests/oauth/integration/test_socket_bounds.py::test_oauth_metadata_and_challenge_on_one_real_listener`
+- [`smoke-standalone`](../../Makefile) - `make smoke-standalone`
+
+### `AIF-010` - OAuth rejection and execution remain bounded
+
+**Contract:** OAuth MUST deny anonymous requests with a protected-resource
+metadata challenge. One process MUST bound accepted sockets before headers,
+incoming request deadlines, public flow bodies/rate, execution capacity and
+state. Authentication and framing rejection MUST precede tool side effects.
+Cancelling a request MUST NOT replay a mutation or release its execution slot
+before the underlying work finishes. Late worker failures after cancellation
+MUST NOT leak private exception details into asyncio logs. Temporary GitHub
+identity and token-endpoint failures, including rate limits, MUST
+fail closed with `503` and a safe Retry-After while legacy credentials remain
+independent. Invalid grants MUST NOT be treated as a temporary GitHub outage.
+
+**Evidence:**
+
+- [`test_incomplete_request_deadline`](../../tests/oauth/integration/test_socket_bounds.py) - `tests/oauth/integration/test_socket_bounds.py::test_incomplete_request_deadline`
+- [`test_admission_includes_connections_without_headers`](../../tests/oauth/integration/test_socket_bounds.py) - `tests/oauth/integration/test_socket_bounds.py::test_admission_includes_connections_without_headers`
+- [`test_ambiguous_http_framing_never_reaches_an_interface`](../../tests/oauth/integration/test_socket_bounds.py) - `tests/oauth/integration/test_socket_bounds.py::test_ambiguous_http_framing_never_reaches_an_interface`
+- [`test_request_cancellation_does_not_free_a_running_mutation_slot`](../../tests/oauth/unit/test_execution.py) - `tests/oauth/unit/test_execution.py::test_request_cancellation_does_not_free_a_running_mutation_slot`
+- [`test_cancelled_request_retrieves_late_worker_failure_without_logging_private_data`](../../tests/oauth/unit/test_execution.py) - `tests/oauth/unit/test_execution.py::test_cancelled_request_retrieves_late_worker_failure_without_logging_private_data`
+- [`test_token_endpoint_outage_does_not_issue_or_replay_tokens`](../../tests/oauth/e2e/test_oauth_security.py) - `tests/oauth/e2e/test_oauth_security.py::test_token_endpoint_outage_does_not_issue_or_replay_tokens`
+- [`test_github_outage_fails_closed_without_interrupting_legacy`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_github_outage_fails_closed_without_interrupting_legacy`
