@@ -437,3 +437,21 @@ def test_established_clients_have_separate_token_budgets(monkeypatch) -> None:
     assert owner[-1] == 429 and owner.count(200) == 19
     # Each established client has its own budget.
     assert status(client_id="second") == 200
+
+
+def test_startup_announcement_survives_unreadable_state(caplog) -> None:
+    class Unreadable(MemoryStore):
+        async def get(self, key, *, collection=None):
+            raise ValueError("fixture decryption failure")
+
+    auth = OwnerGitHubOAuth(
+        client_id="fixture-client",
+        client_secret="fixture-secret",
+        user_id="42",
+        base_url=BASE,
+        signing_key=b"fixture-key-with-at-least-32-bytes",
+        storage=Unreadable(),
+    )
+    with caplog.at_level("INFO", logger="joplin_md_sync.oauth.audit"):
+        asyncio.run(auth.announce_started())
+    assert "oauth_audit event=service_started" in caplog.text

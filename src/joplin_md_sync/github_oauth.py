@@ -411,7 +411,13 @@ class OwnerGitHubOAuth(OAuthProxy):
         return entry is not None and entry["state"] == "established"
 
     async def announce_started(self) -> None:
-        states = [entry["state"] for entry in (await self._client_registry()).values()]
+        # Runs inside the app lifespan: unreadable state (for example a changed
+        # signing key) must fail closed on use, not tear down the lifespan.
+        try:
+            states = [entry["state"] for entry in (await self._client_registry()).values()]
+        except Exception:
+            audit("service_started")
+            return
         audit(
             "service_started",
             established=states.count("established"),
