@@ -25,9 +25,10 @@ history.
 - **Typed MCP tools.** Local stdio and Streamable HTTP transports give
   compatible clients structured note operations plus attachment upload,
   download, replacement, and relationship traversal.
-- **Claude with GitHub sign-in.** The built-in `/claude/mcp` interface permits
-  one configured numeric GitHub account on the existing service port. Configure
-  it with individual CLI flags and private secret-file options.
+- **Claude with GitHub sign-in.** The built-in `/oauth/mcp` interface lets
+  hosted Claude, currently its only supported client, sign in with one
+  configured numeric GitHub account on the existing service port. Configure it
+  with individual CLI flags and private secret-file options.
 - **A headless Joplin service.** The rootless Linux installer deploys Joplin
   Terminal, recurrent sync, and the combined MCP/Actions adapter as coordinated
   systemd user services. Joplin Desktop does not need to remain running.
@@ -231,7 +232,7 @@ Download them with `SHA256SUMS.txt` from the
 | Goal | Interface |
 | --- | --- |
 | Work with current Joplin notes in ChatGPT | Authenticated ChatGPT Actions |
-| Connect hosted Claude with GitHub sign-in | Built-in OAuth MCP at `/claude/mcp` |
+| Connect hosted Claude with GitHub sign-in | Built-in OAuth MCP at `/oauth/mcp` |
 | Give an editor or assistant typed note tools | MCP |
 | Run without a desktop session | Headless Joplin Terminal plus MCP/Actions |
 | Review every broad agent edit before applying it | Markdown workspace |

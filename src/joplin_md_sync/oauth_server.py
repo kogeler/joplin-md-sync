@@ -17,7 +17,7 @@ from joplin_md_sync.github_oauth import ClientFactory, OwnerGitHubOAuth, github_
 from joplin_md_sync.http_app import CombinedHttpApp
 from joplin_md_sync.legacy_asgi import LegacyAsgiApp, LegacyContext
 from joplin_md_sync.mcp_server import MAX_HTTP_CONNECTIONS
-from joplin_md_sync.oauth_boundary import OAuthBoundary, quiet_oauth_libraries
+from joplin_md_sync.oauth_boundary import OAUTH_MCP_PATH, OAuthBoundary, quiet_oauth_libraries
 from joplin_md_sync.oauth_config import OAuthConfig
 from joplin_md_sync.oauth_execution import DaemonExecutor, ExecutionBudget
 from joplin_md_sync.oauth_http import BoundedH11Protocol
@@ -61,7 +61,7 @@ def create_http_app(
     mcp.provider_error_strategy = "raise"
     authority = urllib.parse.urlsplit(config.public_base_url).netloc
     oauth = mcp.http_app(
-        path="/claude/mcp",
+        path=OAUTH_MCP_PATH,
         stateless_http=True,
         json_response=True,
         host_origin_protection=True,
@@ -82,7 +82,7 @@ def check_oauth(config: OAuthConfig, context: LegacyContext) -> dict[str, object
     initialized = inspect_state(config.state_dir)
     return {
         "oauth_config_valid": True,
-        "endpoint": config.public_base_url + "/claude/mcp",
+        "endpoint": config.public_base_url + OAUTH_MCP_PATH,
         "allowed_github_user_id": config.allowed_github_user_id,
         "state_dir": str(config.state_dir),
         "provisioning_required": not initialized,
@@ -133,11 +133,12 @@ def serve_oauth_http(
             with bind_http_listener(context.server_address) as listener:
                 host, port = listener.getsockname()[:2]
                 log.info(
-                    "MCP server listening on http://%s:%d%s; OAuth MCP at %s/claude/mcp",
+                    "MCP server listening on http://%s:%d%s; OAuth MCP at %s%s",
                     host,
                     port,
                     context.endpoint,
                     config.public_base_url,
+                    OAUTH_MCP_PATH,
                 )
                 try:
                     server.run(sockets=[listener])

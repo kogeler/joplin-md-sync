@@ -183,7 +183,7 @@ def test_oauth_off_on_preserves_legacy_and_existing_grants(app):
         if file.is_file()
     }
     app.start(oauth=False)
-    assert app.client.post("/claude/mcp", json={}).status_code == 404
+    assert app.client.post("/oauth/mcp", json={}).status_code == 404
     assert app.rpc(app.mcp_token, "ping", path="/mcp") == {}
     assert all(Path(name).read_bytes() == value for name, value in snapshot.items())
     app.stop()
@@ -261,7 +261,7 @@ def test_disconnected_client_does_not_replay_started_mutation(app):
         # a deployed reverse proxy forwards to the adapter.
         with socket.create_connection(("127.0.0.1", app.port), timeout=2) as client:
             headers = (
-                "POST /claude/mcp HTTP/1.1\r\nHost: "
+                "POST /oauth/mcp HTTP/1.1\r\nHost: "
                 + app.proxy.origin.removeprefix("https://")
                 + "\r\nAuthorization: Bearer "
                 + tokens["access_token"]
@@ -351,7 +351,7 @@ def test_forced_termination_restarts_and_recovers_state_lock(app):
         with ThreadPoolExecutor(max_workers=1) as pool:
             pending = pool.submit(
                 app.client.post,
-                "/claude/mcp",
+                "/oauth/mcp",
                 json={
                     "jsonrpc": "2.0",
                     "id": 1,

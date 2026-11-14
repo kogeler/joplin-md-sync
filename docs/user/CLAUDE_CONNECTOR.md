@@ -1,22 +1,49 @@
 # Claude connector with GitHub login
 
-Connect hosted Claude to Joplin at `https://EXISTING_HOST/claude/mcp` and allow
+Connect hosted Claude to Joplin at `https://EXISTING_HOST/oauth/mcp` and allow
 one explicitly configured GitHub account. OAuth is part of the standard package
 and native executable. Enable it with `--github-oauth` on the
 existing MCP service and port.
 
-The existing `/mcp` and Actions credentials continue to authorize their own
-interfaces. Enabling OAuth requires a protected Bearer token for `/mcp`,
-including on a loopback listener. Joplin's Data API stays local.
+## Scope and limitations
+
+- **Hosted Claude only.** The only permitted client redirect URI is
+  `https://claude.ai/api/mcp/auth_callback`, used by custom connectors added in
+  Claude. Other MCP clients are rejected at registration, including ChatGPT
+  connectors and Claude Code or other local clients with loopback redirects.
+  Local clients keep using `/mcp` with its Bearer token.
+- **One GitHub.com account.** Access is bound to one numeric GitHub user ID.
+  GitHub Enterprise Server and organization or team rules are not supported.
+- **Public HTTPS.** Claude connects from the internet, so the OAuth routes need
+  a public HTTPS origin through a reverse proxy or tunnel. The listener itself
+  can stay on loopback.
+- **Separate credentials.** `/mcp` and Actions keep their own Bearer tokens and
+  do not accept OAuth tokens; `/oauth/mcp` accepts only OAuth tokens. Enabling
+  OAuth requires a protected `/mcp` Bearer token, even on loopback. Joplin's
+  Data API stays local.
+- **Full tool access.** The account can use every registered MCP tool; there are
+  no read-only scopes.
+- **GitHub dependency.** Every request rechecks the GitHub identity, so a GitHub
+  outage or revoked grant blocks OAuth access. Claude asks for a new sign-in
+  about every six months.
 
 ## Prepare the account and OAuth App
 
-Create a GitHub.com OAuth App under your GitHub developer settings. Set its
-homepage to `https://EXISTING_HOST` and authorization callback to
-`https://EXISTING_HOST/auth/callback`. Enable expiring user tokens for the
-whole App under its **Optional features** settings; the service requires access
-and refresh tokens and does not request `offline_access`. It requests
-`read:user` and does not request repository permissions. See
+Register a GitHub.com OAuth App under **Settings > Developer settings > OAuth
+Apps**:
+
+| Field | Value |
+| --- | --- |
+| Homepage URL | `https://EXISTING_HOST` |
+| Redirect URI (authorization callback URL) | Exactly `https://EXISTING_HOST/auth/callback` |
+| Allow wildcard matching | Off |
+| Enable Device Flow | Off |
+| Expire user access tokens | On; older forms show it under **Optional features** |
+
+The service requires expiring access and refresh tokens and does not request
+`offline_access`. It requests `read:user` and no repository permissions. Then
+generate a Client Secret; it stays on your server and is never entered in
+Claude. See
 [GitHub OAuth authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
 
 Resolve the account during setup:
@@ -120,14 +147,17 @@ joplin-md-sync mcp serve \
   "${OAUTH_ARGS[@]}"
 ```
 
-For a headless installation, pass `--github-oauth` to the existing
-[installer](JOPLIN_HEADLESS_SERVICE.md). It asks for missing settings, hides the
-Client Secret input and creates private secret/key files. The same settings
-flags can answer individual questions for automation. An upgrade recovers installed OAuth flags from the unit and preserves them
-unless explicitly overridden. Pin `--joplin-version` to the version you want to
-retain when upgrading only the adapter. The installer checks the new executable
-and OAuth config before stopping a healthy service, retains the old executable
-and units, and grants `ReadWritePaths` only for the selected OAuth state path.
+For a headless installation, pass `--github-oauth` to the
+[installer](JOPLIN_HEADLESS_SERVICE.md). An existing installation does not ask
+whether to enable OAuth, so the flag is required there; the installer then asks
+only for missing OAuth settings, hides the Client Secret input and creates
+private secret/key files. The same settings flags can answer individual
+questions for automation. Later upgrades recover the installed OAuth flags from
+the unit and preserve them unless explicitly overridden. Pin `--joplin-version`
+to the version you want to retain when upgrading only the adapter. The
+installer checks the new executable and OAuth config before stopping a healthy
+service, retains the old executable and units, and grants `ReadWritePaths` only
+for the selected OAuth state path.
 
 The Linux user unit explicitly enables `PrivateUsers=true` so filesystem
 hardening applies in the user manager. The host must support unprivileged user
@@ -159,7 +189,7 @@ For an existing Nginx HTTPS server, the additional routing can be:
 location = /healthz { return 404; }
 location = /readyz { return 404; }
 
-location ~ ^/(claude/mcp|authorize|register|token|consent|auth/callback|\.well-known/oauth-authorization-server|\.well-known/oauth-protected-resource(/claude/mcp)?)$ {
+location ~ ^/(oauth/mcp|authorize|register|token|consent|auth/callback|\.well-known/oauth-authorization-server|\.well-known/oauth-protected-resource(/oauth/mcp)?)$ {
     access_log off;
     error_log /dev/null crit;
     proxy_pass http://127.0.0.1:8765;
@@ -172,8 +202,20 @@ location ~ ^/(claude/mcp|authorize|register|token|consent|auth/callback|\.well-k
 
 Use the existing adapter port if it differs from `8765`. The discovery document
 and callback refer to the public HTTPS origin, never to the private listener.
-Before browser login, an anonymous request to `/claude/mcp` returns `401` and
-a protected-resource metadata challenge. Public health routes remain blocked.
+Before browser login, an anonymous request to `/oauth/mcp` returns `401` and
+a protected-resource metadata challenge.
+
+`/healthz` and `/readyz` must stay private. A tunnel or proxy that forwards the
+whole hostname, such as Cloudflare Tunnel, must block them itself. For a locally
+managed `cloudflared` configuration, put this ingress rule before the
+hostname's main rule:
+
+```yaml
+- hostname: EXISTING_HOST
+  path: ^/(healthz|readyz)$
+  service: http_status:404
+```
+
 OAuth callback URLs contain codes and state. The example suppresses raw access
 and request error logs for these routes; troubleshoot through the service's safe
 errors. If adding proxy auditing, record only method, normalized path and status,
@@ -183,21 +225,32 @@ and [error logging](https://nginx.org/en/docs/ngx_core_module.html#error_log).
 
 ## Connect Claude and verify
 
-Add a custom connector in hosted Claude with the URL
-`https://EXISTING_HOST/claude/mcp`. Claude registers a downstream client through
-DCR. Approve the service's consent screen, then sign in to GitHub with the
-configured account. The GitHub Client Secret stays on your server; do not enter
-it in Claude. The permitted hosted Claude callback is exactly
-`https://claude.ai/api/mcp/auth_callback`; other redirect URIs, including
-Claude Code loopback redirects, are rejected. Local clients can keep using
-`/mcp` with its Bearer token.
+Before connecting, check the public routes from any machine:
+
+```bash
+origin=https://EXISTING_HOST
+for path in /.well-known/oauth-protected-resource/oauth/mcp \
+  /.well-known/oauth-authorization-server /healthz /readyz; do
+  echo "$(curl -s -o /dev/null -w '%{http_code}' "$origin$path") $path"
+done
+echo "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$origin/oauth/mcp") POST /oauth/mcp"
+```
+
+Expect `200` for both discovery documents, `401` for the anonymous `POST`, and
+anything except `200` for the health routes.
+
+Then add a custom connector in hosted Claude with the URL
+`https://EXISTING_HOST/oauth/mcp`. Leave the optional OAuth Client ID and
+Client Secret fields in its advanced settings empty; never enter the GitHub App
+values there. Claude registers a downstream client through DCR. Approve the
+service's consent screen, then sign in to GitHub with the configured account.
 See [Claude connector authentication](https://claude.com/docs/connectors/building/authentication).
 
 Validate the deployed connection with these checks:
 
-1. Run the read-only `oauth-check` with the intended CLI values. Verify HTTPS
-   discovery, the anonymous `401` challenge, externally blocked health routes,
-   and continued access for existing MCP/Actions clients.
+1. Run the read-only `oauth-check` with the intended CLI values, check the
+   public routes as shown above, and confirm continued access for existing
+   MCP/Actions clients.
 2. Complete Claude registration, consent and GitHub login with the permitted
    account, then list tools and perform a read.
 3. In a dedicated temporary notebook, create, read and update a test note and
@@ -224,9 +277,10 @@ direct writes, then pull to refresh the workspace.
 
 Configuration, allowed account and signing-key changes take effect after a
 service restart. Keep the same signing key and state directory for ordinary
-restarts. Every protected request rechecks GitHub identity; a GitHub outage or
-revoked grant denies OAuth access while the existing Bearer interfaces remain
-independent.
+restarts. A new public origin also needs the matching App redirect URI and a
+reconnected Claude connector. Every protected request rechecks GitHub identity;
+a GitHub outage or revoked grant denies OAuth access while the existing Bearer
+interfaces remain independent.
 
 To revoke every local OAuth grant, stop the service and run:
 

@@ -40,6 +40,8 @@ def quiet_oauth_libraries() -> None:
 REGISTRATION_RATE_PER_MINUTE = 30
 TOKEN_RATE_PER_MINUTE = 60
 BROWSER_FLOW_RATE_PER_MINUTE = 60
+# Client-neutral, so a future client allowlist does not change the public URL.
+OAUTH_MCP_PATH = "/oauth/mcp"
 BROWSER_FLOW_PATHS = frozenset({"/authorize", "/consent", "/auth/callback"})
 FLOW_PATHS = BROWSER_FLOW_PATHS | {"/register", "/token"}
 
@@ -67,7 +69,9 @@ class OAuthBoundary:
         flow_budget = 9.0
         path = scope["path"]
         limit = (
-            MAX_REQUEST_BYTES if path == "/claude/mcp" else (8192 if path == "/register" else 65536)
+            MAX_REQUEST_BYTES
+            if path == OAUTH_MCP_PATH
+            else (8192 if path == "/register" else 65536)
         )
         body = bytearray()
 
@@ -88,7 +92,7 @@ class OAuthBoundary:
                 if len(body) > limit:
                     record_fault(413, "invalid_request", "Request body is too large")
                     raise ValueError("Request body is too large")
-                if path in {"/claude/mcp", "/register"} and not event.get("more_body", False):
+                if path in {OAUTH_MCP_PATH, "/register"} and not event.get("more_body", False):
                     if json_nesting_exceeds(bytes(body)):
                         record_fault(400, "invalid_request", "JSON nesting is too deep")
                         raise ValueError("JSON nesting is too deep")

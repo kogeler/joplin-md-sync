@@ -21,7 +21,7 @@ pytestmark = pytest.mark.oauth_e2e("security")
 
 def resource(app, token):
     return app.client.post(
-        "/claude/mcp",
+        "/oauth/mcp",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
         headers={
             "Authorization": "Bearer " + token,
@@ -342,7 +342,7 @@ def test_forwarding_path_aliases_duplicate_form_and_json_limits(app):
     )
     assert metadata.status_code == 200
     assert metadata.json()["issuer"].rstrip("/") == app.proxy.origin
-    for path in ("/claude/mcp/", "/claude%2Fmcp"):
+    for path in ("/oauth/mcp/", "/oauth%2Fmcp"):
         assert app.client.post(path, json={}).status_code == 400
     # Identical duplicates of an otherwise valid refresh would be accepted by
     # a last-value form parser; the boundary rejects them without consuming it.
@@ -391,7 +391,7 @@ def test_flow_rate_limit_is_bounded_without_github_or_notes(app):
 @pytest.mark.parametrize(
     "path",
     [
-        "/claude/mcp",
+        "/oauth/mcp",
         "/auth/callback",
         "/token",
         "/healthz",

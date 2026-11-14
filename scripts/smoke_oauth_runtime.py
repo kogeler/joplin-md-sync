@@ -193,14 +193,14 @@ def smoke(command: list[str]) -> None:
                     f"Legacy listing HTTP {status}"
                 )
                 assert request("/api/gpt/v1/tools/__probe__", {})[0] == 401
-                status, headers, _ = request("/claude/mcp", {})
+                status, headers, _ = request("/oauth/mcp", {})
                 assert status == (401 if oauth else 404)
                 if not oauth:
                     assert not state.exists()
                     continue
                 assert "oauth-protected-resource" in headers["WWW-Authenticate"]
-                status, _, raw = request("/.well-known/oauth-protected-resource/claude/mcp")
-                assert status == 200 and json.loads(raw)["resource"] == ORIGIN + "/claude/mcp"
+                status, _, raw = request("/.well-known/oauth-protected-resource/oauth/mcp")
+                assert status == 200 and json.loads(raw)["resource"] == ORIGIN + "/oauth/mcp"
                 status, _, raw = request(
                     "/register",
                     {
@@ -224,7 +224,7 @@ def smoke(command: list[str]) -> None:
                         "state": "fixture-state",
                         "code_challenge_method": "S256",
                         "code_challenge": challenge,
-                        "resource": ORIGIN + "/claude/mcp",
+                        "resource": ORIGIN + "/oauth/mcp",
                     }
                 )
                 status, headers, _ = request("/authorize?" + query)

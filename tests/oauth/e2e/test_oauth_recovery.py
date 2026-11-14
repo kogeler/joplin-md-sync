@@ -72,7 +72,7 @@ def test_transparent_refresh_survives_identity_outage_without_running_tools(app)
     # The rotated token's first check and FastMCP's re-read check both fail.
     github.user_failures_after_refresh = (503, {}, 2)
     blocked = app.client.post(
-        "/claude/mcp",
+        "/oauth/mcp",
         json={
             "jsonrpc": "2.0",
             "id": 1,

@@ -63,10 +63,10 @@ async def probe() -> None:
             storage=first,
         )
         app = FastMCP("Packaging fixture", auth=auth).http_app(
-            path="/claude/mcp", stateless_http=True, json_response=True
+            path="/oauth/mcp", stateless_http=True, json_response=True
         )
         paths = {getattr(route, "path", "") for route in app.routes}
-        assert {"/authorize", "/token", "/register", "/auth/callback", "/claude/mcp"} <= paths
+        assert {"/authorize", "/token", "/register", "/auth/callback", "/oauth/mcp"} <= paths
         consent = create_consent_html(
             client_id="probe",
             redirect_uri=CLAUDE_CALLBACK,

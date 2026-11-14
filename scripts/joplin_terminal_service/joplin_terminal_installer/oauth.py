@@ -29,6 +29,8 @@ from .models import GITHUB_OAUTH_FIELDS, InstallPaths
 from .prompts import SetupPrompts
 
 LOG = logging.getLogger("joplin-terminal-installer")
+# Must match the OAuth MCP route of the installed joplin-md-sync release.
+OAUTH_MCP_PATH = "/oauth/mcp"
 
 
 def save_oauth_options(paths: InstallPaths, args: argparse.Namespace) -> None:
@@ -223,9 +225,9 @@ def prepare_oauth_service(
             raise ValueError
         state_path = Path(payload["state_dir"])
         endpoint = payload["endpoint"]
-        if not isinstance(endpoint, str) or not endpoint.endswith("/claude/mcp"):
+        if not isinstance(endpoint, str) or not endpoint.endswith(OAUTH_MCP_PATH):
             raise ValueError
-        origin = endpoint.removesuffix("/claude/mcp")
+        origin = endpoint.removesuffix(OAUTH_MCP_PATH)
         public = urllib.parse.urlsplit(origin)
         if public.scheme != "https" or not public.netloc or public.path:
             raise ValueError
@@ -259,7 +261,7 @@ def smoke_test_oauth_service(port: int, public_origin: str, *, timeout: float = 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     headers = {"Host": urllib.parse.urlsplit(public_origin).netloc}
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/claude/mcp",
+        f"http://127.0.0.1:{port}{OAUTH_MCP_PATH}",
         data=b"{}",
         headers={**headers, "Content-Type": "application/json"},
         method="POST",
@@ -272,7 +274,7 @@ def smoke_test_oauth_service(port: int, public_origin: str, *, timeout: float = 
             challenge = exc.headers.get("WWW-Authenticate", "")
             if (
                 exc.code != 401
-                or public_origin + "/.well-known/oauth-protected-resource/claude/mcp"
+                or public_origin + "/.well-known/oauth-protected-resource" + OAUTH_MCP_PATH
                 not in challenge
             ):
                 raise ToolError("OAuth resource challenge smoke check failed")
@@ -281,13 +283,13 @@ def smoke_test_oauth_service(port: int, public_origin: str, *, timeout: float = 
     except (urllib.error.URLError, TimeoutError, OSError):
         raise ToolError("OAuth resource smoke probe failed") from None
     discovery = urllib.request.Request(
-        f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/claude/mcp",
+        f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource{OAUTH_MCP_PATH}",
         headers=headers,
     )
     try:
         with opener.open(discovery, timeout=timeout) as response:
             raw = response.read(65537)
-        if len(raw) > 65536 or json.loads(raw).get("resource") != public_origin + "/claude/mcp":
+        if len(raw) > 65536 or json.loads(raw).get("resource") != public_origin + OAUTH_MCP_PATH:
             raise ValueError
     except (urllib.error.URLError, OSError, ValueError, AttributeError):
         raise ToolError("OAuth discovery smoke check failed") from None

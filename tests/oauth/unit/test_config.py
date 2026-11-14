@@ -174,7 +174,7 @@ def test_reset_requires_explicit_confirmation(oauth):
 @pytest.mark.parametrize(
     "path",
     [
-        "/claude/mcp",
+        "/oauth/mcp",
         "/auth/callback",
         "/token",
         "/healthz",

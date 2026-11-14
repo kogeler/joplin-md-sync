@@ -45,7 +45,7 @@ def application(github: MockGitHub, storage: MemoryStore | None = None):
         return text
 
     app = mcp.http_app(
-        path="/claude/mcp",
+        path="/oauth/mcp",
         stateless_http=True,
         json_response=True,
     )
@@ -81,7 +81,7 @@ def begin_authorization(client: TestClient, *, name="Fixture", metadata=None):
             "state": "fixture-client-state",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "resource": str(client.base_url).rstrip("/") + "/claude/mcp",
+            "resource": str(client.base_url).rstrip("/") + "/oauth/mcp",
         },
     )
     assert response.status_code == 302, response.text
@@ -114,7 +114,7 @@ def exchange(client: TestClient, client_id: str, verifier: str, callback: str):
             "client_id": client_id,
             "code_verifier": verifier,
             "redirect_uri": CLAUDE_CALLBACK,
-            "resource": str(client.base_url).rstrip("/") + "/claude/mcp",
+            "resource": str(client.base_url).rstrip("/") + "/oauth/mcp",
         },
     )
 
@@ -122,7 +122,7 @@ def exchange(client: TestClient, client_id: str, verifier: str, callback: str):
 def test_owner_flow_refresh_and_replay() -> None:
     github = MockGitHub()
     with TestClient(application(github), base_url=BASE, follow_redirects=False) as client:
-        denied = client.post("/claude/mcp", json={})
+        denied = client.post("/oauth/mcp", json={})
         assert denied.status_code == 401
         assert "oauth-protected-resource" in denied.headers["www-authenticate"]
         client_id, verifier, returned = authorize(client, github)
@@ -141,7 +141,7 @@ def test_owner_flow_refresh_and_replay() -> None:
             "Accept": "application/json, text/event-stream",
         }
         listing = client.post(
-            "/claude/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers=headers
+            "/oauth/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers=headers
         )
         assert listing.status_code == 200, listing.text
         assert listing.json()["result"]["tools"][0]["name"] == "echo"
@@ -175,7 +175,7 @@ def test_callback_rejects_foreign_account_and_missing_refresh(
             if foreign
             else "expiring token profile required" in returned.text
         )
-        assert client.post("/claude/mcp", json={}).status_code == 401
+        assert client.post("/oauth/mcp", json={}).status_code == 401
 
 
 def test_concurrent_code_and_refresh_are_single_use() -> None:
@@ -230,13 +230,13 @@ def test_signed_wrong_audience_issuer_type_and_expired_tokens_are_rejected():
             bad = message + "." + signature
             assert (
                 client.post(
-                    "/claude/mcp", json={}, headers={"Authorization": "Bearer " + bad}
+                    "/oauth/mcp", json={}, headers={"Authorization": "Bearer " + bad}
                 ).status_code
                 == 401
             )
         assert (
             client.post(
-                "/claude/mcp",
+                "/oauth/mcp",
                 json={},
                 headers={"Authorization": "Bearer " + tokens["refresh_token"]},
             ).status_code
@@ -246,7 +246,7 @@ def test_signed_wrong_audience_issuer_type_and_expired_tokens_are_rejected():
         github.access = dict.fromkeys(github.access, 43)
         assert (
             client.post(
-                "/claude/mcp",
+                "/oauth/mcp",
                 json={},
                 headers={"Authorization": "Bearer " + tokens["access_token"]},
             ).status_code

@@ -237,10 +237,10 @@ public hostname immediately before importing or updating a Custom GPT. See
 
 ### GitHub OAuth on the existing MCP listener
 
-`mcp serve --github-oauth` enables GitHub OAuth at `/claude/mcp` on the existing
-listener. Configure it with the individual flags below. OAuth requires
-`--auth-token-file` even on loopback. It ships in the standard package and
-native executables. See [Claude connector setup](CLAUDE_CONNECTOR.md).
+`mcp serve --github-oauth` enables GitHub OAuth at `/oauth/mcp` on the existing
+listener for hosted Claude, the only permitted OAuth client. Configure it with
+the individual flags below. OAuth requires `--auth-token-file` even on loopback.
+It ships in the standard package and native executables. See [Claude connector setup](CLAUDE_CONNECTOR.md).
 
 - `mcp github-user-id --login USER [--json]` resolves a public GitHub username
   through GitHub's HTTPS API during setup. Save the returned numeric ID.

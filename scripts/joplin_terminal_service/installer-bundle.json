@@ -49,8 +49,8 @@
       "size": 4992
     },
     "joplin_terminal_installer/oauth.py": {
-      "sha256": "b2605bdee3a78078c2d12b19b75df841dc7e024f17c0771923c2ddb13cc0fedd",
-      "size": 11728
+      "sha256": "9516fc7ddf760144e058d3efbbd87c6dfb4ff2455bee75f7a55a94146a976392",
+      "size": 11851
     },
     "joplin_terminal_installer/operations.py": {
       "sha256": "f67a93cff7f570109a0975d795874aa3861d303a3f6038978ec4025100e06710",

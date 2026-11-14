@@ -228,7 +228,7 @@ def main(executable: Path) -> None:
             )
             assert status == 200 and json.loads(body)["result"]["tools"]
             assert request("/api/gpt/v1/tools/__probe__", {})[0] == 401
-            status, headers, _ = request("/claude/mcp", {})
+            status, headers, _ = request("/oauth/mcp", {})
             assert status == (401 if enabled else 404)
             if enabled:
                 assert "oauth-protected-resource" in headers["WWW-Authenticate"]

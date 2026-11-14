@@ -139,7 +139,7 @@ result but MUST NOT be reported as a failed write.
 
 **Contract:** The standard package and native executable MUST include the
 GitHub OAuth runtime. `mcp serve --github-oauth` MUST enable
-`/claude/mcp` and OAuth endpoints on the existing listener and port, preserving
+`/oauth/mcp` and OAuth endpoints on the existing listener and port, preserving
 legacy MCP and Actions authentication. OAuth tools MUST use the common registry,
 dispatcher, executor and Joplin service with the same schemas, annotations and
 structured results. Concurrent creates across all interfaces MUST retain the

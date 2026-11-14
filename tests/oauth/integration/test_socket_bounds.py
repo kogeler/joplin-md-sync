@@ -72,8 +72,8 @@ def running_server(app, protocol=FastTestProtocol):
     "raw_request",
     [
         b"",
-        b"POST /claude/mcp HTTP/1.1\r\nHost: fixture",
-        b"POST /claude/mcp HTTP/1.1\r\nHost: fixture\r\nContent-Length: 50\r\n\r\n{",
+        b"POST /oauth/mcp HTTP/1.1\r\nHost: fixture",
+        b"POST /oauth/mcp HTTP/1.1\r\nHost: fixture\r\nContent-Length: 50\r\n\r\n{",
     ],
 )
 def test_incomplete_request_deadline(raw_request: bytes) -> None:
@@ -127,7 +127,7 @@ def test_pipelined_partial_request_has_a_read_deadline() -> None:
     ):
         client.sendall(
             b"GET /.well-known/oauth-authorization-server HTTP/1.1\r\nHost: fixture\r\n\r\n"
-            b"POST /claude/mcp HTTP/1.1\r\nHost: fixture"
+            b"POST /oauth/mcp HTTP/1.1\r\nHost: fixture"
         )
         client.settimeout(2)
         response = bytearray()
@@ -181,7 +181,7 @@ def test_oauth_metadata_and_challenge_on_one_real_listener() -> None:
             response = connection.getresponse()
             assert response.status == 200
             assert json.loads(response.read())["issuer"] == "https://joplin.example.invalid/"
-            connection.request("POST", "/claude/mcp", b"{}", {"Content-Type": "application/json"})
+            connection.request("POST", "/oauth/mcp", b"{}", {"Content-Type": "application/json"})
             response = connection.getresponse()
             assert response.status == 401
             assert "oauth-protected-resource" in response.getheader("WWW-Authenticate", "")

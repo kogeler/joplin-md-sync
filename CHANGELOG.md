@@ -12,7 +12,8 @@ All notable changes to this project are documented here. The format follows
 
 - Include the GitHub OAuth and ASGI runtime in every standard installation
   and native executable. Enable GitHub login for one configured numeric account
-  ID with `mcp serve --github-oauth` on the existing HTTP port.
+  ID with `mcp serve --github-oauth` on the existing HTTP port. The
+  client-neutral `/oauth/mcp` route currently accepts only hosted Claude.
 - Configure OAuth with individual CLI flags and protected secret-file options.
   Add account-ID lookup, read-only `mcp oauth-check`, and locked local
   `mcp oauth-reset`, with encrypted persistent grants and installer lifecycle

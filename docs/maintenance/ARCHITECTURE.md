@@ -80,7 +80,7 @@ contract cannot fit the Actions text/payload limit.
 
 GitHub OAuth is installed as part of the standard runtime and activated by
 `mcp serve --github-oauth`. The enabled service uses one Uvicorn
-worker and one listener: legacy `/mcp`, Actions, OAuth `/claude/mcp`, discovery,
+worker and one listener: legacy `/mcp`, Actions, OAuth `/oauth/mcp`, discovery,
 consent and callbacks. The disabled service retains the existing HTTP runtime;
 stdio never opens an HTTP listener. Both HTTP implementations use the same
 legacy request logic, registry, dispatcher, executor and Joplin service.
@@ -123,7 +123,7 @@ The following defaults describe the embedded runtime. They complement the
 | Public OAuth flow rate | Separate token buckets: registration 30, token 60 and browser flow (`/authorize`, `/consent`, `/auth/callback`) 60 requests per minute |
 | Dynamic client registration | A new client is pending: at most 64 pending clients, each usable for 1800 seconds. A successful owner login (or refresh) establishes it; up to 512 established clients, never evicted. Expired pending and established records release their slots without a reset |
 | Established client lifetime | 15897600 seconds (about 184 days) from establishment, even while in use; a new login then registers again |
-| Request bodies | 16 MiB for `/claude/mcp`, 8 KiB for `/register`, 64 KiB for other OAuth routes |
+| Request bodies | 16 MiB for `/oauth/mcp`, 8 KiB for `/register`, 64 KiB for other OAuth routes |
 | Query string | Up to 8 KiB; ambiguous paths/framing, duplicate authorization/form parameters and deeply nested JSON are rejected |
 | Flow deadline | 9 seconds normally, 25 seconds for refresh; prebuffered registration/form input has a 2-second read limit within that budget |
 | GitHub HTTP | 4-second client timeout; no ambient proxy or automatic redirects |

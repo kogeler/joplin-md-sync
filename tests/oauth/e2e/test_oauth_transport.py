@@ -110,12 +110,12 @@ def test_actual_read_deadline_covers_empty_partial_and_pipelined_requests(app):
     try:
         payloads = [
             b"",
-            b"POST /claude/mcp HTTP/1.1\r\nHost: fixture",
+            b"POST /oauth/mcp HTTP/1.1\r\nHost: fixture",
             b"POST /mcp HTTP/1.1\r\nHost: fixture\r\nContent-Length: 20\r\n\r\n{",
             (
                 "GET /.well-known/oauth-authorization-server HTTP/1.1\r\nHost: "
                 + app.proxy.origin.removeprefix("https://")
-                + "\r\n\r\nPOST /claude/mcp HTTP/1.1\r\nHost: fixture"
+                + "\r\n\r\nPOST /oauth/mcp HTTP/1.1\r\nHost: fixture"
             ).encode(),
         ]
         started = time.monotonic()

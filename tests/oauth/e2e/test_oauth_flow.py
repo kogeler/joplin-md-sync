@@ -186,13 +186,13 @@ class RunningApplication:
             assert canary not in log, "Private OAuth or note data appeared in server logs"
 
     def login(self):
-        challenge = self.client.post("/claude/mcp", json={})
+        challenge = self.client.post("/oauth/mcp", json={})
         assert challenge.status_code == 401
-        metadata = self.proxy.origin + "/.well-known/oauth-protected-resource/claude/mcp"
+        metadata = self.proxy.origin + "/.well-known/oauth-protected-resource/oauth/mcp"
         assert f'resource_metadata="{metadata}"' in challenge.headers["www-authenticate"]
-        discovery = self.client.get("/.well-known/oauth-protected-resource/claude/mcp")
+        discovery = self.client.get("/.well-known/oauth-protected-resource/oauth/mcp")
         assert discovery.status_code == 200
-        assert discovery.json()["resource"] == self.proxy.origin + "/claude/mcp"
+        assert discovery.json()["resource"] == self.proxy.origin + "/oauth/mcp"
         client_id, verifier, callback = authorize(self.client, self.github)
         assert callback.status_code == 302, callback.text
         tokens = exchange(self.client, client_id, verifier, callback.headers["location"])
@@ -204,7 +204,7 @@ class RunningApplication:
         )
         return client_id, issued
 
-    def rpc(self, token, method, params=None, *, path="/claude/mcp"):
+    def rpc(self, token, method, params=None, *, path="/oauth/mcp"):
         response = self.client.post(
             path,
             json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
@@ -327,7 +327,7 @@ def test_owner_crud_refresh_restart_and_revoke(app):
     app.github.github.access.clear()
     assert (
         app.client.post(
-            "/claude/mcp", json={}, headers={"Authorization": "Bearer " + new_token}
+            "/oauth/mcp", json={}, headers={"Authorization": "Bearer " + new_token}
         ).status_code
         == 401
     )
@@ -343,7 +343,7 @@ def test_foreign_github_account_cannot_issue_access_or_mutate(app):
     _, _, callback = authorize(app.client, app.github)
     assert callback.status_code == 403
     assert "location" not in callback.headers
-    assert app.client.post("/claude/mcp", json={}).status_code == 401
+    assert app.client.post("/oauth/mcp", json={}).status_code == 401
     assert not app.backend.store.notes
 
 
@@ -379,7 +379,7 @@ def test_github_outage_fails_closed_without_interrupting_legacy(app):
     _, tokens = app.login()
     app.github.github.user_status = 503
     response = app.client.post(
-        "/claude/mcp",
+        "/oauth/mcp",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
         headers={
             "Authorization": "Bearer " + tokens["access_token"],
@@ -403,7 +403,7 @@ def test_changed_owner_and_explicit_local_reset_deny_old_grants(app):
     app.oauth.values["allowed_github_user_id"] = "43"
     app.start()
     denied = app.client.post(
-        "/claude/mcp", json={}, headers={"Authorization": "Bearer " + tokens["access_token"]}
+        "/oauth/mcp", json={}, headers={"Authorization": "Bearer " + tokens["access_token"]}
     )
     assert denied.status_code == 403
     assert not app.backend.store.notes
@@ -415,7 +415,7 @@ def test_changed_owner_and_explicit_local_reset_deny_old_grants(app):
     app.start()
     assert (
         app.client.post(
-            "/claude/mcp", json={}, headers={"Authorization": "Bearer " + tokens["access_token"]}
+            "/oauth/mcp", json={}, headers={"Authorization": "Bearer " + tokens["access_token"]}
         ).status_code
         == 401
     )
@@ -449,7 +449,7 @@ def test_public_oauth_rejects_host_origin_oversized_input_and_duplicate_auth(app
     )
     _, tokens = app.login()
     headers = [("Authorization", "Bearer " + tokens["access_token"])] * 2
-    denied = app.client.post("/claude/mcp", json={}, headers=headers)
+    denied = app.client.post("/oauth/mcp", json={}, headers=headers)
     assert denied.status_code == 401
     assert not app.backend.store.notes
 
@@ -482,7 +482,7 @@ def test_mixed_interface_create_race_and_credential_isolation(app):
             oauth_token if interface == "oauth" else app.mcp_token,
             "tools/call",
             {"name": "joplin_create_note", "arguments": arguments},
-            path="/claude/mcp" if interface == "oauth" else "/mcp",
+            path="/oauth/mcp" if interface == "oauth" else "/mcp",
         )
         if result["isError"]:
             assert result["structuredContent"]["error"]["code"] == "NOTE_ALREADY_EXISTS"
@@ -499,7 +499,7 @@ def test_mixed_interface_create_race_and_credential_isolation(app):
 
     for path, accepted in (
         ("/mcp", app.mcp_token),
-        ("/claude/mcp", oauth_token),
+        ("/oauth/mcp", oauth_token),
         ("/api/gpt/v1/tools/joplin_create_note", app.actions_token),
     ):
         for credential in (app.mcp_token, app.actions_token, oauth_token, TOKEN, "fixture-secret"):
@@ -527,7 +527,7 @@ def test_large_oauth_write_read_and_ambiguous_mutation_preserve_legacy_semantics
     )
     note_id = created["note"]["id"]
     assert app.backend.store.notes[note_id]["body"] == body
-    for token, path in ((access, "/claude/mcp"), (app.mcp_token, "/mcp")):
+    for token, path in ((access, "/oauth/mcp"), (app.mcp_token, "/mcp")):
         result = app.rpc(
             token,
             "tools/call",
