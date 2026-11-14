@@ -71,7 +71,6 @@ def test_workflow_set_is_event_driven_and_every_action_is_sha_pinned() -> None:
         "ci.yml",
         "pages.yml",
         "pr-body.yml",
-        "pr-candidate.yml",
         "release.yml",
     }
     for path in WORKFLOWS.glob("*.yml"):
@@ -121,7 +120,11 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         assert contract in ci
     assert "security-events: write" in ci
     assert "pull-requests: write" not in ci
-    assert "contents: write" not in ci
+    jobs = _jobs(ci)
+    # Only candidate publication writes, and it never checks out or runs code.
+    assert {name for name, job in jobs.items() if "contents: write" in job} == {"candidate"}
+    assert "actions/checkout" not in jobs["candidate"]
+    assert "make " not in jobs["candidate"]
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "COVERAGE_MIN ?= 87" in makefile
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
@@ -258,7 +261,9 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "uses: ./.github/workflows/ci.yml" in release
     assert "release-state:" in release
     assert "publish:" in release
-    assert release.count("contents: write") == 1
+    # The CI call only passes the ceiling its candidate job needs.
+    writers = {name for name, job in _jobs(release).items() if "contents: write" in job}
+    assert writers == {"ci", "publish"}
     assert "make build smoke-wheel smoke-sdist" in release
     assert "make zipapp" in release
     assert "actions/download-artifact@" in release
@@ -346,44 +351,12 @@ def _jobs(workflow: str) -> dict[str, str]:
     return dict(zip(parts[1::2], parts[2::2], strict=True))
 
 
-def test_pr_candidates_are_gated_prereleases_with_isolated_write_jobs() -> None:
-    candidate = _workflow("pr-candidate.yml")
-    trigger = candidate.split("\npermissions:", 1)[0]
-    # Builds run on pushes to this repository (or a dispatch of its branch),
-    # never on pull request events, which would need an explicit head checkout.
-    assert "  push:\n    branches-ignore:\n      - main\n" in trigger
-    assert "  workflow_dispatch:\n" in trigger
-    assert "  pull_request:\n" in trigger and "synchronize" not in trigger
-    assert "pull_request_target" not in candidate
-    assert "permissions:\n  contents: read\n" in candidate
-    jobs = _jobs(candidate)
-    assert set(jobs) == {"dispatch", "gate", "build", "publish", "cleanup"}
-    same_repository = "github.event.pull_request.head.repo.full_name == github.repository"
-    assert same_repository in jobs["dispatch"] and same_repository in jobs["cleanup"]
-    assert "github.event_name != 'pull_request'" in jobs["gate"]
-    assert "head: `${context.repo.owner}:${branch}`" in jobs["gate"]
-    # Every push is a candidate once .version differs from the merge base.
-    assert "merge_base_commit" in jobs["gate"]
-    assert "headVersion !== baseVersion" in jobs["gate"]
-    assert "needs.gate.outputs.publish == 'true'" in jobs["build"]
-    assert "JOPLIN_MD_SYNC_BUILD_VERSION" in jobs["build"]
-    assert "make standalone smoke-standalone" in jobs["build"]
-    # The build uses the default checkout of the gated commit, without a ref.
-    assert "actions/checkout@" in jobs["build"] and "ref:" not in jobs["build"]
-    assert "persist-credentials: false" in jobs["build"]
-    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"' in jobs["build"]
-    assert "contents: write" not in jobs["gate"] + jobs["build"] + jobs["dispatch"]
-    assert "actions: write" in jobs["dispatch"]
-    assert "gh workflow run pr-candidate.yml" in jobs["dispatch"]
-    for name in ("dispatch", "gate", "publish", "cleanup"):
-        # Jobs with a write token never check out or execute repository code.
-        assert "actions/checkout" not in jobs[name]
-        assert "make " not in jobs[name]
-    for name in ("publish", "cleanup"):
-        assert "contents: write" in jobs[name]
-    assert "--prerelease" in jobs["publish"] and "--latest=false" in jobs["publish"]
-    assert '--target "$HEAD_SHA"' in jobs["publish"]
-    assert "needs.gate.outputs.pr_number" in jobs["publish"]
-    pattern = r'"^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$"'
-    assert pattern in jobs["publish"] and pattern in jobs["cleanup"]
-    assert "--cleanup-tag" in jobs["publish"] and "--cleanup-tag" in jobs["cleanup"]
+def test_ci_result_is_the_single_gate_over_every_ci_job() -> None:
+    jobs = _jobs(_workflow("ci.yml"))
+    result = jobs["result"]
+    assert "    name: CI result\n" in result
+    # A skipped required check counts as passing, so the gate must always run.
+    assert "    if: always()\n" in result
+    needs = re.findall(r"^      - ([a-z][a-z0-9-]*)$", result.split("    needs:\n", 1)[1], re.M)
+    # Candidate publication is a convenience, not a merge gate.
+    assert set(needs) == set(jobs) - {"result", "candidate"}

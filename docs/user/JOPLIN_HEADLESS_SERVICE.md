@@ -359,14 +359,14 @@ independent of `--joplin-version` and `--joplin-md-sync-version`.
 ### Test an unpublished runtime candidate
 
 Selecting an installer branch does not download an unreleased adapter from
-that branch. Instead, a pull request from this repository whose `.version`
-differs from its merge base publishes every push, and its branch head when the
-pull request is opened, automatically as a GitHub prerelease
-`vX.Y.Z-prN.gSHORTSHA`, for example `v1.8.0-pr48.g7bd6520`. It
-contains the smoke-tested Linux amd64/arm64 executables and `SHA256SUMS.txt`;
-the executable reports the same candidate version. Only the newest candidate of
-a pull request is kept, and closing the pull request removes it. Candidates are
-never the latest release, so `latest` installs and update checks ignore them.
+that branch. Instead, CI publishes every push of a pull request from this
+repository whose `.version` differs from its base as a GitHub prerelease
+`vX.Y.Z-prN.gSHORTSHA`, for example `v1.8.0-pr48.g7bd6520`. It contains the
+smoke-tested Linux amd64/arm64 executables and `SHA256SUMS.txt`; the
+executable reports the same candidate version. Only the newest candidate of a
+pull request is kept, and releasing that version removes its candidates.
+Candidates are never the latest release, so `latest` installs and update checks
+ignore them.
 
 The candidate's release notes contain the exact command, which runs the
 installer from the same commit:

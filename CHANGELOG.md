@@ -35,10 +35,6 @@ All notable changes to this project are documented here. The format follows
   evidence after failed CI runs. Verify the real Joplin Data API and native
   systemd sandbox separately, and retain downloadable CodeQL dataflow evidence
   and native candidates for seven days.
-- Publish every push of a pull request that changes `.version` as an automatic
-  prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
-  executables and checksums, installable with the normal installer; keep only
-  the newest candidate per pull request and delete it on close.
 
 ### Changed
 
@@ -74,6 +70,14 @@ All notable changes to this project are documented here. The format follows
   together. Replace custom lock parsing, text drift checks, dependency submission,
   and updater simulation tests with native lock validation and real application,
   platform, distribution, documentation, and security checks.
+- Gate pull requests on one `CI result` check that depends on every CI job and
+  fails unless all of them succeeded, so job or matrix changes never leave a
+  required check waiting.
+- Publish every push of a pull request that changes `.version` from CI as a
+  prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
+  executables and checksums, installable with the normal installer; keep only
+  the newest candidate per pull request and remove a version's candidates when
+  it is released.
 - Bound runtime requirements to tested minor or major versions so PyPI installs
   never resolve untested releases, and let Dependabot raise a bound in the same
   update when a release falls outside it.
