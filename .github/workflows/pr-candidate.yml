@@ -2,26 +2,34 @@
 
 name: PR candidate
 
-# A pull request from this repository whose .version differs from its merge
-# base publishes every push as a prerelease candidate, so live setups can
-# install unmerged code with the normal installer. Candidates are never stable
-# or latest releases; only the newest one per pull request is kept, and closing
-# the pull request removes it.
+# Every push to a branch with an open pull request from this repository into
+# main, whose .version differs from the merge base, is published as a
+# prerelease candidate, so live setups can install unmerged code with the
+# normal installer. Builds run on push or dispatch events and use the default
+# checkout of that commit; pull request events never check out code. Opening
+# or reopening the pull request dispatches a build of its current branch head.
+# Candidates are never stable or latest releases; only the newest one per pull
+# request is kept, and closing the pull request removes it.
 on:
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
   pull_request:
     branches:
       - main
     types:
       - opened
       - reopened
-      - synchronize
       - closed
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-candidate-${{ github.event.pull_request.number }}
+  # Builds and cleanup of one branch share a group, so closing the pull
+  # request cancels an in-flight build. The dispatcher uses its own group.
+  group: pr-candidate-${{ github.event_name == 'pull_request' && github.event.action != 'closed' && 'dispatch-' || '' }}${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -29,11 +37,30 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  gate:
-    name: Candidate eligibility
+  dispatch:
+    name: Dispatch a candidate build of the pull request branch
     if: >-
+      github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Run this workflow on the pull request branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          test "$GH_REPO" = "$EXPECTED_REPOSITORY"
+          gh workflow run pr-candidate.yml --ref "$BRANCH"
+
+  gate:
+    name: Candidate eligibility
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
@@ -41,8 +68,10 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       head_sha: ${{ steps.check.outputs.head_sha }}
       short_sha: ${{ steps.check.outputs.short_sha }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
+      pr_url: ${{ steps.check.outputs.pr_url }}
     steps:
-      - name: Compare .version with the merge base
+      - name: Find the pull request and compare .version with the merge base
         id: check
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
@@ -51,14 +80,37 @@ jobs:
             if (repository !== process.env.EXPECTED_REPOSITORY) {
               throw new Error(`Refusing to build candidates for ${repository}`);
             }
-            const pull = context.payload.pull_request;
-            const head = pull.head.sha;
+            core.setOutput("publish", "false");
+            const head = context.sha;
             if (!/^[0-9a-f]{40}$/.test(head)) {
-              throw new Error("Pull request head SHA is invalid");
+              throw new Error("Commit SHA is invalid");
+            }
+            if (!context.ref.startsWith("refs/heads/")) {
+              core.notice(`No candidate: ${context.ref} is not a branch`);
+              return;
+            }
+            const branch = context.ref.slice("refs/heads/".length);
+            // The head filter names this repository, so fork pull requests
+            // never match; pushes to this repository need write access.
+            const pulls = await github.rest.pulls.list({
+              ...context.repo,
+              state: "open",
+              base: "main",
+              head: `${context.repo.owner}:${branch}`,
+              per_page: 2,
+            });
+            if (pulls.data.length !== 1) {
+              core.notice(`No candidate: branch ${branch} has no single open pull request into main`);
+              return;
+            }
+            const pull = pulls.data[0];
+            if (pull.head.repo?.full_name !== repository) {
+              core.notice("No candidate: the pull request head is not in this repository");
+              return;
             }
             const comparison = await github.rest.repos.compareCommitsWithBasehead({
               ...context.repo,
-              basehead: `${pull.base.sha}...${head}`,
+              basehead: `${pull.base.ref}...${head}`,
               per_page: 1,
             });
             const mergeBase = comparison.data.merge_base_commit.sha;
@@ -87,6 +139,8 @@ jobs:
             core.setOutput("version", `${headVersion}-pr${pull.number}.g${short}`);
             core.setOutput("head_sha", head);
             core.setOutput("short_sha", short);
+            core.setOutput("pr_number", String(pull.number));
+            core.setOutput("pr_url", pull.html_url);
             core.notice(
               publish
                 ? `Candidate ${headVersion}-pr${pull.number}.g${short} (base ${baseVersion})`
@@ -110,11 +164,15 @@ jobs:
             arch: arm64
             python_arch: arm64
     steps:
-      - name: Check out pull request head
+      - name: Check out the pushed commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.gate.outputs.head_sha }}
           persist-credentials: false
+
+      - name: Confirm the checkout is the gated commit
+        env:
+          EXPECTED_SHA: ${{ needs.gate.outputs.head_sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -177,8 +235,8 @@ jobs:
           VERSION: ${{ needs.gate.outputs.version }}
           HEAD_SHA: ${{ needs.gate.outputs.head_sha }}
           SHORT_SHA: ${{ needs.gate.outputs.short_sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ needs.gate.outputs.pr_number }}
+          PR_URL: ${{ needs.gate.outputs.pr_url }}
         run: |
           set -euo pipefail
           test "$GH_REPO" = "$EXPECTED_REPOSITORY"

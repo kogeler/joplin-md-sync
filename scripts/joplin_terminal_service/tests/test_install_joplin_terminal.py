@@ -616,17 +616,18 @@ class SecretTests(unittest.TestCase):
                 credentials.load_secret_file(link, "sync secret")
 
     def test_safe_command_and_log_filter(self) -> None:
-        secret = "highly-secret-value"
-        self.assertNotIn(secret, safe_command(["tool", "--password", secret], [secret]))
+        # A public canary, not a credential: the test proves it is redacted.
+        canary = "redaction-canary-value"
+        self.assertNotIn(canary, safe_command(["tool", "--password", canary], [canary]))
         stream = io.StringIO()
         handler = logging.StreamHandler(stream)
-        handler.addFilter(SecretRedactor([secret]))
-        logger = logging.getLogger("secret-test")
+        handler.addFilter(SecretRedactor([canary]))
+        logger = logging.getLogger("redaction-test")
         logger.handlers = [handler]
         logger.propagate = False
         logger.setLevel(logging.INFO)
-        logger.info("command failed with %s", secret)
-        self.assertNotIn(secret, stream.getvalue())
+        logger.info("command failed with %s", canary)
+        self.assertNotIn(canary, stream.getvalue())
         self.assertIn("[REDACTED]", stream.getvalue())
 
     def test_command_failure_does_not_leak_secret(self) -> None:

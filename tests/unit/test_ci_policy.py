@@ -349,27 +349,41 @@ def _jobs(workflow: str) -> dict[str, str]:
 def test_pr_candidates_are_gated_prereleases_with_isolated_write_jobs() -> None:
     candidate = _workflow("pr-candidate.yml")
     trigger = candidate.split("\npermissions:", 1)[0]
-    assert "  pull_request:\n" in trigger
+    # Builds run on pushes to this repository (or a dispatch of its branch),
+    # never on pull request events, which would need an explicit head checkout.
+    assert "  push:\n    branches-ignore:\n      - main\n" in trigger
+    assert "  workflow_dispatch:\n" in trigger
+    assert "  pull_request:\n" in trigger and "synchronize" not in trigger
     assert "pull_request_target" not in candidate
     assert "permissions:\n  contents: read\n" in candidate
     jobs = _jobs(candidate)
-    assert set(jobs) == {"gate", "build", "publish", "cleanup"}
+    assert set(jobs) == {"dispatch", "gate", "build", "publish", "cleanup"}
     same_repository = "github.event.pull_request.head.repo.full_name == github.repository"
-    assert same_repository in jobs["gate"] and same_repository in jobs["cleanup"]
+    assert same_repository in jobs["dispatch"] and same_repository in jobs["cleanup"]
+    assert "github.event_name != 'pull_request'" in jobs["gate"]
+    assert "head: `${context.repo.owner}:${branch}`" in jobs["gate"]
     # Every push is a candidate once .version differs from the merge base.
     assert "merge_base_commit" in jobs["gate"]
     assert "headVersion !== baseVersion" in jobs["gate"]
     assert "needs.gate.outputs.publish == 'true'" in jobs["build"]
     assert "JOPLIN_MD_SYNC_BUILD_VERSION" in jobs["build"]
     assert "make standalone smoke-standalone" in jobs["build"]
-    assert "contents: write" not in jobs["gate"] + jobs["build"]
-    for name in ("publish", "cleanup"):
-        assert "contents: write" in jobs[name]
-        # The write token never checks out or executes pull request code.
+    # The build uses the default checkout of the gated commit, without a ref.
+    assert "actions/checkout@" in jobs["build"] and "ref:" not in jobs["build"]
+    assert "persist-credentials: false" in jobs["build"]
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"' in jobs["build"]
+    assert "contents: write" not in jobs["gate"] + jobs["build"] + jobs["dispatch"]
+    assert "actions: write" in jobs["dispatch"]
+    assert "gh workflow run pr-candidate.yml" in jobs["dispatch"]
+    for name in ("dispatch", "gate", "publish", "cleanup"):
+        # Jobs with a write token never check out or execute repository code.
         assert "actions/checkout" not in jobs[name]
         assert "make " not in jobs[name]
+    for name in ("publish", "cleanup"):
+        assert "contents: write" in jobs[name]
     assert "--prerelease" in jobs["publish"] and "--latest=false" in jobs["publish"]
     assert '--target "$HEAD_SHA"' in jobs["publish"]
+    assert "needs.gate.outputs.pr_number" in jobs["publish"]
     pattern = r'"^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$"'
     assert pattern in jobs["publish"] and pattern in jobs["cleanup"]
     assert "--cleanup-tag" in jobs["publish"] and "--cleanup-tag" in jobs["cleanup"]
