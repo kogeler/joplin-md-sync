@@ -17,9 +17,9 @@ exact same targets). Each lives under `.venvs/<key>/`, where the key is private
 to the current machine and user, so one checkout on a shared or network drive
 works from several hosts:
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) first;
-`.tool-versions` selects the reviewed CLI version in CI. Development tools live
-in standard dependency groups and share one universal `uv.lock`.
+Make installs the hash-pinned uv from `tools/uv/requirements.txt` into the
+same host environment root, locally and in CI alike. Development tools live in
+standard dependency groups and share one universal `uv.lock`.
 
 ```bash
 make venv         # .venvs/<key>/venv/         - the package installed editable

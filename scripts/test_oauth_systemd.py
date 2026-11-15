@@ -38,6 +38,8 @@ from joplin_terminal_installer import (  # noqa: E402
 def main(executable: Path) -> None:
     assert sys.platform == "linux"
     assert executable.is_file(), "Build the native executable first"
+    # A non-login shell, such as a CI runner, has a user manager but no variable.
+    os.environ.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
     (REPO / ".artifacts").mkdir(exist_ok=True)
     unit_name = "joplin-oauth-acceptance-" + secrets.token_hex(6) + ".service"
     backend_name = "joplin-oauth-backend-" + secrets.token_hex(6) + ".service"

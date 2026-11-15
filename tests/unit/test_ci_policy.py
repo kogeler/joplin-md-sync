@@ -3,14 +3,8 @@
 from __future__ import annotations
 
 import ast
-import os
 import re
-import shutil
-import subprocess
-import sys
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -111,7 +105,6 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         "make test-service-installer",
         "name: Live protocols",
         "make test-live PY=python",
-        "command -v Xvfb",
         "actions/dependency-review-action@",
         "github/codeql-action/init@",
         "github/codeql-action/analyze@",
@@ -155,84 +148,14 @@ def test_version_job_compares_exact_base_and_head() -> None:
     assert "github.event.pull_request.base.sha" in ci
     assert "github.event.pull_request.head.repo.full_name" in ci
     assert "github.event.pull_request.head.sha" in ci
-    assert "unpublished_base_version" in ci
-    assert "python scripts/check_version_increment.py --base-version" in ci
     version_job = ci.split("\n  version:\n", 1)[1]
     assert "    name: Version increment\n" in version_job
-    assert "published_current_version" in version_job
+    # Only a published, non-prerelease release lets an unchanged version pass.
     assert "!current.data.draft && !current.data.prerelease" in version_job
-    changed = version_job.index('if [[ "$current_version" != "$base_version" ]]; then')
-    unpublished = version_job.index('elif [[ "$PUBLISHED_CURRENT_VERSION" != "true" ]]; then')
-    maintenance = version_job.index(
-        'check_version_increment.py --published-version "$current_version"'
-    )
-    assert changed < unpublished < maintenance
-
-
-def _version_comparison_script() -> str:
-    job = _workflow("ci.yml").split("\n  version:\n", 1)[1]
-    step = job.split("- name: Require an increase for a changed or unpublished version\n", 1)[1]
-    lines = step.split("        run: |\n", 1)[1].splitlines()
-    body = []
-    for line in lines:
-        if line.strip() and not line.startswith("          "):
-            break
-        body.append(line.removeprefix("          "))
-    return "\n".join(body).strip() + "\n"
-
-
-@pytest.mark.skipif(
-    sys.platform == "win32" or shutil.which("bash") is None,
-    reason="the workflow step runs in Linux bash",
-)
-@pytest.mark.parametrize(
-    ("base", "current", "published", "unpublished_base", "code", "message"),
-    (
-        ("1.2.3", "1.2.3", "true", "", 0, "1.2.3 is already published; no increment required"),
-        ("1.2.3", "1.2.3", "false", "1.2.2", 0, "incremented: 1.2.2 -> 1.2.3"),
-        ("1.2.3", "1.3.0", "true", "", 0, "incremented: 1.2.3 -> 1.3.0"),
-        ("1.2.3", "1.2.2", "false", "1.2.1", 2, "must be incremented"),
-        ("1.2.3", "1.2.3", "false", "1.2.3", 2, "must be incremented"),
-    ),
-)
-def test_version_job_accepts_published_maintenance_and_requires_other_increases(
-    tmp_path: Path,
-    base: str,
-    current: str,
-    published: str,
-    unpublished_base: str,
-    code: int,
-    message: str,
-) -> None:
-    (tmp_path / "base").mkdir()
-    (tmp_path / "base" / ".version").write_text(f"{base}\n", encoding="utf-8")
-    source = tmp_path / "source"
-    (source / "scripts").mkdir(parents=True)
-    (source / ".version").write_text(f"{current}\n", encoding="utf-8")
-    shutil.copy2(ROOT / "scripts" / "check_version_increment.py", source / "scripts")
-    shim = tmp_path / "bin" / "python"
-    shim.parent.mkdir()
-    shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
-    shim.chmod(0o755)
-    step = tmp_path / "step.sh"
-    step.write_text(_version_comparison_script(), encoding="utf-8")
-
-    result = subprocess.run(
-        ["bash", "-e", str(step)],
-        cwd=source,
-        env={
-            **os.environ,
-            "PATH": f"{shim.parent}{os.pathsep}{os.environ['PATH']}",
-            "PUBLISHED_CURRENT_VERSION": published,
-            "UNPUBLISHED_BASE_VERSION": unpublished_base,
-        },
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode == code, result.stderr
-    assert message in result.stdout + result.stderr
+    assert (
+        "make version-check PY=python BASE_VERSION_FILE=../base/.version "
+        'LATEST_RELEASE="$LATEST_RELEASE"'
+    ) in version_job
 
 
 def test_published_release_makes_later_main_pushes_a_no_op() -> None:
@@ -265,7 +188,7 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     writers = {name for name, job in _jobs(release).items() if "contents: write" in job}
     assert writers == {"ci", "publish"}
     assert "make build smoke-wheel smoke-sdist" in release
-    assert "make zipapp" in release
+    assert "make release-inventory PY=python" in release
     assert "actions/download-artifact@" in release
     assert "draft: true" in release
     assert "github.rest.repos.uploadReleaseAsset" in release

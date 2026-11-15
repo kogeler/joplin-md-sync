@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Check that the working tree version is newer than a Git base revision.
+"""Check that the working tree version advances past its comparison base.
 
-An ordinary change may instead keep a current version that is already
-published; its notes accumulate under the changelog's Unreleased section until
-a deliberate release advances the version.
+A changed version must exceed the base. An unchanged version is accepted only
+while it is already published, so ordinary changes accumulate notes under the
+changelog's Unreleased section; while it is unpublished it must exceed the
+latest published release.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -26,56 +26,38 @@ def parse_version(value: str, source: str) -> Version:
     return major, minor, patch
 
 
-def read_base_version(base_ref: str) -> str:
-    result = subprocess.run(
-        ["git", "show", f"{base_ref}:.version"],
-        cwd=REPO,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        detail = result.stderr.strip() or "git show failed"
-        raise ValueError(f"cannot read .version from base ref {base_ref!r}: {detail}")
-    return result.stdout.strip()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    base = parser.add_mutually_exclusive_group(required=True)
-    base.add_argument("--base-ref", help="Git revision to compare against")
-    base.add_argument("--base-version", help="Exact semantic version to compare against")
-    base.add_argument(
-        "--published-version",
-        help="Already published version that an ordinary change keeps unchanged",
+    parser.add_argument("--base-version", required=True, help="Version of the comparison base")
+    state = parser.add_mutually_exclusive_group(required=True)
+    state.add_argument(
+        "--published", action="store_true", help="The current version is already published"
+    )
+    state.add_argument(
+        "--latest-release",
+        help="Latest published release, given while the current version is unpublished",
     )
     args = parser.parse_args()
 
     try:
         current_text = (REPO / ".version").read_text(encoding="utf-8").strip()
         current = parse_version(current_text, "current .version")
-        if args.published_version is not None:
-            if current != parse_version(args.published_version, "published version"):
-                raise ValueError(
-                    ".version must equal the already published version for an unreleased "
-                    f"change: current {current_text}, published {args.published_version}"
-                )
+        base_text = args.base_version
+        base = parse_version(base_text, "base version")
+        if current == base and args.published:
             print(f"ok .version {current_text} is already published; no increment required")
             return 0
-        base_text = (
-            read_base_version(args.base_ref) if args.base_ref is not None else args.base_version
-        )
-        assert base_text is not None
-        base_version = parse_version(base_text, "base version")
+        if current == base:
+            base_text = args.latest_release
+            base = parse_version(base_text, "latest release")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
 
-    if current <= base_version:
+    if current <= base:
         parser.error(
             f".version must be incremented relative to the comparison base: "
             f"current {current_text}, base {base_text}"
         )
-
     print(f"ok .version incremented: {base_text} -> {current_text}")
     return 0
 

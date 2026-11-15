@@ -10,10 +10,10 @@ activate interfaces; no OAuth installation extra is required.
 
 ## Install the tools
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and a
-supported Python interpreter. `.tool-versions` records the reviewed uv CLI version
-used by CI's official setup-uv action. The project declares a compatible
-minimum rather than requiring Dependabot's updater to use that exact binary.
+Install a supported Python interpreter. Make installs uv itself from
+`tools/uv/requirements.txt`, an exact version with the hashes of every PyPI
+file, which Dependabot updates. The project declares a compatible minimum
+rather than requiring Dependabot's updater to use that exact binary.
 
 | Make target | Group | Purpose |
 | --- | --- | --- |

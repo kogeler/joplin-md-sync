@@ -368,8 +368,8 @@ pull request is kept, and releasing that version removes its candidates.
 Candidates are never the latest release, so `latest` installs and update checks
 ignore them.
 
-The candidate's release notes contain the exact command, which runs the
-installer from the same commit:
+The candidate's release notes name its commit. Run the installer from that
+commit with the candidate version:
 
 ```bash
 installer_ref='FULL_COMMIT_SHA'

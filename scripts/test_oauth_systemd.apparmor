@@ -1,0 +1,7 @@
+# Installed by `make oauth-systemd-host`: lets systemd's executor create user
+# namespaces for the production sandbox on hosts that restrict them.
+abi <abi/4.0>,
+include <tunables/global>
+profile joplin-oauth-test-userns /usr/lib/systemd/systemd-executor flags=(unconfined) {
+  userns,
+}

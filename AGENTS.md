@@ -101,8 +101,9 @@ Make keeps every environment under `.venvs/<key>/`, private to the current
 machine and user, so one checkout on a shared or network drive works from
 several hosts. Development dependencies live in standard `pyproject.toml`
 dependency groups; uv and Dependabot maintain the single `uv.lock`, which is
-never hand-edited. Install uv before using Make; CI selects its version from
-`.tool-versions`. Use `make lock` after editing requirements and `make lock-check`
+never hand-edited. Make installs the hash-pinned uv from
+`tools/uv/requirements.txt` into the same host environment root; pass
+`UV=/path/to/uv` to use another executable. Use `make lock` after editing requirements and `make lock-check`
 to validate them without rewriting the lock. Ordinary changes add notes under
 `## [Unreleased]` in `CHANGELOG.md` and keep `.version`; only deliberate
 release preparation advances it.

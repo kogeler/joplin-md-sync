@@ -82,6 +82,12 @@ All notable changes to this project are documented here. The format follows
   fails unless all of them succeeded, so job or matrix changes never leave a
   required check waiting. CodeQL alerts are enforced by the ruleset's code
   scanning rule, which that job cannot observe.
+- Install uv through Make from a hash-pinned `tools/uv/requirements.txt` that
+  Dependabot updates, instead of a separately installed tool and CI's setup-uv
+  action. Workflows now contain only GitHub-specific steps and call reusable
+  Make targets for everything else: `version-check`, `candidate-version`,
+  `oauth-acceptance-report`, `oauth-systemd-host` and `release-inventory`, so
+  the release publish job no longer fails for lack of uv.
 - Publish every push of a pull request that changes `.version` from CI as a
   prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
   executables and checksums, installable with the normal installer; keep only
