@@ -19,7 +19,9 @@ REPO = Path(__file__).resolve().parent.parent
 NAME = "io.github.kogeler/joplin-md-sync"
 SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
 TITLE = "Joplin MCP for Claude & ChatGPT"
-DESCRIPTION = "Search, read and update self-hosted Joplin notes, notebooks, tags and attachments."
+DESCRIPTION = (
+    "Self-hosted Joplin MCP server with built-in OAuth for hosted Claude and ChatGPT Actions"
+)
 
 
 def server(root: Path = REPO) -> dict[str, object]:

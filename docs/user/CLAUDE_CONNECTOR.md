@@ -1,14 +1,16 @@
 ---
 title: "Connect Claude to Joplin with GitHub login"
-description: "Connect hosted Claude to your Joplin notes through the built-in GitHub OAuth login: OAuth app, service setup, HTTPS routes, monitoring and troubleshooting."
+description: "Connect hosted Claude to your Joplin notes with built-in GitHub OAuth and no separate OAuth proxy: OAuth app, service setup, HTTPS routes and troubleshooting."
 ---
 
 # Claude connector with GitHub login
 
 Connect hosted Claude to Joplin at `https://EXISTING_HOST/oauth/mcp` and allow
 one explicitly configured GitHub account. OAuth is part of the standard package
-and native executable. Enable it with `--github-oauth` on the
-existing MCP service and port.
+and native executable, so no separate OAuth proxy or identity gateway is
+needed. Enable it with `--github-oauth` on the existing MCP service and port;
+the headless installer asks for the few values it needs and configures the
+rest.
 
 ## Scope and limitations
 
@@ -16,7 +18,9 @@ existing MCP service and port.
   `https://claude.ai/api/mcp/auth_callback`, used by custom connectors added in
   Claude. Other MCP clients are rejected at registration, including ChatGPT
   connectors and Claude Code or other local clients with loopback redirects.
-  Local clients keep using `/mcp` with its Bearer token.
+  Local clients keep using `/mcp` with its Bearer token. A ChatGPT connector
+  is planned to replace Actions, which OpenAI retires with Custom GPTs on
+  2026-12-11.
 - **One GitHub.com account.** Access is bound to one numeric GitHub user ID.
   GitHub Enterprise Server and organization or team rules are not supported.
 - **Public HTTPS.** Claude connects from the internet, so the OAuth routes need

@@ -8,10 +8,21 @@ move, tag, and trash notes from hosted Claude with a GitHub login, a private
 Custom GPT, or any local stdio or Streamable HTTP MCP client without moving
 your notes into another hosted note service.
 
-Run it beside Joplin Desktop, or deploy a complete headless Joplin Terminal and
-agent API stack on your own Linux host. A separate Markdown sync workflow is
-available when a coding agent needs reviewable files, three-way diffs, and Git
-history.
+- **Built-in OAuth for hosted Claude.** Claude on claude.ai connects straight
+  to Joplin on your own server through your GitHub login. OAuth is part of the
+  server itself, so there is no separate OAuth proxy or gateway to deploy and
+  configure, and the Joplin Data API stays on loopback.
+- **ChatGPT today.** A private Custom GPT works through authenticated Actions.
+  OpenAI retires Custom GPTs on 2026-12-11; a ChatGPT MCP connector through
+  the same built-in OAuth is planned as the replacement.
+- **One installer for the whole stack.** A single command sets up headless
+  Joplin Terminal, recurrent sync, MCP, Actions, and Claude OAuth as rootless
+  systemd services. It asks for the values it needs, hides secrets, generates
+  keys and tokens, and verifies the result.
+
+Run it beside Joplin Desktop, or deploy the complete headless stack on your own
+Linux host. A separate Markdown sync workflow is available when a coding agent
+needs reviewable files, three-way diffs, and Git history.
 
 **[Website](https://joplin-mcp.romancello.net/)** ·
 **[Connect Claude](https://joplin-mcp.romancello.net/user/CLAUDE_CONNECTOR/)** ·
@@ -21,19 +32,21 @@ history.
 
 ## What you get
 
+- **Claude with GitHub sign-in.** The built-in `/oauth/mcp` interface lets
+  hosted Claude, currently its only supported OAuth client, sign in with one
+  configured numeric GitHub account on the existing service port. The
+  installer configures it from a few answers; CLI flags and private
+  secret-file options do the same by hand.
 - **Joplin inside ChatGPT.** A generated OpenAPI contract exposes authenticated
   Actions for current notes, notebooks, tags, and search to a private Custom
   GPT.
 - **Typed MCP tools.** Local stdio and Streamable HTTP transports give
   compatible clients structured note operations plus attachment upload,
   download, replacement, and relationship traversal.
-- **Claude with GitHub sign-in.** The built-in `/oauth/mcp` interface lets
-  hosted Claude, currently its only supported client, sign in with one
-  configured numeric GitHub account on the existing service port. Configure it
-  with individual CLI flags and private secret-file options.
 - **A headless Joplin service.** The rootless Linux installer deploys Joplin
-  Terminal, recurrent sync, and the combined MCP/Actions adapter as coordinated
-  systemd user services. Joplin Desktop does not need to remain running.
+  Terminal, recurrent sync, and the combined MCP, OAuth, and Actions adapter
+  as coordinated systemd user services. Joplin Desktop does not need to remain
+  running.
 - **Your storage and encryption choices.** Use filesystem, Nextcloud, WebDAV,
   Dropbox, OneDrive, S3, Joplin Server, or Joplin Cloud, with existing Joplin
   end-to-end encryption where the selected topology supports it.
@@ -45,11 +58,17 @@ Joplin remains the source of truth. The adapter uses its documented local
 [Data API](https://joplinapp.org/help/api/references/rest_api/) and never edits
 the Joplin database, profile, or sync target directly.
 
-## Fast path: headless Joplin for ChatGPT
+Joplin Desktop also ships its own MCP server for clients on the same computer.
+Use this project when the assistant runs elsewhere, such as hosted Claude or
+ChatGPT, when Joplin runs headless on a server, or when you need attachments
+and reviewable Markdown changes. See the
+[comparison](https://joplin-mcp.romancello.net/#built-in-mcp).
+
+## Fast path: headless Joplin for Claude and ChatGPT
 
 This topology keeps Joplin and the adapter on your own Linux host. Only the
-authenticated Actions routes need to reach ChatGPT over HTTPS; the Joplin Data
-API stays on loopback.
+authenticated OAuth or Actions routes need to reach the assistant over HTTPS;
+the Joplin Data API stays on loopback.
 
 ### 1. Install Joplin and the agent service
 
@@ -67,35 +86,48 @@ curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
       --sync-username 'user'
 ```
 
-The installer asks for secrets through hidden prompts, handles existing Joplin
-E2EE keys, verifies release checksums, and creates:
+The installer asks for secrets through hidden prompts, offers GitHub OAuth for
+Claude, handles existing Joplin E2EE keys, verifies release checksums, and
+creates:
 
 ```text
 joplin-terminal.service    Joplin profile, Data API, and recurrent sync
-joplin-md-sync.service     MCP and ChatGPT Actions on one guarded adapter
+joplin-md-sync.service     MCP, Claude OAuth, and ChatGPT Actions on one guarded adapter
 ```
 
-It also generates separate protected credentials for Joplin, MCP, and Actions.
+It also generates separate protected credentials for Joplin, MCP, and Actions,
+plus the OAuth signing key when OAuth is enabled.
 For ready-to-run Nextcloud, custom S3, and uninstall commands, see
 [Joplin Headless Service](https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/).
 The guide also explains installed paths, every installer option, and upgrades.
 
-### 2. Publish the narrow HTTPS route
+### 2. Publish the narrow HTTPS routes
 
-Route `/api/gpt/v1/*` from a trusted HTTPS hostname to the adapter on
-`127.0.0.1:8765`. Do not expose the upstream Joplin Data API. Keep `/mcp`
+From a trusted HTTPS hostname, route only what your assistant needs to the
+adapter on `127.0.0.1:8765`: the OAuth routes for Claude, `/api/gpt/v1/*` for
+ChatGPT, or both. Do not expose the upstream Joplin Data API. Keep `/mcp`
 private unless a remote MCP client needs it; public MCP requires its own bearer
 token and TLS.
 
 The supported boundaries and deployment choices are documented in
 [Self-hosted deployment](https://joplin-mcp.romancello.net/user/SELF_HOSTED/).
 
-### 3. Connect a private Custom GPT
+### 3. Connect Claude
+
+Register a GitHub OAuth App, then answer yes to the installer's
+`Enable GitHub OAuth for Claude?` question or rerun it with `--github-oauth`.
+It asks for the public HTTPS origin, the app's Client ID and Client Secret, and
+your numeric GitHub user ID, then enables OAuth on the running service and
+checks it. Add `https://YOUR_HOST/oauth/mcp` as a custom connector in Claude
+and sign in with GitHub. The exact routes, app settings, and checks are in the
+[Claude connector guide](https://joplin-mcp.romancello.net/user/CLAUDE_CONNECTOR/).
+
+### 4. Connect a private Custom GPT
 
 From a checkout matching the deployed release, run the setup assistant:
 
 ```bash
-git clone --depth 1 --branch v1.8.0 \
+git clone --depth 1 --branch v1.8.1 \
   https://github.com/kogeler/joplin-md-sync.git
 cd joplin-md-sync
 python3 scripts/prepare_chatgpt_action.py
@@ -147,7 +179,7 @@ instead. Stdio opens no MCP or Actions port and therefore needs no bearer token
 for those interfaces; its Joplin token authenticates only to Joplin:
 
 ```bash
-pipx install "joplin-md-sync==1.8.0"
+pipx install "joplin-md-sync==1.8.1"
 export JOPLIN_TOKEN=...
 joplin-md-sync mcp serve
 ```
@@ -212,8 +244,8 @@ operating a Markdown workspace should also follow
 Python installations require CPython 3.13 or 3.14 on Windows or Linux:
 
 ```bash
-python -m pip install "joplin-md-sync==1.8.0"
-# or: pipx install "joplin-md-sync==1.8.0"
+python -m pip install "joplin-md-sync==1.8.1"
+# or: pipx install "joplin-md-sync==1.8.1"
 ```
 
 Native executables from GitHub Releases include Python and the standard service
@@ -233,10 +265,10 @@ Download them with `SHA256SUMS.txt` from the
 
 | Goal | Interface |
 | --- | --- |
-| Work with current Joplin notes in ChatGPT | Authenticated ChatGPT Actions |
 | Connect hosted Claude with GitHub sign-in | Built-in OAuth MCP at `/oauth/mcp` |
+| Work with current Joplin notes in ChatGPT | Authenticated ChatGPT Actions |
 | Give an editor or assistant typed note tools | MCP |
-| Run without a desktop session | Headless Joplin Terminal plus MCP/Actions |
+| Run without a desktop session | Headless Joplin Terminal plus MCP, OAuth, or Actions |
 | Review every broad agent edit before applying it | Markdown workspace |
 | Keep selected notebooks in Git | Markdown workspace |
 

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-15
+
 ### Added
 
 - Each release is published to the official MCP Registry as
@@ -14,9 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- The home page and interface guide compare this project with Joplin's built-in
-  MCP server: hosted Claude and ChatGPT, headless servers, attachments and
-  reviewable Markdown changes versus local desktop clients and semantic search.
+- The README, package description and site lead with what sets the project
+  apart: OAuth for hosted Claude built into the server with no separate OAuth
+  proxy, ChatGPT through Custom GPT Actions until OpenAI retires them on
+  2026-12-11, and one installer for the whole headless stack. The home page
+  and interface guide compare it with Joplin Desktop's built-in MCP server.
 - The documentation site is renamed "Joplin MCP for Claude & ChatGPT" and puts
   the Claude connector first. Every page has its own search title and
   description, link previews, and a sitemap date from its last change; the home

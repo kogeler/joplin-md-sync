@@ -1,12 +1,14 @@
 ---
 title: "Run Joplin headless on a Linux server"
-description: "Install Joplin Terminal as a headless Linux service synced with Nextcloud, S3, Joplin Server or Dropbox, plus MCP, Claude and ChatGPT access."
+description: "One installer runs Joplin headless on a Linux server, synced with Nextcloud, S3, Joplin Server or Dropbox, with MCP, Claude OAuth and ChatGPT access."
 ---
 
 # Joplin Headless Service
 
 Run Joplin on a Linux server without a desktop, sync it with your other Joplin
-clients, and connect through MCP or ChatGPT Actions.
+clients, and connect Claude, ChatGPT, or any MCP client. One installer sets up
+Joplin Terminal, recurrent sync, MCP, Actions, and the built-in GitHub OAuth
+for Claude from the values you enter.
 
 ## Quick runbook
 
@@ -392,12 +394,12 @@ preflight before replacing a healthy service.
 For a build without a candidate prerelease, such as a fork pull request or a
 local `make standalone`, serve the executable from a local release layout. For
 Linux amd64, place `joplin-md-sync-linux-amd64` in
-`$HOME/joplin-candidate/download/v1.8.0/`, using the version it reports, then
+`$HOME/joplin-candidate/download/v1.8.1/`, using the version it reports, then
 run:
 
 ```bash
 candidate_root="$HOME/joplin-candidate"
-candidate_version='1.8.0'
+candidate_version='1.8.1'
 candidate_asset='joplin-md-sync-linux-amd64'
 (cd "$candidate_root/download/v$candidate_version" && sha256sum "$candidate_asset" > SHA256SUMS.txt)
 candidate_url=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$candidate_root")
@@ -726,7 +728,7 @@ Or run the remote command from the quick runbook with only `--upgrade` after
 
 ```bash
 python3 install_joplin_terminal.py --upgrade \
-  --joplin-version 3.7.1 --joplin-md-sync-version 1.8.0
+  --joplin-version 3.7.1 --joplin-md-sync-version 1.8.1
 ```
 
 The installer resolves versions and downloads, verifies and smoke-tests a

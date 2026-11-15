@@ -5,6 +5,12 @@ description: "Give a private Custom GPT live access to your Joplin notes with au
 
 # ChatGPT Actions setup
 
+!!! note "Custom GPT retirement"
+    OpenAI retires Custom GPTs, including their Actions, on 2026-12-11 for
+    standard ChatGPT plans. This interface works until then. A ChatGPT MCP
+    connector through the same built-in OAuth that hosted Claude uses is
+    planned as the replacement.
+
 This setup guide implements the tested transport and authentication behavior
 in the [agent-interface](../contracts/AGENT_INTERFACES.md) and
 [security](../contracts/SECURITY.md) contracts.

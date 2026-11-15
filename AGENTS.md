@@ -1,7 +1,8 @@
 # joplin-md-sync Agent Runbook
 
 Safe two-way synchronization between Joplin and ordinary Markdown, with local
-stdio and HTTP MCP plus ChatGPT Actions interfaces for agents. Product
+stdio and HTTP MCP, built-in GitHub OAuth for hosted Claude, and ChatGPT Actions
+interfaces for agents. Product
 guarantees are defined only by the [contract catalog](docs/contracts/README.md).
 This runbook tells an agent how to operate the project safely; it does not
 replace those contracts.
@@ -56,9 +57,9 @@ Native release executables include Python.
 ## Install
 
 ```bash
-python -m pip install "joplin-md-sync==1.8.0"
+python -m pip install "joplin-md-sync==1.8.1"
 # or:
-pipx install "joplin-md-sync==1.8.0"
+pipx install "joplin-md-sync==1.8.1"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```

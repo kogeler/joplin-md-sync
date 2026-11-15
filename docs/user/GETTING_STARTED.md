@@ -35,14 +35,14 @@ for a server without a desktop session, use the
 === "pipx"
 
     ```bash
-    pipx install "joplin-md-sync==1.8.0"
+    pipx install "joplin-md-sync==1.8.1"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "joplin-md-sync==1.8.0"
+    python -m pip install "joplin-md-sync==1.8.1"
     joplin-md-sync version --json
     ```
 
@@ -177,6 +177,7 @@ Git-reviewed knowledge, conflicts, deletions, and when to use MCP instead.
 | --- | --- |
 | Understand every CLI flag and result | [CLI reference](CLI.md) |
 | Connect an MCP-capable client | [MCP API](MCP_API.md) |
+| Connect hosted Claude with GitHub login | [Claude connector](CLAUDE_CONNECTOR.md) |
 | Build a private Joplin Custom GPT | [ChatGPT Actions](CHATGPT_ACTIONS.md) |
 | Run Joplin and the bridge on Linux | [Self-hosted deployment](SELF_HOSTED.md) |
 | Understand conflicts and recovery | [Synchronization design](../maintenance/SYNCHRONIZATION.md) and [Conflict handling](CONFLICTS.md) |

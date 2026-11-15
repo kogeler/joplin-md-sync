@@ -45,7 +45,7 @@ owned by [`CLI-001`](../contracts/CLI.md#cli-001-json-output-is-deterministic-an
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.8.0",
+  "tool_version": "1.8.1",
   "workspace": "/abs/path/notes"
 }
 ```

@@ -1,7 +1,7 @@
 site_name: "Joplin MCP for Claude & ChatGPT"
 site_description: >-
-  Connect Claude, ChatGPT and any MCP client to self-hosted Joplin notes, with
-  a headless Linux service and a reviewable Markdown workflow.
+  Self-hosted Joplin MCP server with built-in OAuth for hosted Claude, ChatGPT
+  Actions, a one-installer headless Linux service and reviewable Markdown sync.
 site_url: https://joplin-mcp.romancello.net/
 site_author: kogeler
 copyright: MIT licensed. Joplin is a trademark of Laurent Cozic.

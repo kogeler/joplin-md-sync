@@ -1,9 +1,11 @@
 # Joplin MCP for Claude and ChatGPT
 
 > Open-source bridge that connects Claude, ChatGPT and any MCP client to
-> self-hosted Joplin notes: local stdio and Streamable HTTP MCP, a Claude
-> connector with GitHub login, authenticated ChatGPT Actions, an automated
-> headless Linux service, and reviewable two-way Markdown sync.
+> self-hosted Joplin notes. OAuth for hosted Claude is built into the server
+> (GitHub login, no separate OAuth proxy); ChatGPT uses authenticated Custom
+> GPT Actions; other clients use local stdio or Streamable HTTP MCP. One
+> installer sets up the complete headless Linux stack, and two-way Markdown
+> sync makes broad changes reviewable.
 
 Canonical documentation: https://joplin-mcp.romancello.net/
 Source: https://github.com/kogeler/joplin-md-sync
