@@ -1,3 +1,8 @@
+---
+title: "joplin-md-sync CLI reference"
+description: "Reference for every joplin-md-sync command and option, with the JSON envelope and exit codes that scripts and AI agents rely on."
+---
+
 # CLI Reference
 
 This page is a user reference for commands and options. The stable machine

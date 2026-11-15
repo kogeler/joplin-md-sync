@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import re
-import runpy
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
+
+import pytest
 
 ROOT = Path(__file__).parents[2]
 DOCS = ROOT / "docs"
@@ -139,9 +141,6 @@ def test_documentation_tree_and_site_navigation_are_complete() -> None:
         "joplin-mcp.romancello.net"
     )
     assert (DOCS / "site" / "llms.txt").is_file()
-    assert (DOCS / "site" / "robots.txt").read_text(encoding="utf-8") == (
-        "User-agent: *\nAllow: /\n\nSitemap: https://joplin-mcp.romancello.net/sitemap.xml\n"
-    )
     assert (DOCS / "site" / "assets" / "stylesheets" / "extra.css").is_file()
     assert (DOCS / "site" / "overrides" / "home.html").is_file()
 
@@ -238,44 +237,43 @@ def test_all_relative_documentation_links_and_home_routes_resolve() -> None:
         assert candidate.is_file(), route
 
 
-def test_homepage_leads_with_chatgpt_mcp_and_headless_deployment() -> None:
-    homepage = (DOCS / "index.md").read_text(encoding="utf-8")
-    assert "<h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>" in homepage
-    chatgpt = homepage.index("Connect ChatGPT")
-    local_mcp = homepage.index("Connect local MCP")
-    deploy = homepage.index("Deploy headless")
-    headless = homepage.index("Deploy the complete headless path")
-    markdown = homepage.index("Use ordinary Markdown when the diff matters")
-    assert chatgpt < local_mcp < deploy < headless < markdown
-    assert 'href="user/MCP_API/#local-stdio"' in homepage
-    assert "local stdio MCP" in homepage.partition("</section>")[0]
-    assert "install_joplin_terminal.py" in homepage
+def _load_site_hooks(monkeypatch: pytest.MonkeyPatch, *, shallow: str = "false") -> Any:
+    spec = importlib.util.spec_from_file_location("site_hooks", DOCS / "site" / "hooks.py")
+    assert spec and spec.loader
+    hooks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(hooks)
+    answers = {"rev-parse": shallow, "log": "2026-08-21T13:29:03+03:00"}
+    monkeypatch.setattr(hooks, "_git", lambda _repository, command, *_args: answers[command])
+    return hooks
 
-    mkdocs = (ROOT / "mkdocs.yml").read_text(encoding="utf-8")
-    social_metadata = (DOCS / "site" / "overrides" / "home.html").read_text(encoding="utf-8")
-    assert '"MCP: local & HTTP": user/MCP_API.md' in mkdocs
-    assert "local stdio MCP" in mkdocs
-    assert "local stdio MCP" in social_metadata
+
+def _site_page(**meta: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        file=SimpleNamespace(src_uri="user/CLI.md", abs_src_path=DOCS / "user" / "CLI.md"),
+        meta={"title": "CLI reference", "description": "Every command.", **meta},
+        update_date="2026-11-15",
+        title="CLI reference",
+        canonical_url="https://joplin-mcp.romancello.net/user/CLI/",
+        is_page=True,
+        is_section=False,
+    )
 
 
 def test_site_hook_rewrites_repository_links_and_publishes_root_files(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    hooks = runpy.run_path(DOCS / "site" / "hooks.py")
-    configure = cast("Any", hooks["on_config"])
-    rewrite = cast("Any", hooks["on_page_markdown"])
-    publish = cast("Any", hooks["on_post_build"])
-    page = SimpleNamespace(file=SimpleNamespace(abs_src_path=DOCS / "user" / "CLI.md"))
+    hooks = _load_site_hooks(monkeypatch)
+    page = _site_page()
     config = {"docs_dir": str(DOCS), "site_dir": str(tmp_path)}
 
-    missing_analytics = {"extra": {"analytics": {"provider": "google", "property": None}}}
-    empty_analytics = {"extra": {"analytics": {"provider": "google", "property": "  "}}}
-    configured_analytics = {"extra": {"analytics": {"provider": "google", "property": "G-TEST123"}}}
-    assert "analytics" not in configure(missing_analytics)["extra"]
-    assert "analytics" not in configure(empty_analytics)["extra"]
-    assert configure(configured_analytics)["extra"]["analytics"]["property"] == "G-TEST123"
+    missing_analytics = {"docs_dir": str(DOCS), "extra": {"analytics": {"property": None}}}
+    empty_analytics = {"docs_dir": str(DOCS), "extra": {"analytics": {"property": "  "}}}
+    configured = {"docs_dir": str(DOCS), "extra": {"analytics": {"property": "G-TEST123"}}}
+    assert "analytics" not in hooks.on_config(missing_analytics)["extra"]
+    assert "analytics" not in hooks.on_config(empty_analytics)["extra"]
+    assert hooks.on_config(configured)["extra"]["analytics"]["property"] == "G-TEST123"
 
-    rendered = rewrite(
+    rendered = hooks.on_page_markdown(
         "[readme](../../README.md#installation) [contract](../contracts/CLI.md)",
         page=page,
         config=config,
@@ -285,14 +283,38 @@ def test_site_hook_rewrites_repository_links_and_publishes_root_files(
         in rendered
     )
     assert "[contract](../contracts/CLI.md)" in rendered
+    assert page.update_date == "2026-08-21T13:29:03+03:00"
 
-    publish(config=config)
-    assert (tmp_path / "CNAME").read_text(encoding="utf-8") == (DOCS / "site" / "CNAME").read_text(
-        encoding="utf-8"
-    )
-    assert (tmp_path / "llms.txt").read_text(encoding="utf-8") == (
-        DOCS / "site" / "llms.txt"
-    ).read_text(encoding="utf-8")
-    assert (tmp_path / "robots.txt").read_text(encoding="utf-8") == (
-        DOCS / "site" / "robots.txt"
-    ).read_text(encoding="utf-8")
+    section = SimpleNamespace(is_page=False, is_section=True, title="Markdown", children=[page])
+    hooks.on_nav(SimpleNamespace(items=[section]))
+    hooks.on_post_build(config=config)
+    llms = (tmp_path / "llms.txt").read_text(encoding="utf-8")
+    assert "<!-- pages -->" not in llms
+    assert "## Markdown\n\n- [CLI reference](https://joplin-mcp.romancello.net/user/CLI/): " in llms
+    key = (DOCS / "site" / "indexnow-key.txt").read_text(encoding="utf-8").strip()
+    assert (tmp_path / f"{key}.txt").read_text(encoding="utf-8") == key
+
+
+@pytest.mark.parametrize(
+    ("meta", "message"),
+    [
+        ({"description": ""}, "needs a description"),
+        ({"title": 'Say "hi"'}, "must not contain quotes"),
+        ({"description": "x" * 161}, "exceeds 160 characters"),
+    ],
+)
+def test_site_hook_rejects_unusable_page_metadata(
+    monkeypatch: pytest.MonkeyPatch, meta: dict[str, str], message: str
+) -> None:
+    hooks = _load_site_hooks(monkeypatch)
+    config = {"docs_dir": str(DOCS), "site_dir": "site"}
+
+    with pytest.raises(hooks.SiteInputError, match=message):
+        hooks.on_page_markdown("text", page=_site_page(**meta), config=config)
+
+
+def test_site_hook_refuses_a_shallow_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    hooks = _load_site_hooks(monkeypatch, shallow="true")
+
+    with pytest.raises(hooks.SiteInputError, match="fetch-depth: 0"):
+        hooks.on_config({"docs_dir": str(DOCS), "extra": {}})

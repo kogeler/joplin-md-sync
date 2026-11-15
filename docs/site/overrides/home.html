@@ -2,11 +2,22 @@
 
 {% block extrahead %}
   {{ super() }}
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="Joplin for ChatGPT and MCP">
-  <meta property="og:description" content="Use self-hosted Joplin notes through ChatGPT Actions, local stdio MCP, or authenticated HTTP MCP, with a separate reviewable Markdown workflow.">
-  <meta property="og:url" content="https://joplin-mcp.romancello.net/">
-  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+    {{ {
+      "@context": "https://schema.org",
+      "@type": "SoftwareSourceCode",
+      "name": "joplin-md-sync",
+      "alternateName": config.site_name,
+      "description": page.meta.description,
+      "url": config.site_url,
+      "codeRepository": config.repo_url,
+      "programmingLanguage": "Python",
+      "runtimePlatform": ["Linux", "Windows"],
+      "license": "https://opensource.org/licenses/MIT",
+      "author": {"@type": "Person", "name": config.site_author, "url": "https://github.com/kogeler"},
+      "keywords": ["Joplin", "MCP server", "Model Context Protocol", "Claude", "ChatGPT", "AI agents", "self-hosted", "Markdown sync"]
+    } | tojson }}
+  </script>
 {% endblock %}
 
 {% block tabs %}

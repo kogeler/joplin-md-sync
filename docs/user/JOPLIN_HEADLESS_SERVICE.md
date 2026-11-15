@@ -1,3 +1,8 @@
+---
+title: "Run Joplin headless on a Linux server"
+description: "Install Joplin Terminal as a headless Linux service synced with Nextcloud, S3, Joplin Server or Dropbox, plus MCP, Claude and ChatGPT access."
+---
+
 # Joplin Headless Service
 
 Run Joplin on a Linux server without a desktop, sync it with your other Joplin

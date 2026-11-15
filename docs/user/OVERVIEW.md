@@ -1,3 +1,8 @@
+---
+title: "Overview: AI agent access to self-hosted Joplin"
+description: "What joplin-md-sync does: Claude, ChatGPT and MCP access to self-hosted Joplin notes, a headless Linux service and a reviewable Markdown workflow."
+---
+
 # Overview
 
 For testable guarantees, use the [contract catalog](../contracts/README.md).

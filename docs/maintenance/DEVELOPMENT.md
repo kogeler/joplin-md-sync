@@ -1,3 +1,8 @@
+---
+title: "Development and testing"
+description: "Maintainer workflow for joplin-md-sync: Make environments, daily checks, OAuth acceptance evidence, live Joplin tests and documentation changes."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Development
@@ -181,3 +186,13 @@ strict build and then checks the generated HTML, routes, links, anchors,
 canonical URLs, sitemap, and assets without using the public network.
 `make docs-screenshots` additionally requires Chromium and writes representative
 desktop and mobile renders to `.artifacts/docs-screenshots/` for visual review.
+
+Every page needs front matter with its own search `title` and a `description`
+of at most 160 characters without quotes, `<`, `>` or `&`; the build rejects
+anything else and the audit rejects duplicates. Sitemap dates come from each
+page's last commit, so the build needs full Git history (`fetch-depth: 0` in
+CI). `llms.txt` lists every page from the navigation and the descriptions, and
+`robots.txt` welcomes search, assistant and training crawlers. After each
+publication the Pages workflow sends the new, changed and removed pages to
+IndexNow (`make indexnow-plan` before and `make indexnow-submit` after
+deployment); the public key lives in `docs/site/indexnow-key.txt`.

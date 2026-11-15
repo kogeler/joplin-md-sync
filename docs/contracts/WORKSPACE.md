@@ -1,3 +1,8 @@
+---
+title: "Markdown workspace contract"
+description: "Normative rules for the Markdown workspace: file layout, metadata headers, note identity, path mapping and private synchronization state."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Workspace Contract

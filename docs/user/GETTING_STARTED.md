@@ -1,3 +1,8 @@
+---
+title: "Install joplin-md-sync and sync Joplin with Markdown"
+description: "Install joplin-md-sync, connect it to Joplin Desktop, initialize a Markdown workspace and review your first safe change before handing it to an agent."
+---
+
 # Installation and quick start
 
 The behavioral guarantees used by this tutorial are defined by the

@@ -46,6 +46,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Sitemap dates come from each page's last commit.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python
@@ -57,6 +59,19 @@ jobs:
         env:
           GOOGLE_ANALYTICS_KEY: ${{ vars.GOOGLE_ANALYTICS_KEY }}
         run: make docs-audit PY=python
+
+      - name: Plan IndexNow submission against the published site
+        if: github.event_name != 'pull_request'
+        run: make indexnow-plan PY=python
+
+      - name: Upload IndexNow plan
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: indexnow-plan
+          path: .artifacts/indexnow
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
@@ -80,3 +95,32 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # Search engines learn about changed pages within minutes instead of waiting
+  # for their next crawl. A failure here never fails the deployment.
+  indexnow:
+    name: Notify IndexNow search engines
+    if: github.event_name != 'pull_request'
+    needs: deploy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Download IndexNow plan
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: indexnow-plan
+          path: .artifacts/indexnow
+
+      - name: Submit changed pages after publication
+        run: make indexnow-submit PY=python

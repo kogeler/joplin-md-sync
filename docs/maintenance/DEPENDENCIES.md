@@ -1,3 +1,8 @@
+---
+title: "Dependency maintenance"
+description: "Maintainer guide to dependency groups, uv.lock changes, Dependabot updates, runtime bounds and the checks CI runs on dependencies."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Dependency Maintenance

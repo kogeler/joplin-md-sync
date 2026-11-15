@@ -43,7 +43,6 @@ def _remote_arguments(heading: str) -> argparse.Namespace:
 
 def test_service_guide_starts_with_runbook_then_layout_reference_and_advanced_use() -> None:
     contents = SERVICE_DOC.read_text(encoding="utf-8")
-    assert contents.startswith("# Joplin Headless Service\n")
     assert [line for line in contents.splitlines() if line.startswith("## ")] == [
         "## Quick runbook",
         "## What is installed",

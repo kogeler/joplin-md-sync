@@ -1,3 +1,8 @@
+---
+title: "Choose how AI agents reach Joplin: MCP, Claude, ChatGPT"
+description: "Compare the Claude connector, ChatGPT Actions, local stdio MCP, HTTP MCP and Markdown sync to pick the right way to give an AI agent your Joplin notes."
+---
+
 # Choose an agent interface
 
 This decision guide is non-normative. The shared operation, transport,

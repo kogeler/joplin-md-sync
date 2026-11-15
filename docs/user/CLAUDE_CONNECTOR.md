@@ -1,3 +1,8 @@
+---
+title: "Connect Claude to Joplin with GitHub login"
+description: "Connect hosted Claude to your Joplin notes through the built-in GitHub OAuth login: OAuth app, service setup, HTTPS routes, monitoring and troubleshooting."
+---
+
 # Claude connector with GitHub login
 
 Connect hosted Claude to Joplin at `https://EXISTING_HOST/oauth/mcp` and allow

@@ -1,3 +1,8 @@
+---
+title: "Two-way synchronization contract"
+description: "Normative two-way synchronization rules between Joplin and Markdown: change classification, divergence evidence, conflicts and interrupted runs."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Synchronization Contract

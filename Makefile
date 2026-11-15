@@ -69,7 +69,7 @@ BASE_VERSION_FILE ?=
 BASE_VERSION = $(shell $(if $(BASE_VERSION_FILE),cat "$(BASE_VERSION_FILE)",git show "$(BASE_REF):.version") 2>/dev/null)
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs lock lock-check refresh-dependencies \
-	docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
+	docs-build docs-audit docs-screenshots docs-serve indexnow-plan indexnow-submit format-check lint typecheck bandit syntax \
 	test test-oauth test-oauth-e2e oauth-e2e-inventory oauth-acceptance-report \
 	oauth-systemd-host test-oauth-systemd test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
 	validate-actions release-notes version-check candidate-version release-inventory \
@@ -124,6 +124,16 @@ docs-screenshots: docs-audit ## capture representative desktop and mobile render
 
 docs-serve: venv-docs ## serve documentation locally with live reload
 	$(VENV_DOCS)/$(BIN)/mkdocs serve
+
+INDEXNOW_DIR := $(ARTIFACTS)/indexnow
+
+indexnow-plan: ## list built pages that differ from the published site (INDEXNOW_ALL=1: every page)
+	$(PY) scripts/indexnow.py plan --site-dir site --site-url $(DOCS_SITE_URL) \
+		--output-dir $(INDEXNOW_DIR) $(if $(INDEXNOW_ALL),--all)
+
+indexnow-submit: ## after publication, send the planned pages to IndexNow search engines
+	$(PY) scripts/indexnow.py submit --site-url $(DOCS_SITE_URL) \
+		--key-file docs/site/indexnow-key.txt --plan-dir $(INDEXNOW_DIR)
 
 format-check: venv-dev ## check Ruff formatting without changing files
 	$(VENV_DEV)/$(BIN)/ruff format --check $(RUFF_SOURCES)

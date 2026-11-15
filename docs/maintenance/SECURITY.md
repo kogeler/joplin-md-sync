@@ -1,3 +1,8 @@
+---
+title: "Security rationale and threat model"
+description: "Why the security boundaries look the way they do: threat model, trust boundaries, residual risk and the procedure for security-relevant changes."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Security Rationale

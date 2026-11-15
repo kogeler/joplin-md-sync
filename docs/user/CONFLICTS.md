@@ -1,3 +1,8 @@
+---
+title: "Resolve Joplin Markdown sync conflicts"
+description: "Inspect a Joplin Markdown sync conflict bundle and resolve it by taking the local, remote or a merged version with the supported commands."
+---
+
 # Conflict Handling
 
 This is the operator procedure for conflicts. Detection, evidence, and

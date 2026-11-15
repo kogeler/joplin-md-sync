@@ -1,7 +1,7 @@
-site_name: "Joplin for ChatGPT & MCP"
+site_name: "Joplin MCP for Claude & ChatGPT"
 site_description: >-
-  Use self-hosted Joplin notes through ChatGPT Actions, local stdio MCP, or
-  authenticated HTTP MCP, with a separate reviewable Markdown workflow.
+  Connect Claude, ChatGPT and any MCP client to self-hosted Joplin notes, with
+  a headless Linux service and a reviewable Markdown workflow.
 site_url: https://joplin-mcp.romancello.net/
 site_author: kogeler
 copyright: MIT licensed. Joplin is a trademark of Laurent Cozic.
@@ -62,6 +62,7 @@ hooks:
 exclude_docs: |
   site/CNAME
   site/hooks.py
+  site/indexnow-key.txt
   site/llms.txt
   site/robots.txt
   site/overrides/**
@@ -106,10 +107,10 @@ extra:
 
 nav:
   - Home: index.md
-  - "ChatGPT & MCP":
+  - "Claude, ChatGPT & MCP":
       - Choose an interface: user/AGENT_INTERFACES.md
+      - Claude connector: user/CLAUDE_CONNECTOR.md
       - ChatGPT Actions: user/CHATGPT_ACTIONS.md
-      - Claude with GitHub: user/CLAUDE_CONNECTOR.md
       - "MCP: local & HTTP": user/MCP_API.md
       - Self-hosted deployment: user/SELF_HOSTED.md
       - Joplin Headless Service: user/JOPLIN_HEADLESS_SERVICE.md

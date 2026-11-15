@@ -1,3 +1,8 @@
+---
+title: "Behavior contract catalog"
+description: "Index of the normative, testable joplin-md-sync contracts for CLI, workspace, synchronization, agent interfaces, service, security, dependencies and CI."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Contract Catalog
