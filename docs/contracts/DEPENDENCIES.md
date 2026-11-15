@@ -42,7 +42,8 @@ MUST select only their own group and the standard project runtime needed for
 testing, typing or native packaging, and require third-party wheels. Docs-only
 environments MAY select just the docs group. CI MUST NOT silently rewrite the
 lock or install an independently maintained tool list.
-The reviewed CI uv executable version MUST have one owner in `.tool-versions`;
+The uv executable MUST have one owner, the hash-pinned
+`tools/uv/requirements.txt`, from which Make installs it locally and in CI;
 the project minimum MUST NOT force Dependabot to use that exact CLI build.
 
 **Evidence:**

@@ -7,7 +7,7 @@ import argparse
 import copy
 import gzip
 import io
-import os
+import shutil
 import tarfile
 import tempfile
 from pathlib import Path
@@ -44,7 +44,7 @@ def normalize(path: Path, *, epoch: int) -> None:
                         }
                         data = io.BytesIO(contents[member.name]) if member.isfile() else None
                         target.addfile(member, data)
-        os.chmod(temporary, 0o644)
+        shutil.copymode(path, temporary)
         temporary.replace(path)
         temporary = None
     finally:

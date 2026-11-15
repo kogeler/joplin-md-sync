@@ -30,54 +30,35 @@ class VersionIncrementTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "plain semver"):
             parse_version(prerelease, ".version")
 
-    def test_cli_accepts_an_explicit_older_base_version(self):
+    def test_cli_requires_an_increase_unless_the_unchanged_version_is_published(self):
         root = Path(__file__).parents[2]
         current = (root / ".version").read_text(encoding="utf-8").strip()
         major, minor, patch = parse_version(current, ".version")
-        if patch:
-            base = f"{major}.{minor}.{patch - 1}"
-        elif minor:
-            base = f"{major}.{minor - 1}.999999"
-        else:
-            base = f"{major - 1}.999999.999999"
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(root / "scripts" / "check_version_increment.py"),
-                "--base-version",
-                base,
-            ],
-            check=False,
-            capture_output=True,
-            text=True,
+        older = f"{major - 1}.999999.999999" if major else "0.0.0"
+        newer = f"{major}.{minor}.{patch + 1}"
+        cases = (
+            (("--base-version", current, "--published"), 0, "already published"),
+            (("--base-version", current, "--latest-release", older), 0, f"{older} -> {current}"),
+            (("--base-version", older, "--published"), 0, f"{older} -> {current}"),
+            (("--base-version", older, "--latest-release", current), 0, f"{older} -> {current}"),
+            (("--base-version", newer, "--published"), 2, "must be incremented"),
+            (("--base-version", current, "--latest-release", current), 2, "must be incremented"),
+            (("--base-version", current), 2, "--published"),
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(f"{base} -> {current}", result.stdout)
-
-    def test_cli_accepts_an_unchanged_published_version_only(self):
-        root = Path(__file__).parents[2]
-        current = (root / ".version").read_text(encoding="utf-8").strip()
-        major, minor, patch = parse_version(current, ".version")
-
-        def run(*arguments: str) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                [sys.executable, str(root / "scripts" / "check_version_increment.py"), *arguments],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-
-        unchanged = run("--published-version", current)
-        self.assertEqual(unchanged.returncode, 0, unchanged.stderr)
-        self.assertIn(f"{current} is already published; no increment required", unchanged.stdout)
-
-        different = run("--published-version", f"{major}.{minor}.{patch + 1}")
-        self.assertEqual(different.returncode, 2)
-        self.assertIn("must equal the already published version", different.stderr)
-
-        same_base = run("--base-version", current)
-        self.assertEqual(same_base.returncode, 2)
-        self.assertIn("must be incremented", same_base.stderr)
+        for arguments, code, message in cases:
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(root / "scripts" / "check_version_increment.py"),
+                        *arguments,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertIn(message, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

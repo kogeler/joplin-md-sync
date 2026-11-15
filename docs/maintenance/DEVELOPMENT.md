@@ -40,8 +40,9 @@ left untouched; delete an obsolete one manually.
 5. Run `make ci` before a pull request when the Linux container/runtime
    prerequisites are available.
 
-Install uv before running Make. CI uses `.tool-versions` through the official
-setup-uv action. Every group is installed with `uv sync --locked` into its
+Make installs the hash-pinned uv from `tools/uv/requirements.txt` into
+`.venvs/<key>/venv-uv`; only Python and Make must exist beforehand. Pass
+`UV=/path/to/uv` to use another executable. Every group is installed with `uv sync --locked` into its
 own host-scoped environment. No target rewrites `uv.lock` unless explicitly
 asked through `make lock` or `make refresh-dependencies`.
 
@@ -73,10 +74,21 @@ removes the complete temporary tree after the session. Local runs require
 network access, `dpkg-deb`, and Xvfb; they do not use a running Joplin instance
 or the repository-root `token` file.
 
+Workflows contain only GitHub-specific steps: actions, GitHub API calls and
+step outputs. Everything else is a Make target that runs the same way locally,
+so a new check is added to the Makefile first and the workflow only calls it.
+
 The default-branch ruleset requires only the `CI result` check. That job
 depends on every CI job and fails unless all of them succeeded, so renaming a
 job or changing the matrix needs no ruleset change. A new CI job must be added
 to its `needs` list; a unit test fails until it is.
+
+`CI result` cannot see checks that GitHub creates outside the workflow. The
+CodeQL jobs only prove that analysis ran and uploaded; GitHub judges the alerts
+in its own `Code scanning results / CodeQL` check. The ruleset therefore also
+carries the "Require code scanning results" rule for CodeQL, blocking security
+alerts of medium or higher severity and other alerts at error level. Without
+that rule a pull request that introduces an alert stays mergeable.
 
 `make test-live-stdio-standalone` builds the current platform's native
 executable and runs the read-only stdio acceptance through that artifact
@@ -100,7 +112,7 @@ skipped, xfailed, xpassed or failed required cases.
 | `make test-service-live` | Real Terminal installation, signed S3 round trip and the deployed supervisor |
 | `make package` and `make smoke` | Source/wheel/sdist/zipapp runtime behavior, including OAuth off/on, discovery, registration and consent outside the checkout, and the GitHub TLS client probe in each runtime |
 | `make standalone checksums smoke-standalone` | Native executable packaging, integrity metadata and the same runtime smoke; the TLS probe runs in a probe build with the release PyInstaller options |
-| `make test-oauth-systemd` | The built native executable in a real Linux user sandbox: scoped state writes, surrounding read-only paths, restart, disable/reset and managed purge |
+| `make test-oauth-systemd` | The built native executable in a real Linux user sandbox: scoped state writes, surrounding read-only paths, restart, disable/reset and managed purge. On a host without a running user manager, or with Ubuntu's user-namespace restriction, run `make oauth-systemd-host` (sudo) first |
 
 OAuth E2E replaces the external GitHub endpoints and controls the clock while
 retaining production parsers, middleware, cryptography, persistent storage,

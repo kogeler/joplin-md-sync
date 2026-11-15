@@ -44,22 +44,16 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: .tool-versions
-          enable-cache: true
-
       - name: Run the Make CI contract
         env:
           RUFF_OUTPUT_FORMAT: github
         run: make ci PY=python
 
-      # Diagnose failed tests too: report whenever JUnit exists. A failed test
-      # step still fails the job; this only adds evidence to the failure.
-      - name: Verify OAuth functional coverage from real test results
-        if: ${{ !cancelled() && hashFiles('.artifacts/test-results.xml') != '' }}
-        run: python scripts/report_oauth_acceptance.py --junit .artifacts/test-results.xml --output .artifacts/oauth-e2e-evidence.json
+      # make ci already maps OAuth requirements after passing tests; when the
+      # tests fail, map them anyway as evidence for the failure.
+      - name: Map OAuth requirements for failed tests
+        if: ${{ failure() && hashFiles('.artifacts/test-results.xml') != '' }}
+        run: make oauth-acceptance-report PY=python
 
       # The report is written before its gate fails; keep what exists for diagnosis.
       - name: Upload OAuth acceptance evidence
@@ -75,13 +69,8 @@ jobs:
           if-no-files-found: warn
 
       - name: Publish coverage summary
-        if: ${{ !cancelled() }}
-        run: |
-          if [[ -s .artifacts/coverage-report.md ]]; then
-            cat .artifacts/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
-          else
-            printf '%s\n' 'Coverage data was not produced by this run.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+        if: ${{ !cancelled() && hashFiles('.artifacts/coverage-report.md') != '' }}
+        run: cat .artifacts/coverage-report.md >> "$GITHUB_STEP_SUMMARY"
 
   live-joplin:
     name: Live protocols
@@ -98,17 +87,6 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: .tool-versions
-          enable-cache: true
-
-      - name: Verify headless desktop prerequisites
-        run: |
-          command -v dpkg-deb
-          command -v Xvfb
 
       - name: Run live protocol acceptance
         run: make test-live PY=python
@@ -162,12 +140,6 @@ jobs:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.python_arch }}
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: .tool-versions
-          enable-cache: true
-
       - name: Run package tests and metadata checks
         shell: bash
         run: make test verify-release PY=python
@@ -211,12 +183,6 @@ jobs:
           python-version: "3.14"
           architecture: ${{ matrix.python_arch }}
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: .tool-versions
-          enable-cache: true
-
       - name: Build and smoke-test native executable
         shell: bash
         env:
@@ -226,27 +192,7 @@ jobs:
 
       - name: Verify native OAuth in the real systemd user sandbox
         if: matrix.platform == 'linux'
-        run: |
-          # Ubuntu's unconfined userns policy removes namespace capabilities.
-          # Permit the trusted executor to construct the production sandbox,
-          # without changing the host-wide AppArmor restriction or unit options.
-          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
-            sudo tee /etc/apparmor.d/joplin-oauth-ci-userns > /dev/null <<'PROFILE'
-          abi <abi/4.0>,
-          include <tunables/global>
-          profile joplin-oauth-ci-userns /usr/lib/systemd/systemd-executor flags=(unconfined) {
-            userns,
-          }
-          PROFILE
-            sudo apparmor_parser -r /etc/apparmor.d/joplin-oauth-ci-userns
-          fi
-          runner_name="$(id -un)"
-          runner_uid="$(id -u)"
-          sudo loginctl enable-linger "$runner_name"
-          sudo systemctl start "user@$runner_uid.service"
-          XDG_RUNTIME_DIR="/run/user/$runner_uid"
-          export XDG_RUNTIME_DIR
-          make test-oauth-systemd PY=python
+        run: make oauth-systemd-host test-oauth-systemd PY=python
 
       - name: Upload smoke-tested native executable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -280,13 +226,6 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-
-      - name: Set up uv for fork fallback
-        if: github.event.pull_request.head.repo.full_name != github.repository
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version-file: .tool-versions
-          enable-cache: true
 
       - name: Audit locked dependencies for fork fallback
         if: github.event.pull_request.head.repo.full_name != github.repository
@@ -388,6 +327,7 @@ jobs:
             } catch (error) {
               if (error.status !== 404) throw error;
             }
+            // Empty while the current version is published.
             let latestVersion = "";
             if (!publishedCurrent) {
               latestVersion = "0.0.0";
@@ -401,26 +341,13 @@ jobs:
                 throw new Error("latest published release is not a stable vX.Y.Z tag");
               }
             }
-            core.setOutput("published_current_version", String(publishedCurrent));
-            core.setOutput("unpublished_base_version", latestVersion);
+            core.setOutput("latest_release", latestVersion);
 
-      # Ordinary changes may keep an already published version while Unreleased
-      # notes accumulate. A changed or unpublished version must still advance.
       - name: Require an increase for a changed or unpublished version
         working-directory: source
         env:
-          PUBLISHED_CURRENT_VERSION: ${{ steps.release-baseline.outputs.published_current_version }}
-          UNPUBLISHED_BASE_VERSION: ${{ steps.release-baseline.outputs.unpublished_base_version }}
-        run: |
-          base_version="$(tr -d '\r\n' < ../base/.version)"
-          current_version="$(tr -d '\r\n' < .version)"
-          if [[ "$current_version" != "$base_version" ]]; then
-            python scripts/check_version_increment.py --base-version "$base_version"
-          elif [[ "$PUBLISHED_CURRENT_VERSION" != "true" ]]; then
-            python scripts/check_version_increment.py --base-version "$UNPUBLISHED_BASE_VERSION"
-          else
-            python scripts/check_version_increment.py --published-version "$current_version"
-          fi
+          LATEST_RELEASE: ${{ steps.release-baseline.outputs.latest_release }}
+        run: make version-check PY=python BASE_VERSION_FILE=../base/.version LATEST_RELEASE="$LATEST_RELEASE"
 
       # A same-repository pull request that changes .version publishes every
       # push as a prerelease candidate X.Y.Z-prN.gSHORTSHA.
@@ -432,10 +359,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          current_version="$(tr -d '\r\n' < .version)"
-          if [[ "$current_version" != "$(tr -d '\r\n' < ../base/.version)" ]]; then
-            echo "version=$current_version-pr$PR_NUMBER.g${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
-          fi
+          version="$(make -s candidate-version PY=python BASE_VERSION_FILE=../base/.version PR_NUMBER="$PR_NUMBER" HEAD_SHA="$HEAD_SHA")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # Writes only release metadata and already smoke-tested files; never checks
   # out or runs pull request code with the write token.
@@ -469,25 +394,13 @@ jobs:
         run: |
           assets=(joplin-md-sync-linux-amd64 joplin-md-sync-linux-arm64)
           sha256sum "${assets[@]}" > SHA256SUMS.txt
-          cat > notes.md <<NOTES
-          Automated candidate build of [pull request #$PR_NUMBER]($PR_URL) at commit
-          \`$HEAD_SHA\`. Not a release; the next push replaces it.
-
-          \`\`\`bash
-          installer_ref='$HEAD_SHA'
-          set -o pipefail
-          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \\
-            "https://raw.githubusercontent.com/$GH_REPO/\${installer_ref}/scripts/joplin_terminal_service/install_joplin_terminal.py" \\
-            | python3 - --installer-ref "\$installer_ref" --joplin-md-sync-version '$VERSION'
-          \`\`\`
-          NOTES
           gh release list --limit 1000 --json tagName --jq '.[].tagName' \
             | { grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-pr${PR_NUMBER}\.g[0-9a-f]{7}$" || true; } \
             | while read -r old; do gh release delete "$old" --cleanup-tag --yes; done
           gh release create "v$VERSION" "${assets[@]}" SHA256SUMS.txt \
             --prerelease --latest=false --target "$HEAD_SHA" \
             --title "${VERSION%%-*} candidate · PR #$PR_NUMBER · ${HEAD_SHA:0:7}" \
-            --notes-file notes.md
+            --notes "Candidate build of $PR_URL at commit \`$HEAD_SHA\`, replaced by the next push. Install it as described in https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/#test-an-unpublished-runtime-candidate"
 
   # The default-branch ruleset requires only this check, so renamed jobs,
   # matrix changes or conditional jobs cannot leave a pull request waiting for

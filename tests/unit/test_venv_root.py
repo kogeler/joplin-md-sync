@@ -23,6 +23,7 @@ ENVIRONMENTS = (
     "VENV_PACKAGE",
     "VENV_SMOKE",
     "VENV_TEST",
+    "VENV_UV",
 )
 make_integration = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("make") is None,
@@ -159,6 +160,8 @@ def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (checkout / "scripts").mkdir(parents=True)
     (checkout / "scripts" / "venv_root.py").write_text(copied, encoding="utf-8")
     shutil.copy2(ROOT / ".version", checkout / ".version")
+    (checkout / "tools" / "uv").mkdir(parents=True)
+    shutil.copy2(ROOT / "tools" / "uv" / "requirements.txt", checkout / "tools" / "uv")
     monkeypatch.setattr(venv_root, "MACHINE_ID_FILE", identity)
     monkeypatch.setattr(venv_root, "machine_identity", venv_root.linux_machine_id)
     return checkout
@@ -195,7 +198,8 @@ def test_make_selects_only_this_host_environments_and_fails_closed(repository: P
     ]
     prepared = _make(repository, "-n", "venv-test")
     assert prepared.returncode == 0, prepared.stderr
-    assert f'UV_PROJECT_ENVIRONMENT="{root}/venv-test"' in prepared.stdout
+    assert f'-m venv "{root}/venv-uv"' in prepared.stdout
+    assert f'UV_PROJECT_ENVIRONMENT="{root}/venv-test" {root}/venv-uv/' in prepared.stdout
     cleanup = _make(repository, "-n", "clean")
     assert cleanup.returncode == 0, cleanup.stderr
     for variable in ENVIRONMENTS:

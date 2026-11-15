@@ -18,7 +18,6 @@ EXE :=
 PLATFORM := linux
 endif
 
-UV ?= uv
 PROJECT_PYTHON := $(shell $(PY) -c "import sys; print(sys.executable)")
 
 ARCH ?= $(shell $(PY) -c "from scripts.build_standalone import standalone_architecture; print(standalone_architecture())" 2>/dev/null)
@@ -37,6 +36,13 @@ VENV_DOCS := $(VENV_ROOT)/venv-docs
 VENV_PACKAGE := $(VENV_ROOT)/venv-package
 VENV_SMOKE := $(VENV_ROOT)/venv-smoke
 VENV_TEST := $(VENV_ROOT)/venv-test
+# uv is an ordinary PyPI package: Make installs the hash-pinned release into
+# this host's environment. UV=/path/to/uv uses another executable instead.
+UV_REQUIREMENTS := tools/uv/requirements.txt
+VENV_UV := $(VENV_ROOT)/venv-uv
+UV_BUNDLED := $(VENV_UV)/$(BIN)/uv$(EXE)
+UV ?= $(UV_BUNDLED)
+UV_TOOL := $(filter $(UV_BUNDLED),$(UV))
 PYTHON := $(VENV)/$(BIN)/python
 PYTHON_DEV := $(VENV_DEV)/$(BIN)/python
 PYTHON_DOCS := $(VENV_DOCS)/$(BIN)/python
@@ -57,11 +63,17 @@ RUFF_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
 PYTHON_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
 ACTIONLINT_IMAGE := docker.io/rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+# The comparison base for version-check and candidate-version.
+BASE_REF ?= origin/main
+BASE_VERSION_FILE ?=
+BASE_VERSION = $(shell $(if $(BASE_VERSION_FILE),cat "$(BASE_VERSION_FILE)",git show "$(BASE_REF):.version") 2>/dev/null)
 
 .PHONY: help venv venv-dev venv-test venv-package venv-docs lock lock-check refresh-dependencies \
 	docs-build docs-audit docs-screenshots docs-serve format-check lint typecheck bandit syntax \
-	test test-oauth test-oauth-e2e oauth-e2e-inventory test-oauth-systemd test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
-	validate-actions release-notes check ci build zipapp standalone checksums \
+	test test-oauth test-oauth-e2e oauth-e2e-inventory oauth-acceptance-report \
+	oauth-systemd-host test-oauth-systemd test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
+	validate-actions release-notes version-check candidate-version release-inventory \
+	check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release oauth-packaging-probe clean
 
@@ -69,28 +81,33 @@ help: ## list available targets
 	@grep -hE '^[a-zA-Z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | \
 		awk -F':.*## ' '{printf "  %-20s %s\n", $$1, $$2}'
 
-venv: ## runtime-only editable installation from the project lock
+$(UV_BUNDLED): $(UV_REQUIREMENTS)
+	$(PY) -m venv "$(VENV_UV)"
+	"$(VENV_UV)/$(BIN)/python" -m pip install --quiet --disable-pip-version-check \
+		--require-hashes --only-binary :all: --no-deps -r $(UV_REQUIREMENTS)
+
+venv: $(UV_TOOL) ## runtime-only editable installation from the project lock
 	UV_PROJECT_ENVIRONMENT="$(VENV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups
 
-venv-dev: ## quality tools and OAuth types, without installing the project
+venv-dev: $(UV_TOOL) ## quality tools and OAuth types, without installing the project
 	UV_PROJECT_ENVIRONMENT="$(VENV_DEV)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group quality --no-install-project --no-build
 
-venv-test: ## portable test tools from the same universal lock
+venv-test: $(UV_TOOL) ## portable test tools from the same universal lock
 	UV_PROJECT_ENVIRONMENT="$(VENV_TEST)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group test --no-install-project --no-build
 
-venv-package: ## release tools and build backend from the same lock
+venv-package: $(UV_TOOL) ## release tools and build backend from the same lock
 	UV_PROJECT_ENVIRONMENT="$(VENV_PACKAGE)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --no-default-groups --group build --no-install-project --no-build
 
-venv-docs: ## documentation tools from the same lock
+venv-docs: $(UV_TOOL) ## documentation tools from the same lock
 	UV_PROJECT_ENVIRONMENT="$(VENV_DOCS)" $(UV) sync --locked --python "$(PROJECT_PYTHON)" --only-group docs --no-build
 
-lock: ## update uv.lock after editing project requirements
+lock: $(UV_TOOL) ## update uv.lock after editing project requirements
 	$(UV) lock
 
-lock-check: ## let uv validate the committed lock without rewriting it
+lock-check: $(UV_TOOL) ## let uv validate the committed lock without rewriting it
 	$(UV) lock --check
 
-refresh-dependencies: ## upgrade the complete graph within declared requirements
+refresh-dependencies: $(UV_TOOL) ## upgrade the complete graph within declared requirements
 	$(UV) lock --upgrade
 
 docs-build: venv-docs ## build the documentation site with strict checks
@@ -138,6 +155,20 @@ test-oauth-e2e: venv-test ## full OAuth flow with mock GitHub and fake Joplin
 oauth-e2e-inventory: venv-test ## deliberately rewrite exact OAuth E2E case IDs from a full collection
 	$(PYTHON_TEST) scripts/report_oauth_acceptance.py --write-inventory
 
+oauth-acceptance-report: ## map OAuth requirements to the results of the last test-full run
+	$(PY) scripts/report_oauth_acceptance.py --junit $(ARTIFACTS)/test-results.xml --output $(ARTIFACTS)/oauth-e2e-evidence.json
+
+# Ubuntu's unprivileged user-namespace restriction removes namespace capabilities.
+# The profile lets the trusted executor build the production sandbox without
+# changing the host-wide restriction or the unit's options.
+oauth-systemd-host: ## let this Linux host's systemd user manager run test-oauth-systemd (sudo)
+	if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then \
+		sudo install -m 0644 scripts/test_oauth_systemd.apparmor /etc/apparmor.d/joplin-oauth-test-userns; \
+		sudo apparmor_parser -r /etc/apparmor.d/joplin-oauth-test-userns; \
+	fi
+	sudo loginctl enable-linger "$$(id -un)"
+	sudo systemctl start "user@$$(id -u).service"
+
 test-oauth-systemd: ## exercise the built native executable in the real systemd user sandbox
 	$(PY) scripts/test_oauth_systemd.py --executable "$(abspath $(STANDALONE))"
 
@@ -170,7 +201,7 @@ test-service-live: ## real Terminal installation and offline S3 round trip in an
 	$(CONTAINER) run --rm --network=none \
 		-v "$(CURDIR):/workspace:ro" localhost/joplin-service-acceptance
 
-audit: venv-dev ## audit a native export of every locked dependency group
+audit: venv-dev $(UV_TOOL) ## audit a native export of every locked dependency group
 	mkdir -p $(ARTIFACTS)/audit
 	$(UV) export --locked --all-groups --no-emit-project --format pylock.toml --output-file $(ARTIFACTS)/audit/pylock.toml > /dev/null
 	$(PYTHON_DEV) -m pip_audit --locked $(ARTIFACTS)/audit --strict --progress-spinner=off
@@ -185,9 +216,26 @@ release-notes: ## generate the exact current-version GitHub release body
 	mkdir -p $(ARTIFACTS)
 	$(PY) .github/scripts/release_notes.py --output $(RELEASE_NOTES)
 
+version-check: ## require .version above the base (BASE_REF or BASE_VERSION_FILE), or above LATEST_RELEASE while unpublished
+	$(PY) scripts/check_version_increment.py --base-version "$(BASE_VERSION)" \
+		$(if $(LATEST_RELEASE),--latest-release "$(LATEST_RELEASE)",--published)
+
+candidate-version: ## print X.Y.Z-prPR_NUMBER.gSHORTSHA of HEAD_SHA when .version differs from the base
+	@[[ "$(BASE_VERSION)" && "$(PR_NUMBER)" =~ ^[0-9]+$$ && "$(HEAD_SHA)" =~ ^[0-9a-f]{40}$$ ]] || \
+		{ printf '%s\n' 'candidate-version needs a base version, PR_NUMBER and a full HEAD_SHA' >&2; exit 2; }
+	@if [[ "$(VERSION)" != "$(BASE_VERSION)" ]]; then \
+		printf '%s-pr%s.g%.7s\n' "$(VERSION)" "$(PR_NUMBER)" "$(HEAD_SHA)"; \
+	fi
+
+# Run after placing the built Python distributions and every native executable
+# in dist/: the release tag and complete inventory are then mandatory.
+release-inventory: TAG = v$(VERSION)
+release-inventory: REQUIRE_ALL_STANDALONES = 1
+release-inventory: zipapp checksums verify-release smoke-wheel smoke-zipapp release-notes ## build the zipapp, then verify and smoke the complete release inventory in dist/
+
 check: lock-check lint typecheck bandit syntax test verify-release ## local source and native lock gates
 
-ci: lint typecheck bandit syntax test-full test-service-installer verify-release \
+ci: lint typecheck bandit syntax test-full oauth-acceptance-report test-service-installer verify-release \
 	lock-check docs-audit validate-actions audit ## complete Linux CI contract
 
 build: venv-package ## reproducibly build wheel and sdist into dist/
@@ -261,7 +309,7 @@ verify-release: ## verify version metadata and optional release tag/inventory
 	$(PY) scripts/verify_release.py $(if $(TAG),--tag $(TAG)) $(if $(REQUIRE_ALL_STANDALONES),--require-all-standalones)
 
 clean: ## remove this host's environments, generated artifacts, and caches
-	rm -rf $(VENV) $(VENV_DEV) $(VENV_TEST) $(VENV_PACKAGE) $(VENV_DOCS) $(VENV_SMOKE) \
+	rm -rf $(VENV) $(VENV_DEV) $(VENV_TEST) $(VENV_PACKAGE) $(VENV_DOCS) $(VENV_SMOKE) $(VENV_UV) \
 		dist build site $(ARTIFACTS) src/*.egg-info .mypy_cache .ruff_cache \
 		.pytest_cache .coverage htmlcov
 	rmdir $(VENV_ROOT) .venvs 2>/dev/null || true

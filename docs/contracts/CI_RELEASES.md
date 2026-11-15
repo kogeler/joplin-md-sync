@@ -18,8 +18,9 @@ permissions and concurrency behavior.
 
 ### `CIR-002` - Quality, compatibility, and distribution remain visible gates
 
-**Contract:** Reusable CI MUST run the complete Linux quality contract through
-`make ci`, separately test every runtime and platform in the supported CI
+**Contract:** Workflows MUST contain only GitHub-specific steps; every other
+check runs through a Make target that works the same way locally. Reusable CI
+MUST run the complete Linux quality contract through `make ci`, separately test every runtime and platform in the supported CI
 matrix, run Linux installer tests, run the complete live protocol suite on
 Linux AMD64 against the checksum-verified ephemeral Joplin Desktop build owned
 by the live-test runtime, and build and smoke each supported native
@@ -28,7 +29,10 @@ job MUST NOT use a repository credential or a pre-existing Joplin process or
 profile. One `CI result` job MUST depend on every reusable CI job, report even
 when a dependency fails or is cancelled, and pass only when every job
 succeeded; only dependency review may be skipped, and only outside pull
-requests. The default-branch ruleset requires that single check.
+requests. The default-branch ruleset requires that single check and, because a
+workflow job cannot depend on GitHub's own code scanning check, also requires
+CodeQL code scanning results without medium or higher security alerts or
+error-level alerts.
 
 **Evidence:**
 
@@ -88,13 +92,11 @@ a matching non-empty dated changelog section.
 
 **Evidence:**
 
-- [`test_cli_accepts_an_unchanged_published_version_only`](../../tests/unit/test_version_increment.py) - `tests/unit/test_version_increment.py::VersionIncrementTest::test_cli_accepts_an_unchanged_published_version_only`
-- [`test_cli_accepts_an_explicit_older_base_version`](../../tests/unit/test_version_increment.py) - `tests/unit/test_version_increment.py::VersionIncrementTest::test_cli_accepts_an_explicit_older_base_version`
+- [`test_cli_requires_an_increase_unless_the_unchanged_version_is_published`](../../tests/unit/test_version_increment.py) - `tests/unit/test_version_increment.py::VersionIncrementTest::test_cli_requires_an_increase_unless_the_unchanged_version_is_published`
 - [`test_version_file_is_single_source`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_version_file_is_single_source`
 - [`test_manifest_matches_version_file`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_manifest_matches_version_file`
 - [`test_pyproject_reads_version_dynamically`](../../tests/unit/test_version.py) - `tests/unit/test_version.py::VersionSourceTest::test_pyproject_reads_version_dynamically`
 - [`test_version_job_compares_exact_base_and_head`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_compares_exact_base_and_head`
-- [`test_version_job_accepts_published_maintenance_and_requires_other_increases`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_version_job_accepts_published_maintenance_and_requires_other_increases`
 
 ### `CIR-006` - Publication reuses gated artifacts and never rewrites conflict
 

@@ -10,90 +10,52 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Include the GitHub OAuth and ASGI runtime in every standard installation
-  and native executable. Enable GitHub login for one configured numeric account
-  ID with `mcp serve --github-oauth` on the existing HTTP port. The
-  client-neutral `/oauth/mcp` route currently accepts only hosted Claude.
-- Configure OAuth with individual CLI flags and protected secret-file options.
-  Add account-ID lookup, read-only `mcp oauth-check`, and locked local
-  `mcp oauth-reset`, with encrypted persistent grants and installer lifecycle
-  support on the existing service unit.
-- Bound OAuth execution, suppress private worker errors after cancellation,
-  and distinguish temporary GitHub failures from revoked grants while
-  preserving refresh grants for recovery, including grants GitHub already
-  rotated before an identity check failed.
-- Keep anonymous registrations pending for 30 minutes (at most 64) until an
-  owner sign-in establishes them, and give registration, token and browser
-  flows separate rate budgets so a registration flood cannot block refresh.
-- Warn on the OAuth consent screen to approve only a connection the owner
-  started, and refuse to render an approval page without that warning.
-- Record OAuth security events (registrations, consent decisions and forgery
-  attempts, foreign accounts, token issuance, refresh replay, rate limiting,
-  outages and resets) as credential-free, throttled `oauth_audit` log lines
-  visible at default verbosity.
-- Give each established OAuth client its own token-endpoint budget, so
-  anonymous token floods cannot block a connected client's refresh.
-- Provide Nginx examples for the existing HTTPS hostname that exclude OAuth
-  callback codes/state from request logs and match the MCP body limit.
-  Document local installation of unpublished CI candidates.
-- Require process/TLS OAuth E2E acceptance for login, all registered tools,
-  identity and grant rejection, refresh, restart, state and concurrency limits.
-  Track every required case by exact ID with platform-specific shutdown cases,
-  probe the packaged GitHub TLS client in every distribution, and keep test
-  evidence after failed CI runs. Verify the real Joplin Data API and native
-  systemd sandbox separately, and retain downloadable CodeQL dataflow evidence
-  and native candidates for seven days.
+- GitHub OAuth for hosted Claude. Every standard installation and native
+  executable includes the OAuth runtime; `mcp serve --github-oauth` enables
+  GitHub login for one configured numeric account ID on the existing HTTP port
+  at the client-neutral `/oauth/mcp` route, which currently accepts only hosted
+  Claude. Configure it with CLI flags or protected secret files, look up the
+  account ID, check it with `mcp oauth-check` and revoke grants with
+  `mcp oauth-reset`; grants are stored encrypted, and the installer manages
+  OAuth on the existing service unit.
+- OAuth protection: anonymous client registrations stay pending until the
+  owner signs in, registration, token and browser flows and each connected
+  client have separate rate budgets, the consent screen warns to approve only a
+  connection the owner started, and credential-free `oauth_audit` log lines
+  record security events at default verbosity.
+- Nginx examples for the existing HTTPS hostname that keep OAuth callback codes
+  out of request logs.
+- Pull request candidates: CI publishes every push of a pull request that
+  changes `.version` as a prerelease `vX.Y.Z-prN.gSHORTSHA` with smoke-tested
+  Linux executables, installable with the normal installer. Only the newest
+  candidate per pull request is kept, and releasing a version removes its
+  candidates.
+- OAuth acceptance: process and TLS end-to-end tests for login, every tool,
+  identity and grant rejection, refresh, restart and limits, tracked by exact
+  case ID, plus a GitHub TLS client probe in every distribution and separate
+  checks against the real Joplin Data API and systemd sandbox.
 
 ### Changed
 
-- Make the headless installer work without setup flags: ask for missing values,
-  hide secrets, preserve configured settings on automatic updates, and fill new
-  OAuth configuration interactively. Add `--reconfigure` for a fresh setup
-  selection and `--clean` for prompt-free removal; clear disabled managed
-  credentials and grants while retaining external operator-owned files. Use
-  the same disabled startup defaults in dry-run and the actual setup flow.
-- Share sync configuration and credential cleanup across new installations,
-  upgrades and profiles left after interrupted setup. Reuse credentials only
-  for matching account/bucket identities, reject incomplete service pairs
-  before overwriting configuration, and require secret input without echo and
-  regular credential files that can be read without blocking. Read an existing
-  profile's sync settings before offering defaults when its units are missing.
-- Verify a changed adapter before stopping services on every upgrade, restore
-  the previous Joplin tree and restart previously active services when a
-  Joplin install fails, and remove the adapter executable during `--clean` only
-  when it matches the installer's receipt. Treat `JOPLIN_GITHUB_OAUTH` as a
-  strict boolean whose negative values disable OAuth like `--no-github-oauth`.
-- Split the installer into a small entry point and focused Python modules.
-  Piped/downloaded runs verify and import the complete bundle in a private
-  temporary directory, then remove it on exit. Select an unmerged branch, tag
-  or commit with `--installer-ref`/`--ref`, keeping `main` as the default and
-  downloading every module from the same selection. Local runs use sibling modules.
-- Require explicit user authorization for agent commits and pushes, and English
-  for all project-authored material. Keep working plans outside published docs;
-  consolidate OAuth design, runtime limits, test evidence and deployment
-  validation in the maintained architecture, development and connector guides.
-- Use native uv dependency groups and one universal `uv.lock` for development,
-  tests, packaging, and documentation. Install each group into its existing
-  host-private environment and let Dependabot update the manifest and lock
-  together. Replace custom lock parsing, text drift checks, dependency submission,
-  and updater simulation tests with native lock validation and real application,
-  platform, distribution, documentation, and security checks.
-- Gate pull requests on one `CI result` check that depends on every CI job and
-  fails unless all of them succeeded, so job or matrix changes never leave a
-  required check waiting.
-- Publish every push of a pull request that changes `.version` from CI as a
-  prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
-  executables and checksums, installable with the normal installer; keep only
-  the newest candidate per pull request and remove a version's candidates when
-  it is released.
-- Bound runtime requirements to tested minor or major versions so PyPI installs
-  never resolve untested releases, and let Dependabot raise a bound in the same
-  update when a release falls outside it.
-- Replace the headless-service guide with a task-oriented Joplin Headless
-  Service runbook: direct remote Nextcloud/S3 install and purge commands first,
-  followed by installed paths, the complete installer CLI, and advanced
-  deployment/maintenance. Rename the guide to `JOPLIN_HEADLESS_SERVICE.md`,
-  update links directly, and test the runnable examples against the installer.
+- The headless installer works without setup flags: it asks for missing
+  values, hides secrets and keeps configured settings on updates. `--reconfigure`
+  starts a fresh setup and `--clean` removes the installation without prompts.
+  Sync credentials are reused only for a matching account or bucket, a changed
+  adapter is verified before services stop, and a failed Joplin install is
+  rolled back. The installer is split into modules, and `--installer-ref`
+  selects its branch, tag or commit.
+- The headless-service guide is now the task-oriented Joplin Headless Service
+  runbook `JOPLIN_HEADLESS_SERVICE.md`, with its examples tested against the
+  installer.
+- Runtime requirements are bounded to tested minor or major versions, so PyPI
+  installs never resolve untested releases; Dependabot raises a bound when a
+  release falls outside it.
+- Development uses uv dependency groups with one universal `uv.lock`, and Make
+  installs a hash-pinned uv itself. Workflows keep only GitHub-specific steps
+  and call Make targets for everything else. Pull requests are gated by one
+  `CI result` check and the ruleset's CodeQL code scanning rule.
+- Agents need explicit authorization for commits and pushes and write all
+  project material in English.
 
 ## [1.7.1] - 2026-10-20
 
