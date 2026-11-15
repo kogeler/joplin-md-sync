@@ -1,5 +1,7 @@
 # Joplin MCP for Claude and ChatGPT
 
+<!-- mcp-name: io.github.kogeler/joplin-md-sync -->
+
 `joplin-md-sync` gives AI assistants controlled access to your own
 [Joplin](https://joplinapp.org/) knowledge base. Search, read, create, update,
 move, tag, and trash notes from hosted Claude with a GitHub login, a private

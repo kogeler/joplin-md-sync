@@ -6,8 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Each release is published to the official MCP Registry as
+  `io.github.kogeler/joplin-md-sync`, so MCP clients and directories can find
+  and install it from PyPI with `uvx`.
+
 ### Changed
 
+- The home page and interface guide compare this project with Joplin's built-in
+  MCP server: hosted Claude and ChatGPT, headless servers, attachments and
+  reviewable Markdown changes versus local desktop clients and semantic search.
 - The documentation site is renamed "Joplin MCP for Claude & ChatGPT" and puts
   the Claude connector first. Every page has its own search title and
   description, link previews, and a sitemap date from its last change; the home

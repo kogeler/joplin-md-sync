@@ -25,6 +25,12 @@ consistency models.
 | See an exact diff and operation plan before Joplin changes | Markdown workspace |
 | Keep selected notebooks in Git | Markdown workspace |
 
+Joplin Desktop also has a built-in MCP server on its Web Clipper port. It
+serves only clients on the same computer while the desktop app runs, and it
+adds semantic search. Choose this project when an assistant runs elsewhere,
+such as hosted Claude or ChatGPT, when Joplin runs headless on a server, or
+when you need attachments or reviewable Markdown changes.
+
 ## ChatGPT Actions
 
 Actions use a dedicated REST namespace and mandatory bearer token on the same

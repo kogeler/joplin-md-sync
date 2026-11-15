@@ -124,6 +124,42 @@ hide:
   </div>
 </section>
 
+<section class="home-band home-compare" id="built-in-mcp">
+  <div class="home-shell">
+    <div class="section-heading section-heading--split" data-reveal>
+      <div>
+        <p class="section-label">Joplin's built-in MCP server or this bridge</p>
+        <h2>Reach your notes beyond the desktop.</h2>
+      </div>
+      <p>
+        Joplin Desktop can expose its own MCP server on the Web Clipper port to
+        clients on the same computer. Use this bridge when the assistant runs
+        elsewhere, Joplin runs without a desktop, or a change needs review.
+      </p>
+    </div>
+    <div class="compare-table" data-reveal>
+      <table>
+        <thead>
+          <tr><th scope="col"></th><th scope="col">Joplin's built-in MCP</th><th scope="col">joplin-md-sync</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Where it runs</th><td>Inside Joplin Desktop, which must stay open with the Web Clipper service</td><td>Beside Joplin Desktop, or headless on a Linux server with Joplin Terminal and recurrent sync</td></tr>
+          <tr><th scope="row">Who can connect</th><td>MCP clients on the same computer through 127.0.0.1</td><td>Hosted Claude with a GitHub login, a private ChatGPT GPT, local stdio clients, and any MCP client over HTTPS</td></tr>
+          <tr><th scope="row">Authentication</th><td>The Web Clipper token in the request URL</td><td>Separate MCP and Actions bearer tokens, plus GitHub OAuth limited to one account</td></tr>
+          <tr><th scope="row">Attachments</th><td>Not exposed as tools</td><td>Read, upload, replace, and delete resources and their note links</td></tr>
+          <tr><th scope="row">Bulk changes</th><td>Individual tool calls</td><td>Two-way Markdown sync with three-way diffs and dry-run pushes</td></tr>
+          <tr><th scope="row">Search</th><td>Keyword and semantic search over the local embeddings index</td><td>Joplin full-text search syntax</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="compare-note" data-reveal>
+      Only local desktop clients, and semantic search matters most? The built-in
+      server is enough.
+      <a class="text-link" href="user/AGENT_INTERFACES/">Choose an interface &rarr;</a>
+    </p>
+  </div>
+</section>
+
 <section class="home-band home-workflow home-deploy">
   <div class="home-shell">
     <div class="section-heading" data-reveal>

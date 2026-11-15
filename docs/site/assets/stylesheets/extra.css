@@ -457,6 +457,68 @@ body {
   background: var(--jms-paper);
 }
 
+.home-compare {
+  background: var(--jms-surface);
+  border-top: 1px solid var(--jms-border);
+}
+
+.compare-table {
+  overflow-x: auto;
+}
+
+.compare-table table {
+  border-collapse: collapse;
+  color: var(--jms-ink);
+  font-size: 0.74rem;
+  line-height: 1.6;
+  min-width: 620px;
+  width: 100%;
+}
+
+.compare-table th,
+.compare-table td {
+  border-bottom: 1px solid var(--jms-border);
+  padding: 16px 18px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.compare-table thead th {
+  color: var(--jms-blue);
+  font-size: 0.8rem;
+}
+
+.compare-table thead th:last-child,
+.compare-table td:last-child {
+  background: var(--jms-paper);
+}
+
+.compare-table tbody th {
+  color: var(--jms-muted);
+  font-weight: 700;
+  white-space: nowrap;
+  width: 16%;
+}
+
+.compare-table td {
+  color: var(--jms-muted);
+  width: 42%;
+}
+
+.compare-table td:last-child {
+  color: var(--jms-ink);
+}
+
+.compare-note {
+  color: var(--jms-muted);
+  font-size: 0.75rem;
+  margin-top: 22px;
+}
+
+.compare-note .text-link {
+  margin: 0 0 0 8px;
+}
+
 .home-deploy {
   background: #eef5f8;
   border-bottom: 1px solid #d5e2e9;

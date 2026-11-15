@@ -63,6 +63,15 @@ RUFF_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
 PYTHON_SOURCES := src tests tests_live scripts .github/scripts docs/site/hooks.py
 ACTIONLINT_IMAGE := docker.io/rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 CONTAINER ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
+# The official MCP Registry publisher, pinned to an exact release and digest.
+MCP_PUBLISHER_VERSION := 1.8.9
+MCP_PUBLISHER_SHA256_amd64 := 4d527ca8f1ced0394c962dc925c2a4a4addef441cbefd62501c875e9481823a8
+MCP_PUBLISHER_SHA256_arm64 := f4eb2e2f0a3d0693247efc117902ebcc651e1d1da973c85ed165db80a93e4fbb
+MCP_PUBLISHER_DIR := $(VENV_ROOT)/mcp-publisher-$(MCP_PUBLISHER_VERSION)
+MCP_PUBLISHER := $(MCP_PUBLISHER_DIR)/mcp-publisher
+MCP_SERVER_JSON := $(ARTIFACTS)/mcp/server.json
+# github locally (device login); the release workflow uses github-oidc.
+MCP_REGISTRY_LOGIN ?= github
 # The comparison base for version-check and candidate-version.
 BASE_REF ?= origin/main
 BASE_VERSION_FILE ?=
@@ -72,7 +81,8 @@ BASE_VERSION = $(shell $(if $(BASE_VERSION_FILE),cat "$(BASE_VERSION_FILE)",git 
 	docs-build docs-audit docs-screenshots docs-serve indexnow-plan indexnow-submit format-check lint typecheck bandit syntax \
 	test test-oauth test-oauth-e2e oauth-e2e-inventory oauth-acceptance-report \
 	oauth-systemd-host test-oauth-systemd test-full test-live test-live-stdio-standalone test-service-installer test-service-live audit \
-	validate-actions release-notes version-check candidate-version release-inventory \
+	validate-actions mcp-server-json mcp-registry-check mcp-registry-publish \
+	release-notes version-check candidate-version release-inventory \
 	check ci build zipapp standalone checksums \
 	package smoke smoke-artifacts smoke-wheel smoke-sdist smoke-zipapp smoke-standalone \
 	verify-release oauth-packaging-probe clean
@@ -222,6 +232,26 @@ validate-actions: ## lint GitHub workflows in an immutable isolated image
 		--security-opt=no-new-privileges --volume "$(CURDIR):/repo:ro,z" \
 		--workdir /repo $(ACTIONLINT_IMAGE) -config-file .github/actionlint.yaml
 
+$(MCP_PUBLISHER):
+	@[[ "$(PLATFORM)" == linux && -n "$(MCP_PUBLISHER_SHA256_$(ARCH))" ]] || \
+		{ printf '%s\n' 'mcp-publisher is pinned for Linux amd64 and arm64 only' >&2; exit 2; }
+	mkdir -p "$(MCP_PUBLISHER_DIR)"
+	curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+		--output "$(MCP_PUBLISHER_DIR)/archive.tar.gz" \
+		"https://github.com/modelcontextprotocol/registry/releases/download/v$(MCP_PUBLISHER_VERSION)/mcp-publisher_linux_$(ARCH).tar.gz"
+	printf '%s  %s\n' "$(MCP_PUBLISHER_SHA256_$(ARCH))" "$(MCP_PUBLISHER_DIR)/archive.tar.gz" | sha256sum --check --quiet
+	tar -xzf "$(MCP_PUBLISHER_DIR)/archive.tar.gz" -C "$(MCP_PUBLISHER_DIR)" mcp-publisher
+
+mcp-server-json: ## write the MCP Registry server.json for the current .version
+	$(PY) scripts/mcp_server_json.py --output $(MCP_SERVER_JSON)
+
+mcp-registry-check: mcp-server-json $(MCP_PUBLISHER) ## validate server.json with the pinned MCP Registry publisher
+	$(MCP_PUBLISHER) validate $(MCP_SERVER_JSON)
+
+mcp-registry-publish: mcp-registry-check ## publish this release to the official MCP Registry (after PyPI)
+	$(MCP_PUBLISHER) login $(MCP_REGISTRY_LOGIN)
+	$(MCP_PUBLISHER) publish $(MCP_SERVER_JSON)
+
 release-notes: ## generate the exact current-version GitHub release body
 	mkdir -p $(ARTIFACTS)
 	$(PY) .github/scripts/release_notes.py --output $(RELEASE_NOTES)
@@ -246,7 +276,7 @@ release-inventory: zipapp checksums verify-release smoke-wheel smoke-zipapp rele
 check: lock-check lint typecheck bandit syntax test verify-release ## local source and native lock gates
 
 ci: lint typecheck bandit syntax test-full oauth-acceptance-report test-service-installer verify-release \
-	lock-check docs-audit validate-actions audit ## complete Linux CI contract
+	lock-check docs-audit validate-actions mcp-registry-check audit ## complete Linux CI contract
 
 build: venv-package ## reproducibly build wheel and sdist into dist/
 	rm -rf dist build
