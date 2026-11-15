@@ -80,7 +80,8 @@ All notable changes to this project are documented here. The format follows
   platform, distribution, documentation, and security checks.
 - Gate pull requests on one `CI result` check that depends on every CI job and
   fails unless all of them succeeded, so job or matrix changes never leave a
-  required check waiting.
+  required check waiting. CodeQL alerts are enforced by the ruleset's code
+  scanning rule, which that job cannot observe.
 - Publish every push of a pull request that changes `.version` from CI as a
   prerelease candidate `vX.Y.Z-prN.gSHORTSHA` with smoke-tested Linux
   executables and checksums, installable with the normal installer; keep only

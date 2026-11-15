@@ -78,6 +78,13 @@ depends on every CI job and fails unless all of them succeeded, so renaming a
 job or changing the matrix needs no ruleset change. A new CI job must be added
 to its `needs` list; a unit test fails until it is.
 
+`CI result` cannot see checks that GitHub creates outside the workflow. The
+CodeQL jobs only prove that analysis ran and uploaded; GitHub judges the alerts
+in its own `Code scanning results / CodeQL` check. The ruleset therefore also
+carries the "Require code scanning results" rule for CodeQL, blocking security
+alerts of medium or higher severity and other alerts at error level. Without
+that rule a pull request that introduces an alert stays mergeable.
+
 `make test-live-stdio-standalone` builds the current platform's native
 executable and runs the read-only stdio acceptance through that artifact
 against the same ephemeral Joplin Desktop runtime. Both live targets are Linux

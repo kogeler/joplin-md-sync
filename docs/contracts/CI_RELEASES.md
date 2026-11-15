@@ -28,7 +28,10 @@ job MUST NOT use a repository credential or a pre-existing Joplin process or
 profile. One `CI result` job MUST depend on every reusable CI job, report even
 when a dependency fails or is cancelled, and pass only when every job
 succeeded; only dependency review may be skipped, and only outside pull
-requests. The default-branch ruleset requires that single check.
+requests. The default-branch ruleset requires that single check and, because a
+workflow job cannot depend on GitHub's own code scanning check, also requires
+CodeQL code scanning results without medium or higher security alerts or
+error-level alerts.
 
 **Evidence:**
 
