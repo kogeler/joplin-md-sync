@@ -21,6 +21,10 @@ All notable changes to this project are documented here. The format follows
   proxy, ChatGPT through Custom GPT Actions until OpenAI retires them on
   2026-12-11, and one installer for the whole headless stack. The home page
   and interface guide compare it with Joplin Desktop's built-in MCP server.
+- The note search tool now tells assistants that it matches keywords rather
+  than meaning and how to compensate: `any:1` for alternatives, shortened word
+  stems for other word forms, and retries with synonyms and other languages
+  before reporting that nothing was found.
 - The documentation site is renamed "Joplin MCP for Claude & ChatGPT" and puts
   the Claude connector first. Every page has its own search title and
   description, link previews, and a sitemap date from its last change; the home

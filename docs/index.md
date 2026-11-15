@@ -172,7 +172,7 @@ hide:
           <tr><th scope="row">Authentication</th><td>The Web Clipper token in the request URL</td><td>Separate MCP and Actions bearer tokens, plus GitHub OAuth limited to one account</td></tr>
           <tr><th scope="row">Attachments</th><td>Not exposed as tools</td><td>Read, upload, replace, and delete resources and their note links</td></tr>
           <tr><th scope="row">Bulk changes</th><td>Individual tool calls</td><td>Two-way Markdown sync with three-way diffs and dry-run pushes</td></tr>
-          <tr><th scope="row">Search</th><td>Keyword and semantic search over the local embeddings index</td><td>Joplin full-text search syntax</td></tr>
+          <tr><th scope="row">Search</th><td>Keyword and semantic search over the local embeddings index</td><td>Joplin keyword search; the tool guides assistants to retry with synonyms and word stems</td></tr>
         </tbody>
       </table>
     </div>

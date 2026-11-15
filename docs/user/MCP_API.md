@@ -120,7 +120,7 @@ an authentication check.
 | `joplin_create_note` | Create Markdown/HTML notes with metadata, tags, and base64 attachments; reject an occupied title in the destination notebook |
 | `joplin_update_note` | Partially update content/metadata; supplied tags replace the tag set |
 | `joplin_delete_note` / `joplin_restore_note` | Move a note to trash or restore it |
-| `joplin_search_notes` | Run the normal Joplin full-text search syntax |
+| `joplin_search_notes` | Search by keywords with the normal Joplin search syntax, most relevant first |
 | `joplin_list_tags` / `joplin_get_tag` | List or read tag metadata |
 | `joplin_create_tag` / `joplin_update_tag` | Create a unique normalized title or rename a tag |
 | `joplin_delete_tag` | Permanently delete a tag and its note associations |
@@ -131,6 +131,14 @@ an authentication check.
 | `joplin_create_resource` / `joplin_update_resource` | Upload a unique resource identity or replace binary content and metadata |
 | `joplin_delete_resource` | Permanently delete an attachment |
 | `joplin_list_note_resources` / `joplin_list_resource_notes` | Traverse note-resource relationships in either direction |
+
+Search matches keywords, not meaning, and the tool tells assistants how to
+compensate. Every term must appear unless the query starts with `any:1`. A
+term matches from the start of a word, so a shortened stem such as `migrat*`
+covers other word forms, which matters for inflected languages. Phrases in
+quotes, `title:`, `body:`, `tag:`, `notebook:` and `-term` narrow the result.
+Assistants are asked to retry with synonyms, stems and the notes' other
+languages before reporting that nothing was found.
 
 List and search results accept a bounded `limit` (maximum 100). Use
 `joplin_list_notebooks` before create/move operations to obtain `parent_id`.
