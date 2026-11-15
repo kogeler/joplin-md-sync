@@ -1,6 +1,6 @@
 ---
 title: "Joplin MCP server for Claude, ChatGPT and AI agents"
-description: "Connect Claude, ChatGPT and any MCP client to your self-hosted Joplin notes: open-source MCP server, Claude connector, headless service and Markdown sync."
+description: "Self-hosted Joplin MCP server with built-in OAuth for hosted Claude, ChatGPT Actions, local and HTTP MCP, a headless Linux service and Markdown sync."
 template: home.html
 hide:
   - navigation
@@ -32,6 +32,26 @@ hide:
         Deploy headless
       </a>
     </div>
+    <ul class="home-highlights" data-reveal>
+      <li>
+        <strong>Built-in OAuth for hosted Claude</strong>
+        Claude on claude.ai connects straight to Joplin on your own server
+        through your GitHub login. OAuth is part of the server, so there is no
+        separate OAuth proxy or gateway to deploy and configure.
+      </li>
+      <li>
+        <strong>ChatGPT today</strong>
+        A private Custom GPT works through authenticated Actions. OpenAI retires
+        Custom GPTs on 2026-12-11; a ChatGPT MCP connector through the same
+        built-in OAuth is planned as the replacement.
+      </li>
+      <li>
+        <strong>One installer for the whole stack</strong>
+        A single command sets up headless Joplin, sync, MCP, Actions, and
+        Claude OAuth. It asks for the values it needs, hides secrets, generates
+        keys and tokens, and verifies the result.
+      </li>
+    </ul>
     <p class="home-proof" data-reveal>
       Open source <span></span> Private by design <span></span> Desktop optional
     </p>
@@ -115,12 +135,52 @@ hide:
         <span class="value-number">03</span>
         <h3>Run Joplin without a desktop</h3>
         <p>
-          Install Joplin Terminal, recurrent sync, MCP, and Actions as coordinated
-          rootless services on a Linux host with one interactive installer.
+          One interactive installer sets up Joplin Terminal, recurrent sync, MCP,
+          Actions, and Claude OAuth as coordinated rootless services on a Linux
+          host.
         </p>
         <a href="user/JOPLIN_HEADLESS_SERVICE/">Deploy Joplin Headless Service &rarr;</a>
       </article>
     </div>
+  </div>
+</section>
+
+<section class="home-band home-compare" id="built-in-mcp">
+  <div class="home-shell">
+    <div class="section-heading section-heading--split" data-reveal>
+      <div>
+        <p class="section-label">Joplin's built-in MCP server or this bridge</p>
+        <h2>Reach your notes beyond the desktop.</h2>
+      </div>
+      <p>
+        Joplin Desktop can expose its own MCP server on the Web Clipper port to
+        clients on the same computer. Use this bridge when the assistant runs
+        elsewhere, Joplin runs without a desktop, or a change needs review. Its
+        OAuth is built in, so reaching hosted Claude takes no extra proxy.
+      </p>
+    </div>
+    <div class="compare-table" data-reveal>
+      <table>
+        <thead>
+          <tr><th scope="col"></th><th scope="col">Joplin's built-in MCP</th><th scope="col">joplin-md-sync</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Hosted assistants</th><td>Not reachable: clients must run on the same computer</td><td>Hosted Claude through built-in GitHub OAuth with no separate OAuth proxy, and ChatGPT through a private Custom GPT with Actions</td></tr>
+          <tr><th scope="row">Where it runs</th><td>Inside Joplin Desktop, which must stay open with the Web Clipper service</td><td>Beside Joplin Desktop, or headless on a Linux server with Joplin Terminal and recurrent sync</td></tr>
+          <tr><th scope="row">Other MCP clients</th><td>Local clients through 127.0.0.1</td><td>Local stdio with no listener, or authenticated Streamable HTTP over HTTPS</td></tr>
+          <tr><th scope="row">Setup</th><td>Switches in the desktop settings</td><td>One installer configures Joplin Terminal, sync, tokens, and OAuth from your answers</td></tr>
+          <tr><th scope="row">Authentication</th><td>The Web Clipper token in the request URL</td><td>Separate MCP and Actions bearer tokens, plus GitHub OAuth limited to one account</td></tr>
+          <tr><th scope="row">Attachments</th><td>Not exposed as tools</td><td>Read, upload, replace, and delete resources and their note links</td></tr>
+          <tr><th scope="row">Bulk changes</th><td>Individual tool calls</td><td>Two-way Markdown sync with three-way diffs and dry-run pushes</td></tr>
+          <tr><th scope="row">Search</th><td>Keyword and semantic search over the local embeddings index</td><td>Joplin keyword search; the tool guides assistants to retry with synonyms and word stems</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="compare-note" data-reveal>
+      Only local desktop clients, and semantic search matters most? The built-in
+      server is enough.
+      <a class="text-link" href="user/AGENT_INTERFACES/">Choose an interface &rarr;</a>
+    </p>
   </div>
 </section>
 
@@ -130,18 +190,19 @@ hide:
       <p class="section-label">From sync target to your assistant</p>
       <h2>Deploy the complete headless path.</h2>
       <p>
-        The installer coordinates Joplin Terminal and the agent adapter. You choose
-        the Joplin sync target and the HTTPS publishing layer; the upstream Data API
-        never needs to leave loopback.
+        One installer coordinates Joplin Terminal and the agent adapter. It asks
+        for the sync target, tokens, and the GitHub OAuth settings for Claude,
+        hides secrets, and checks the running services. You bring an HTTPS
+        hostname; the upstream Data API never needs to leave loopback.
       </p>
       <a class="text-link" href="user/SELF_HOSTED/">Review the deployment boundaries &rarr;</a>
     </div>
     <div class="workflow-layout">
       <ol class="workflow-steps" data-reveal>
         <li><span>1</span><div><strong>Choose storage</strong><small>Connect the headless profile to your existing Joplin sync target.</small></div></li>
-        <li><span>2</span><div><strong>Install services</strong><small>Deploy Joplin Terminal and the shared MCP/Actions adapter.</small></div></li>
+        <li><span>2</span><div><strong>Install services</strong><small>Deploy Joplin Terminal and the shared MCP, OAuth, and Actions adapter.</small></div></li>
         <li><span>3</span><div><strong>Publish safely</strong><small>Route only the authenticated MCP, OAuth, or Actions paths through HTTPS.</small></div></li>
-        <li><span>4</span><div><strong>Generate the schema</strong><small>Validate TLS, authentication, and live reads before opening ChatGPT.</small></div></li>
+        <li><span>4</span><div><strong>Connect your assistant</strong><small>Add the connector in Claude, or generate the Action schema for a private GPT.</small></div></li>
         <li><span>5</span><div><strong>Use your notes</strong><small>Search and change current Joplin data from Claude, ChatGPT, or MCP.</small></div></li>
       </ol>
       <div class="workflow-terminal" data-reveal>
@@ -161,7 +222,8 @@ install_joplin_terminal.py | python3 - \
 
 <b>OK</b>  joplin-terminal.service active
 <b>OK</b>  joplin-md-sync.service active
-<b>OK</b>  separate MCP and Actions tokens created</code></pre>
+<b>OK</b>  separate MCP and Actions tokens created
+<b>OK</b>  GitHub OAuth for Claude enabled and verified</code></pre>
       </div>
     </div>
   </div>
@@ -176,7 +238,7 @@ install_joplin_terminal.py | python3 - \
       </div>
       <p>
         Both direct interfaces use the same validated operation registry. Choose
-        ChatGPT for conversation or MCP for any compatible client.
+        Claude or ChatGPT for conversation, or MCP for any compatible client.
       </p>
     </div>
     <div class="use-case-grid">

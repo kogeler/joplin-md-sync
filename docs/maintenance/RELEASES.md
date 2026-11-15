@@ -80,9 +80,17 @@ unpublished draft from the failed attempt is replaced. When PyPI already holds
 the version, for example after an earlier interrupted release, the PyPI step is
 skipped and the existing files stay as they are. If the PyPI step fails after
 the GitHub Release was published, re-run that failed job while the run's
-artifacts are still available. Confirm the GitHub release body, complete asset
+artifacts are still available. After PyPI, the workflow publishes
+`io.github.kogeler/joplin-md-sync` to the official MCP Registry through GitHub
+OIDC; directories that mirror the registry pick it up from there. The registry
+verifies the PyPI package through the `mcp-name` line in the README, so a
+failure right after PyPI publication is usually a propagation delay: re-run
+that job. `make mcp-registry-check` validates the generated `server.json`
+locally and in CI, and `make mcp-registry-publish` publishes it by hand after a
+GitHub device login. Confirm the GitHub release body, complete asset
 inventory, and checksums plus the PyPI wheel, sdist, and provenance after
-publication. The documentation site is deployed separately from the default
+publication, and the version at
+`https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.kogeler/joplin-md-sync`. The documentation site is deployed separately from the default
 branch by the Pages workflow.
 
 ## Post-release

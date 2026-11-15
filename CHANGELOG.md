@@ -6,8 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-15
+
+### Added
+
+- Each release is published to the official MCP Registry as
+  `io.github.kogeler/joplin-md-sync`, so MCP clients and directories can find
+  and install it from PyPI with `uvx`.
+
 ### Changed
 
+- The README, package description and site lead with what sets the project
+  apart: OAuth for hosted Claude built into the server with no separate OAuth
+  proxy, ChatGPT through Custom GPT Actions until OpenAI retires them on
+  2026-12-11, and one installer for the whole headless stack. The home page
+  and interface guide compare it with Joplin Desktop's built-in MCP server.
+- The note search tool now tells assistants that it matches keywords rather
+  than meaning and how to compensate: `any:1` for alternatives, shortened word
+  stems for other word forms, and retries with synonyms and other languages
+  before reporting that nothing was found.
 - The documentation site is renamed "Joplin MCP for Claude & ChatGPT" and puts
   the Claude connector first. Every page has its own search title and
   description, link previews, and a sitemap date from its last change; the home

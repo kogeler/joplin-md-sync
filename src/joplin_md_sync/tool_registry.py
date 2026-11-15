@@ -458,10 +458,28 @@ class _ToolRegistryBuilder:
             exposed(
                 "joplin_search_notes",
                 "Search Joplin notes",
-                "Run Joplin full-text search syntax and return relevance-ordered note metadata.",
+                (
+                    "Search notes by keywords, most relevant first. It matches words, not "
+                    "meaning: use two or three distinctive terms, and before concluding that "
+                    "nothing exists retry with synonyms, shortened word stems and the other "
+                    "languages the notes may use."
+                ),
                 _object_schema(
                     {
-                        "query": {"type": "string", "minLength": 1},
+                        "query": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": (
+                                "Joplin search syntax. Every term must appear unless the query "
+                                "starts with any:1, which matches any of them, e.g. "
+                                "any:1 invoice receipt bill. A term matches from the start of "
+                                "a word, never the middle: end a shortened word with * to "
+                                "cover its other forms, e.g. migrat*. Quote an exact phrase, "
+                                "narrow with title:, body:, tag: or notebook:, and exclude "
+                                "with -term. Keep queries short; a whole sentence rarely "
+                                "matches."
+                            ),
+                        },
                         "limit": {**_LIMIT, "default": 50},
                     },
                     required=("query",),

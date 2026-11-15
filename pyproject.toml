@@ -6,13 +6,13 @@ build-backend = "setuptools.build_meta"
 name = "joplin-md-sync"
 # The version lives in the root .version file (see docs/contracts/CI_RELEASES.md).
 dynamic = ["version"]
-description = "Self-hosted Joplin MCP server for Claude, ChatGPT and any MCP client, with a headless service and reviewable Markdown sync"
+description = "Self-hosted Joplin MCP server with built-in OAuth for hosted Claude, ChatGPT Actions, a headless service and reviewable Markdown sync"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.13"
 authors = [{ name = "joplin-md-sync contributors" }]
-keywords = ["joplin", "mcp", "mcp-server", "model-context-protocol", "claude", "chatgpt", "self-hosted", "markdown", "notes", "agents"]
+keywords = ["joplin", "mcp", "mcp-server", "model-context-protocol", "claude", "chatgpt", "oauth", "self-hosted", "markdown", "notes", "agents"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",

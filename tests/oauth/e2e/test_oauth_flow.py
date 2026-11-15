@@ -128,13 +128,16 @@ class RunningApplication:
                     "Server exited before readiness; see fixture server.log"
                 )
                 try:
-                    if not self.listener_file.exists():
+                    try:
+                        self.port = int(self.listener_file.read_text())
+                    except (OSError, ValueError):
+                        # Not published yet. Windows can also deny the read
+                        # while the child is still replacing the file.
                         assert time.monotonic() < deadline, (
                             "HTTP listener startup deadline exceeded"
                         )
                         time.sleep(0.02)
                         continue
-                    self.port = int(self.listener_file.read_text())
                     self.proxy.backend_port = self.port
                     if probe.get(f"http://127.0.0.1:{self.port}/healthz").status_code == 200:
                         # Readiness must belong to this fixture's unique credential.

@@ -131,7 +131,10 @@ class McpDispatcher:
                         "Read and modify Joplin notes through the Joplin Data API. "
                         "Create tools reject an existing natural identity; use the "
                         "returned ID with the corresponding update tool. "
-                        "Delete moves notes to trash and never permanently deletes them."
+                        "Delete moves notes to trash and never permanently deletes them. "
+                        "Note search matches keywords, not meaning: try several short "
+                        "queries with synonyms and word stems before reporting that "
+                        "nothing was found."
                     ),
                 }
             elif method == "ping":

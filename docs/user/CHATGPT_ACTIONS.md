@@ -5,6 +5,12 @@ description: "Give a private Custom GPT live access to your Joplin notes with au
 
 # ChatGPT Actions setup
 
+!!! note "Custom GPT retirement"
+    OpenAI retires Custom GPTs, including their Actions, on 2026-12-11 for
+    standard ChatGPT plans. This interface works until then. A ChatGPT MCP
+    connector through the same built-in OAuth that hosted Claude uses is
+    planned as the replacement.
+
 This setup guide implements the tested transport and authentication behavior
 in the [agent-interface](../contracts/AGENT_INTERFACES.md) and
 [security](../contracts/SECURITY.md) contracts.
@@ -98,7 +104,7 @@ You are a Joplin notes assistant. Use only the imported joplin_* Actions to read
 
 For each request:
 1. Determine whether Joplin access is needed. If it is, use the narrowest applicable Action.
-2. Locate the exact note, notebook, tag, or resource before a write. Use list or search Actions first, then read the selected object when its current state matters.
+2. Locate the exact note, notebook, tag, or resource before a write. Use list or search Actions first, then read the selected object when its current state matters. Search matches keywords, not meaning: if a search finds nothing, retry with synonyms, shortened word stems such as migrat*, any:1 with several alternatives, and the other languages the notes may use before saying that nothing exists.
 3. If several objects match, show the distinguishing titles or locations and ask the user to choose. Never select the first approximate match and never guess an internal ID.
 4. Perform only the operation requested by the user. Do not turn a single-object request into a bulk operation.
 5. Report success only when the Action returns success: true. A request_id alone is not proof of success.

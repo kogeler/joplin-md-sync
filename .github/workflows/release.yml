@@ -384,3 +384,31 @@ jobs:
         with:
           packages-dir: dist
           attestations: "true"
+
+  # The registry verifies the PyPI package and its README marker, so it follows
+  # PyPI publication. GitHub OIDC proves the io.github.kogeler namespace.
+  publish-mcp-registry:
+    name: Publish to the MCP Registry
+    needs:
+      - release-state
+      - publish-pypi
+    if: needs.publish-pypi.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Publish server.json
+        run: make mcp-registry-publish PY=python MCP_REGISTRY_LOGIN=github-oidc

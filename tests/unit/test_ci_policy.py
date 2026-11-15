@@ -211,7 +211,9 @@ def test_pypi_publication_uses_oidc_and_verified_shared_artifacts() -> None:
     assert "publish-pypi:" in release
     assert "name: python-distributions" in release
     assert "environment:\n      name: pypi" in release
-    assert release.count("id-token: write") == 1
+    # Only the two registry publications prove identity through OIDC.
+    oidc = {name for name, job in _jobs(release).items() if "id-token: write" in job}
+    assert oidc == {"publish-pypi", "publish-mcp-registry"}
     assert "pypa/gh-action-pypi-publish@" in release
     assert "packages-dir: dist" in release
     assert 'attestations: "true"' in release

@@ -294,6 +294,10 @@ class GptActionsHttpTest(WorkspaceTestCase):
             limited._capacity.release()
 
         self.assertEqual(self.request(self.tool_path("definitely_absent"), {})[0], 404)
+        # The server frees its only slot after sending that response. Wait for
+        # it, so the next request meets the rate limit and not a busy server.
+        self.assertTrue(limited._capacity.acquire(timeout=5))
+        limited._capacity.release()
         status, body, headers = self.request(self.tool_path("joplin_list_notes"), {})
         self.assertEqual(status, 429)
         self.assertEqual(body["error"]["code"], "RATE_LIMITED")

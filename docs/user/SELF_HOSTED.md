@@ -1,6 +1,6 @@
 ---
 title: "Self-host the Joplin MCP server"
-description: "Deploy the Joplin MCP and Actions server on a headless Linux host or a desktop: loopback Data API, HTTPS publishing, network boundaries and rollout."
+description: "Deploy the Joplin MCP, OAuth and Actions server on a headless Linux host or a desktop: loopback Data API, HTTPS publishing, network boundaries and rollout."
 ---
 
 # Self-hosted deployment
@@ -20,20 +20,22 @@ Self-hosting is not one switch. It is control over four separate layers:
 topology. Neither requires publishing Joplin's own Data API.
 
 Hosted Claude, and currently no other OAuth client, can use
-[GitHub OAuth](CLAUDE_CONNECTOR.md) on `/oauth/mcp`.
-Enable it on the existing bridge and expose its discovery, consent and callback
-routes through the same HTTPS hostname. The bridge keeps one listener and port.
+[GitHub OAuth](CLAUDE_CONNECTOR.md) on `/oauth/mcp`. OAuth is built into the
+bridge, so no separate OAuth proxy or identity gateway is needed. Enable it on
+the existing bridge, or let the headless installer do it, and expose its
+discovery, consent and callback routes through the same HTTPS hostname. The
+bridge keeps one listener and port.
 
 ## Topology A: headless Linux host
 
 ```text
-MCP client on private network       ChatGPT
-             |                         |
-             | authenticated TLS       | HTTPS Actions
-             +------------+------------+
+MCP client on private network     Claude         ChatGPT
+             |                      |               |
+             | authenticated TLS    | HTTPS OAuth   | HTTPS Actions
+             +------------+---------+---------------+
                           |
                 joplin-md-sync.service
-                 /mcp   /api/gpt/v1/*
+            /mcp    /oauth/mcp    /api/gpt/v1/*
                           |
                           | loopback only
                           v
@@ -47,10 +49,10 @@ The included non-root installer creates two coordinated systemd user services:
 
 - `joplin-terminal.service` owns a dedicated Joplin Terminal profile, recurrent
   sync, and loopback Data API on port 41185 by default;
-- `joplin-md-sync.service` owns the combined MCP and Actions listener on port
-  8765 by default.
+- `joplin-md-sync.service` owns the combined MCP, OAuth, and Actions listener
+  on port 8765 by default.
 
-There is no separate Actions service. The bridge starts even when Joplin is
+There is no separate Actions or OAuth service. The bridge starts even when Joplin is
 temporarily unavailable and retries availability on later calls. Joplin
 Desktop does not need to run on this host or remain online elsewhere.
 

@@ -53,8 +53,8 @@ CodeQL job MAY receive `security-events: write`, Pages deployment MAY receive jo
 Pages and OIDC writes, PR-body automation MAY receive pull-request write, and
 GitHub release publication MAY receive job-scoped contents write. CI's
 pull-request candidate job MAY receive job-scoped contents write and MUST NOT
-check out or run repository code. PyPI publication MAY receive only job-scoped
-OIDC write and MUST NOT receive a stored credential.
+check out or run repository code. PyPI and MCP Registry publication MAY receive
+only job-scoped OIDC write and MUST NOT receive a stored credential.
 
 **Evidence:**
 

@@ -1,6 +1,6 @@
 ---
 title: "Choose how AI agents reach Joplin: MCP, Claude, ChatGPT"
-description: "Compare the Claude connector, ChatGPT Actions, local stdio MCP, HTTP MCP and Markdown sync to pick the right way to give an AI agent your Joplin notes."
+description: "Compare the Claude connector with built-in OAuth, ChatGPT Actions, local stdio MCP, HTTP MCP and Markdown sync for giving an AI agent your Joplin notes."
 ---
 
 # Choose an agent interface
@@ -16,16 +16,37 @@ consistency models.
 
 | Need | Use |
 | --- | --- |
-| Work with current Joplin notes in a private Custom GPT | ChatGPT Actions |
 | Connect hosted Claude with one configured GitHub account | [Built-in OAuth MCP](CLAUDE_CONNECTOR.md) |
+| Work with current Joplin notes in a private Custom GPT | ChatGPT Actions |
 | Search or change current Joplin data from an assistant | MCP |
 | Perform targeted note, notebook, tag, or attachment operations | MCP |
-| Run without a local desktop session | Headless Joplin service plus MCP or Actions |
+| Run without a local desktop session | Headless Joplin service plus MCP, OAuth, or Actions |
 | Let a coding agent rewrite notes using repository context | Markdown workspace |
 | See an exact diff and operation plan before Joplin changes | Markdown workspace |
 | Keep selected notebooks in Git | Markdown workspace |
 
+Joplin Desktop also has a built-in MCP server on its Web Clipper port. It
+serves only clients on the same computer while the desktop app runs, and it
+adds semantic search. Choose this project when an assistant runs elsewhere,
+such as hosted Claude or ChatGPT, when Joplin runs headless on a server, or
+when you need attachments or reviewable Markdown changes.
+
+## Claude connector
+
+Hosted Claude connects to `/oauth/mcp` on the same listener and signs in
+through GitHub. OAuth is built into the server: it issues and checks its own
+tokens, limits access to one numeric GitHub account, and needs no separate
+OAuth proxy or identity gateway in front of the MCP endpoint. The headless
+installer configures it from a few answers. It is currently the only supported
+OAuth client.
+
+[Connect Claude to Joplin](CLAUDE_CONNECTOR.md)
+
 ## ChatGPT Actions
+
+OpenAI retires Custom GPTs, and their Actions, on 2026-12-11 for standard
+ChatGPT plans. The interface works until then, and a ChatGPT MCP connector
+through the same built-in OAuth is planned as the replacement.
 
 Actions use a dedicated REST namespace and mandatory bearer token on the same
 listener and operation registry as MCP. The generated OpenAPI contract exposes
@@ -93,8 +114,9 @@ the agent needs files from another repository, large edits, or Git review.
 
 | Topology | Typical interface |
 | --- | --- |
+| Hosted Claude | Public HTTPS OAuth routes on the same listener; Joplin API stays private |
 | Private Custom GPT | Public HTTPS Actions namespace; Joplin API stays private |
-| Dedicated Linux host with Joplin Terminal | Authenticated MCP and/or Actions |
+| Dedicated Linux host with Joplin Terminal | Authenticated MCP, OAuth, and/or Actions |
 | Joplin Desktop with a private network client | Authenticated MCP behind TLS |
 | Joplin Desktop and agent on one machine | Local stdio MCP or Markdown workspace |
 
