@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The documentation site is renamed "Joplin MCP for Claude & ChatGPT" and puts
+  the Claude connector first. Every page has its own search title and
+  description, link previews, and a sitemap date from its last change; the home
+  page carries structured data. `robots.txt` welcomes search, assistant and
+  training crawlers, `llms.txt` lists every page, and each publication notifies
+  IndexNow search engines about changed pages.
+
 ## [1.8.0] - 2026-11-05
 
 ### Added

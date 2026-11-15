@@ -1,3 +1,8 @@
+---
+title: "Headless service maintenance"
+description: "Maintainer notes for the headless Joplin installer: components, automated tests and the procedure for changing service behavior safely."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Service Maintenance

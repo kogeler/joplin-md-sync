@@ -1,3 +1,8 @@
+---
+title: "Safe AI agent workflows for Joplin Markdown"
+description: "Procedures for AI agents editing Joplin notes as Markdown: guarded sessions, three-way diffs, dry-run pushes, deletions, conflicts and recovery."
+---
+
 # Agent workflows
 
 These are safe operating procedures. The guarantees behind them are defined by

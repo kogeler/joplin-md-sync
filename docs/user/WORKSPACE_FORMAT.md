@@ -1,3 +1,8 @@
+---
+title: "Joplin Markdown workspace format"
+description: "How a managed Joplin Markdown workspace is laid out: note files with metadata headers, filenames, notebook directories and the private state folder."
+---
+
 # Workspace Format
 
 This page shows how to work with a managed workspace. The authoritative file,

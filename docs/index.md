@@ -1,6 +1,6 @@
 ---
-title: Joplin for ChatGPT and MCP
-description: Use self-hosted Joplin notes through ChatGPT Actions, local stdio MCP, or authenticated HTTP MCP, with a separate reviewable Markdown workflow.
+title: "Joplin MCP server for Claude, ChatGPT and AI agents"
+description: "Connect Claude, ChatGPT and any MCP client to your self-hosted Joplin notes: open-source MCP server, Claude connector, headless service and Markdown sync."
 template: home.html
 hide:
   - navigation
@@ -9,16 +9,20 @@ hide:
 
 <section class="home-hero">
   <div class="home-shell home-hero__content">
-    <p class="home-kicker" data-reveal>ChatGPT Actions <span></span> Local &amp; HTTP MCP <span></span> Self-hosted Joplin</p>
-    <h1 data-reveal>Joplin for ChatGPT &amp; MCP</h1>
+    <p class="home-kicker" data-reveal>Claude &amp; ChatGPT <span></span> Local &amp; HTTP MCP <span></span> Self-hosted Joplin</p>
+    <h1 data-reveal>Joplin MCP for Claude &amp; ChatGPT</h1>
     <p class="home-hero__lead" data-reveal>
       Search, read, create, organize, and update your own Joplin notes from the
-      assistants you already use. Connect ChatGPT, launch a local MCP process
-      over stdio with no listener, or deploy guarded HTTP interfaces while
-      keeping Joplin, its sync target, and its Data API under your control.
+      assistants you already use. Connect Claude with a GitHub login, give a
+      private ChatGPT GPT live access, launch a local MCP process over stdio
+      with no listener, or deploy guarded HTTP interfaces while keeping Joplin,
+      its sync target, and its Data API under your control.
     </p>
     <div class="home-actions" data-reveal>
-      <a class="home-button home-button--primary" href="user/CHATGPT_ACTIONS/">
+      <a class="home-button home-button--primary" href="user/CLAUDE_CONNECTOR/">
+        Connect Claude
+      </a>
+      <a class="home-button home-button--secondary" href="user/CHATGPT_ACTIONS/">
         Connect ChatGPT
       </a>
       <a class="home-button home-button--secondary" href="user/MCP_API/#local-stdio">
@@ -41,7 +45,7 @@ hide:
       <div class="hero-console__flow" aria-label="Assistant to private Joplin data flow">
         <div class="flow-node flow-node--agent">
           <b>AI</b>
-          <div><strong>ChatGPT or MCP</strong><small>Your chosen client</small></div>
+          <div><strong>Claude, ChatGPT or MCP</strong><small>Your chosen client</small></div>
         </div>
         <div class="flow-link">
           <span>typed operations</span>
@@ -67,9 +71,9 @@ hide:
         <code class="console-result">{"success":true,"results":[{"title":"Migration runbook"}]}</code>
       </div>
       <div class="hero-console__checks">
+        <span><i></i> Claude connector</span>
         <span><i></i> ChatGPT Actions</span>
         <span><i></i> MCP tool schemas</span>
-        <span><i></i> Duplicate guards</span>
         <span><i></i> Private Joplin API</span>
       </div>
     </div>
@@ -90,12 +94,13 @@ hide:
     <div class="value-columns">
       <article data-reveal>
         <span class="value-number">01</span>
-        <h3>Talk to your notes in ChatGPT</h3>
+        <h3>Talk to your notes in Claude or ChatGPT</h3>
         <p>
-          Give a private Custom GPT live access to search, read, create, update,
-          move, tag, and trash exact Joplin objects through generated Actions.
+          Connect hosted Claude through your own GitHub login, or give a private
+          Custom GPT live access to search, read, create, update, move, tag, and
+          trash exact Joplin objects.
         </p>
-        <a href="user/CHATGPT_ACTIONS/">Configure your Joplin GPT &rarr;</a>
+        <a href="user/CLAUDE_CONNECTOR/">Connect Claude to Joplin &rarr;</a>
       </article>
       <article data-reveal>
         <span class="value-number">02</span>
@@ -122,7 +127,7 @@ hide:
 <section class="home-band home-workflow home-deploy">
   <div class="home-shell">
     <div class="section-heading" data-reveal>
-      <p class="section-label">From sync target to private GPT</p>
+      <p class="section-label">From sync target to your assistant</p>
       <h2>Deploy the complete headless path.</h2>
       <p>
         The installer coordinates Joplin Terminal and the agent adapter. You choose
@@ -135,9 +140,9 @@ hide:
       <ol class="workflow-steps" data-reveal>
         <li><span>1</span><div><strong>Choose storage</strong><small>Connect the headless profile to your existing Joplin sync target.</small></div></li>
         <li><span>2</span><div><strong>Install services</strong><small>Deploy Joplin Terminal and the shared MCP/Actions adapter.</small></div></li>
-        <li><span>3</span><div><strong>Publish Actions</strong><small>Route only the authenticated Actions namespace through HTTPS.</small></div></li>
+        <li><span>3</span><div><strong>Publish safely</strong><small>Route only the authenticated MCP, OAuth, or Actions paths through HTTPS.</small></div></li>
         <li><span>4</span><div><strong>Generate the schema</strong><small>Validate TLS, authentication, and live reads before opening ChatGPT.</small></div></li>
-        <li><span>5</span><div><strong>Use your notes</strong><small>Search and change current Joplin data from a private Custom GPT.</small></div></li>
+        <li><span>5</span><div><strong>Use your notes</strong><small>Search and change current Joplin data from Claude, ChatGPT, or MCP.</small></div></li>
       </ol>
       <div class="workflow-terminal" data-reveal>
         <div class="workflow-terminal__title">
@@ -176,7 +181,7 @@ install_joplin_terminal.py | python3 - \
     </div>
     <div class="use-case-grid">
       <article class="use-case" data-reveal>
-        <span class="use-case__tag">ChatGPT</span>
+        <span class="use-case__tag">Claude &amp; ChatGPT</span>
         <h3>Search and synthesize your knowledge</h3>
         <p>Find the relevant Joplin notes, read only the selected results, and turn current private context into a focused answer.</p>
       </article>
@@ -224,12 +229,12 @@ install_joplin_terminal.py | python3 - \
     <div class="control-stack" data-reveal>
       <div class="control-layer">
         <span>Clients</span>
-        <strong>Private Custom GPT <i>or</i> MCP client</strong>
+        <strong>Claude, a private GPT <i>or</i> an MCP client</strong>
         <small>Separate transports over one shared, validated operation registry</small>
       </div>
       <div class="control-layer">
         <span>Boundary</span>
-        <strong>Dedicated Actions and MCP credentials</strong>
+        <strong>Dedicated MCP, Actions, and OAuth credentials</strong>
         <small>Independent tokens, authenticated routes, and bounded payloads</small>
       </div>
       <div class="control-layer">
@@ -315,10 +320,10 @@ install_joplin_terminal.py | python3 - \
   <div class="home-shell cta-layout" data-reveal>
     <div>
       <p class="section-label">Keep Joplin. Add the interfaces you need.</p>
-      <h2>Bring your private notes into ChatGPT and MCP.</h2>
+      <h2>Bring your private notes into Claude, ChatGPT, and MCP.</h2>
     </div>
     <div class="cta-actions">
-      <a class="home-button home-button--light" href="user/CHATGPT_ACTIONS/">Connect ChatGPT</a>
+      <a class="home-button home-button--light" href="user/CLAUDE_CONNECTOR/">Connect Claude</a>
       <a class="home-button home-button--outline" href="user/AGENT_INTERFACES/">Compare interfaces</a>
     </div>
   </div>

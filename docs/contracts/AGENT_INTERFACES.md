@@ -1,3 +1,8 @@
+---
+title: "MCP, OAuth and Actions interface contract"
+description: "Normative MCP, Claude OAuth and ChatGPT Actions behavior: shared tool registry, transports, authentication, rate limits and resource limits."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Agent Interface Contract

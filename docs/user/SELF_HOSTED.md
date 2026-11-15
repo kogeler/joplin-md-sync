@@ -1,3 +1,8 @@
+---
+title: "Self-host the Joplin MCP server"
+description: "Deploy the Joplin MCP and Actions server on a headless Linux host or a desktop: loopback Data API, HTTPS publishing, network boundaries and rollout."
+---
+
 # Self-hosted deployment
 
 Deployment guarantees and trust boundaries are owned by the

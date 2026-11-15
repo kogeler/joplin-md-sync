@@ -1,3 +1,8 @@
+---
+title: "Architecture of joplin-md-sync"
+description: "How joplin-md-sync is built: module map, data flow of a mutating command, key design decisions, the state database and the embedded OAuth design."
+---
+
 # Architecture
 
 This page explains the implementation layout and the reasons behind its

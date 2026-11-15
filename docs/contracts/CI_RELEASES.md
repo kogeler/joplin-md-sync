@@ -1,3 +1,8 @@
+---
+title: "CI and release contract"
+description: "Normative CI and release rules: quality and platform gates, CodeQL, version increments, pull request candidates and verified GitHub and PyPI releases."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Continuous Integration And Release Contract

@@ -1,3 +1,8 @@
+---
+title: "Joplin MCP server tools over stdio and HTTP"
+description: "Joplin MCP tool reference: search, read, create and update notes, notebooks, tags and attachments over local stdio or authenticated Streamable HTTP."
+---
+
 # MCP API
 
 This is the client-facing tool reference. Its normative registry, lifecycle,

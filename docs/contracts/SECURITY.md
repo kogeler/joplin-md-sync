@@ -1,3 +1,8 @@
+---
+title: "Security contract"
+description: "Security requirements for joplin-md-sync: credential handling, the loopback Data API, bearer and OAuth authentication, consent and audit events."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Security Contract

@@ -1,3 +1,8 @@
+---
+title: "Connect ChatGPT to Joplin with Custom GPT Actions"
+description: "Give a private Custom GPT live access to your Joplin notes with authenticated ChatGPT Actions: OpenAPI schema, token, preview tests and troubleshooting."
+---
+
 # ChatGPT Actions setup
 
 This setup guide implements the tested transport and authentication behavior

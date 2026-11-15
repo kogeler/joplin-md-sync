@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{#- The home page title already names the product; skip the site-name suffix. -#}
+{% block htmltitle %}
+  {% if page and page.is_homepage and page.meta and page.meta.title %}
+    <title>{{ page.meta.title | e }}</title>
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock %}
+
+{#- Link previews in chats and social networks use the page's own title and description. -#}
+{% block extrahead %}
+  {{ super() }}
+  {% if page and page.canonical_url %}
+    {% set preview_title = (page.meta.title if page.meta and page.meta.title else page.title | striptags) %}
+    {% set preview_description = (page.meta.description if page.meta and page.meta.description else config.site_description) %}
+    <meta property="og:type" content="{{ 'website' if page.is_homepage else 'article' }}">
+    <meta property="og:site_name" content="{{ config.site_name | e }}">
+    <meta property="og:title" content="{{ preview_title | e }}">
+    <meta property="og:description" content="{{ preview_description | e }}">
+    <meta property="og:url" content="{{ page.canonical_url | e }}">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ preview_title | e }}">
+    <meta name="twitter:description" content="{{ preview_description | e }}">
+  {% endif %}
+{% endblock %}

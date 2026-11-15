@@ -4,13 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
+
+DESCRIPTION_LIMIT = 160
+INDEXNOW_KEY = re.compile(r"[A-Za-z0-9-]{8,128}")
 
 
 class AuditError(RuntimeError):
@@ -27,6 +32,9 @@ class HtmlDocument:
     h1_count: int = 0
     title_text: list[str] = field(default_factory=list)
     in_title: bool = False
+    descriptions: list[str] = field(default_factory=list)
+    structured_data: list[str] = field(default_factory=list)
+    in_structured_data: bool = False
 
 
 class SiteHtmlParser(HTMLParser):
@@ -52,14 +60,23 @@ class SiteHtmlParser(HTMLParser):
         if tag == "link" and "canonical" in (values.get("rel") or "").split():
             if canonical := values.get("href"):
                 self.document.canonicals.append(canonical)
+        if tag == "meta" and values.get("name") == "description":
+            self.document.descriptions.append((values.get("content") or "").strip())
+        if tag == "script" and values.get("type") == "application/ld+json":
+            self.document.in_structured_data = True
+            self.document.structured_data.append("")
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
             self.document.in_title = False
+        if tag == "script":
+            self.document.in_structured_data = False
 
     def handle_data(self, data: str) -> None:
         if self.document.in_title:
             self.document.title_text.append(data)
+        if self.document.in_structured_data:
+            self.document.structured_data[-1] += data
 
 
 def _route_for_page(path: Path, site_dir: Path) -> str:
@@ -92,17 +109,64 @@ def _parse_document(path: Path) -> HtmlDocument:
     return parser.document
 
 
-def _sitemap_urls(path: Path) -> set[str]:
+def _sitemap_dates(path: Path) -> dict[str, str]:
+    """Map every sitemap URL to its lastmod value."""
+
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError) as exc:
         raise AuditError(f"invalid sitemap: {path}") from exc
     namespace = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     return {
-        value
-        for element in root.findall("s:url/s:loc", namespace)
-        if (value := (element.text or "").strip())
+        (url.findtext("s:loc", "", namespace)).strip(): (
+            url.findtext("s:lastmod", "", namespace)
+        ).strip()
+        for url in root.findall("s:url", namespace)
     }
+
+
+def _check_page_metadata(documents: dict[str, HtmlDocument]) -> None:
+    """Every page needs its own title and a bounded description of its own."""
+
+    seen_titles: dict[str, str] = {}
+    seen_descriptions: dict[str, str] = {}
+    for route, document in documents.items():
+        if len(document.descriptions) != 1 or not document.descriptions[0]:
+            raise AuditError(f"{route}: expected one non-empty meta description")
+        description = document.descriptions[0]
+        if len(description) > DESCRIPTION_LIMIT:
+            raise AuditError(f"{route}: description exceeds {DESCRIPTION_LIMIT} characters")
+        title = "".join(document.title_text).strip()
+        for value, seen, kind in (
+            (title, seen_titles, "title"),
+            (description, seen_descriptions, "description"),
+        ):
+            if value in seen:
+                raise AuditError(f"{route}: {kind} duplicates {seen[value]}")
+            seen[value] = route
+
+
+def _check_structured_data(document: HtmlDocument) -> None:
+    if not document.structured_data:
+        raise AuditError("home page has no JSON-LD structured data")
+    for block in document.structured_data:
+        try:
+            data = json.loads(block)
+        except ValueError as exc:
+            raise AuditError("home page JSON-LD is not valid JSON") from exc
+        if data.get("@context") != "https://schema.org" or not data.get("@type"):
+            raise AuditError("home page JSON-LD needs a schema.org @context and @type")
+
+
+def _check_indexnow_key(site_dir: Path) -> None:
+    keys = [
+        path
+        for path in site_dir.glob("*.txt")
+        if INDEXNOW_KEY.fullmatch(path.stem)
+        and path.read_text(encoding="utf-8").strip() == path.stem
+    ]
+    if len(keys) != 1:
+        raise AuditError(f"expected one IndexNow key file at the site root, found {len(keys)}")
 
 
 def audit_site(site_dir: Path, site_url: str) -> tuple[int, int]:
@@ -124,7 +188,8 @@ def audit_site(site_dir: Path, site_url: str) -> tuple[int, int]:
     sitemap = site_dir / "sitemap.xml"
     if not sitemap.is_file() or not (site_dir / "sitemap.xml.gz").is_file():
         raise AuditError("sitemap.xml and sitemap.xml.gz must both exist")
-    actual_urls = _sitemap_urls(sitemap)
+    dates = _sitemap_dates(sitemap)
+    actual_urls = set(dates)
     if actual_urls != expected_urls:
         missing = sorted(expected_urls - actual_urls)
         extra = sorted(actual_urls - expected_urls)
@@ -134,8 +199,17 @@ def audit_site(site_dir: Path, site_url: str) -> tuple[int, int]:
     cname = (site_dir / "CNAME").read_text(encoding="utf-8").strip()
     if cname != expected_host:
         raise AuditError(f"CNAME {cname!r} does not match {expected_host!r}")
-    if not (site_dir / "llms.txt").read_text(encoding="utf-8").strip():
-        raise AuditError("llms.txt is missing or empty")
+    for url, lastmod in dates.items():
+        try:
+            datetime.fromisoformat(lastmod)
+        except ValueError as exc:
+            raise AuditError(f"sitemap lastmod for {url} is missing or invalid") from exc
+    llms = (site_dir / "llms.txt").read_text(encoding="utf-8")
+    if missing_from_llms := sorted(url for url in expected_urls if f"({url})" not in llms):
+        raise AuditError(f"llms.txt does not list {missing_from_llms}")
+    _check_indexnow_key(site_dir)
+    _check_page_metadata(documents)
+    _check_structured_data(documents["/"])
     robots = (site_dir / "robots.txt").read_text(encoding="utf-8")
     robots_lines = {line.strip() for line in robots.splitlines() if line.strip()}
     sitemap_directive = f"Sitemap: {urljoin(origin, 'sitemap.xml')}"

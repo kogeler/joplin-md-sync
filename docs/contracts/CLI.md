@@ -1,3 +1,8 @@
+---
+title: "CLI and JSON output contract"
+description: "Testable guarantees for joplin-md-sync commands: arguments, JSON envelope, exit codes and error reporting for scripts and AI agents."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # CLI And Output Contract

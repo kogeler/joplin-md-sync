@@ -1,3 +1,8 @@
+---
+title: "Headless service installer contract"
+description: "Normative behavior of the headless Joplin installer: rootless systemd services, sync setup, upgrades, OAuth, rollback and clean removal."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Headless Service Contract

@@ -1,10 +1,10 @@
-# Joplin for ChatGPT and MCP
+# Joplin MCP for Claude and ChatGPT
 
 `joplin-md-sync` gives AI assistants controlled access to your own
 [Joplin](https://joplinapp.org/) knowledge base. Search, read, create, update,
-move, tag, and trash notes from a private Custom GPT or any local stdio or
-Streamable HTTP MCP client without moving your notes into another hosted note
-service.
+move, tag, and trash notes from hosted Claude with a GitHub login, a private
+Custom GPT, or any local stdio or Streamable HTTP MCP client without moving
+your notes into another hosted note service.
 
 Run it beside Joplin Desktop, or deploy a complete headless Joplin Terminal and
 agent API stack on your own Linux host. A separate Markdown sync workflow is
@@ -12,8 +12,8 @@ available when a coding agent needs reviewable files, three-way diffs, and Git
 history.
 
 **[Website](https://joplin-mcp.romancello.net/)** ·
-**[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
 **[Connect Claude](https://joplin-mcp.romancello.net/user/CLAUDE_CONNECTOR/)** ·
+**[Connect ChatGPT](https://joplin-mcp.romancello.net/user/CHATGPT_ACTIONS/)** ·
 **[MCP: local stdio & HTTP](https://joplin-mcp.romancello.net/user/MCP_API/)** ·
 **[Deploy headless](https://joplin-mcp.romancello.net/user/JOPLIN_HEADLESS_SERVICE/)**
 

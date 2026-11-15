@@ -1,3 +1,8 @@
+---
+title: "Dependency contract"
+description: "Normative dependency rules: one universal uv lock, hash-pinned uv, bounded runtime requirements and host-private environments."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Dependency Contract

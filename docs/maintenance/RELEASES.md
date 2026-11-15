@@ -1,3 +1,8 @@
+---
+title: "Release procedure"
+description: "How a joplin-md-sync release is prepared, reviewed and published to GitHub and PyPI, and what happens between and after releases."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Releases

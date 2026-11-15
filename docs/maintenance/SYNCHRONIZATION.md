@@ -1,3 +1,8 @@
+---
+title: "Synchronization engine design"
+description: "Design behind the Joplin and Markdown synchronization engine: base snapshots, pure planning, three-way classification and the change procedure."
+---
+
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
 
 # Synchronization Design
