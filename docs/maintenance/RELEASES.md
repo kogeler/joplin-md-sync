@@ -22,6 +22,14 @@ marker-delimited block of the pull-request description. Text outside that
 block is preserved by CI. Agents must never manually write or edit any part of
 the PR body; update the changelog and let CI generate the description.
 
+Pull request candidates are not releases. For every push of a same-repository
+pull request whose `.version` differs from its base, CI builds the native
+executables with the version `X.Y.Z-prN.gSHORTSHA` and its `candidate` job
+publishes the smoke-tested Linux executables as that prerelease. Only the
+newest candidate per pull request is kept, and publishing release `vX.Y.Z`
+removes its candidates. A candidate is never latest and does not affect PyPI. Install instructions are in the
+[headless service guide](../user/JOPLIN_HEADLESS_SERVICE.md#test-an-unpublished-runtime-candidate).
+
 ## Prepare
 
 1. Update `.version` to the intended SemVer value.

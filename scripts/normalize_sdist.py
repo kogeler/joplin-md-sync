@@ -19,9 +19,7 @@ def normalize(path: Path, *, epoch: int) -> None:
     with tarfile.open(path, mode="r:gz") as source:
         members = source.getmembers()
         contents = {
-            member.name: source.extractfile(member).read()
-            for member in members
-            if member.isfile()
+            member.name: source.extractfile(member).read() for member in members if member.isfile()
         }
 
     temporary: Path | None = None
@@ -29,7 +27,9 @@ def normalize(path: Path, *, epoch: int) -> None:
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as raw:
             temporary = Path(raw.name)
             with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=epoch) as compressed:
-                with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as target:
+                with tarfile.open(
+                    fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT
+                ) as target:
                     for original in members:
                         member = copy.copy(original)
                         member.uid = 0

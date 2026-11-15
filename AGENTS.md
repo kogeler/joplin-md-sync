@@ -6,6 +6,42 @@ guarantees are defined only by the [contract catalog](docs/contracts/README.md).
 This runbook tells an agent how to operate the project safely; it does not
 replace those contracts.
 
+## Agent authorization and project language
+
+### English-only project material
+
+- Write all project-authored material in English: documentation, agent
+  instructions, working plans, code comments, docstrings, user-facing messages,
+  test descriptions, commit messages, and pull request titles or other manually
+  authored repository metadata. The language of the conversation does not
+  change this rule.
+- Keep working plans, research notes, task trackers, and review journals in the
+  Git-ignored `tmp/` directory. Do not add them to Git, `docs/`, site navigation,
+  or published documentation links unless the user explicitly requests
+  publication of that specific material. Extract durable guidance into the
+  appropriate maintained English guide instead.
+- Preserve user-owned content and multilingual test payloads as data. This
+  language rule does not authorize translating user notes or removing Unicode
+  coverage. Use the user's preferred language in conversation.
+
+### Explicit authorization for commits and pushes
+
+- Editing, reviewing, testing, fixing, or completing a task does not authorize
+  a commit or push. Leave changes uncommitted unless the user explicitly asks
+  for a commit. Do not create commits automatically to record progress.
+- Never push without an explicit user instruction authorizing that push or a
+  clearly defined batch of pushes. Authorization to commit does not authorize
+  a push. Authorization for a different change, branch, or task does not carry
+  over.
+- This restriction covers every remote, branch, tag, force push, and equivalent
+  remote Git-ref update through APIs, web interfaces, or helper scripts.
+- Do not push to trigger CI, update a pull request, publish documentation, or
+  obtain remote validation without the required instruction. Run appropriate
+  local checks and report the local result instead.
+- Do not rewrite history, revert published commits, merge, or publish a release
+  as a substitute for an unauthorized push. Such actions require their own
+  explicit user instruction.
+
 ## Requirements
 
 - CPython 3.13 or 3.14 on Windows or Linux for source, wheel, and zipapp use.
@@ -20,9 +56,9 @@ Native release executables include Python.
 ## Install
 
 ```bash
-python -m pip install "joplin-md-sync==1.7.1"
+python -m pip install "joplin-md-sync==1.8.0"
 # or:
-pipx install "joplin-md-sync==1.7.1"
+pipx install "joplin-md-sync==1.8.0"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```
@@ -80,10 +116,11 @@ GraphQL, scripts, or any other tool. When creating a PR, leave its body empty
 commits.
 
 CI owns description updates through `.github/workflows/pr-body.yml`, using
-`CHANGELOG.md` as the source. To change the generated description, update the
-appropriate changelog section (normally `## [Unreleased]`), commit and push,
-then let CI update the PR. Never copy changelog text into the body yourself or
-edit the managed markers.
+`CHANGELOG.md` as the source. To change the generated description, update and
+verify the appropriate changelog section (normally `## [Unreleased]`) locally.
+Commit and push only when explicitly authorized under the rules above; CI then
+updates the PR. Never copy changelog text into the body yourself or edit the
+managed markers.
 
 ## Safe Markdown workflow
 
@@ -117,7 +154,8 @@ are in the [CLI](docs/contracts/CLI.md),
 
 Use the Markdown workspace for broad, reviewable transformations. Use MCP for
 immediate structured Joplin operations. Use authenticated Actions for a private
-Custom GPT. Choose deliberately with
+Custom GPT and the built-in GitHub OAuth interface for hosted Claude. Choose
+deliberately with
 [Choose an agent interface](docs/user/AGENT_INTERFACES.md).
 
 The foreground server listens on `http://127.0.0.1:8765/mcp` by default and
@@ -141,6 +179,7 @@ Setup and operation:
 
 - [MCP API](docs/user/MCP_API.md)
 - [ChatGPT Actions](docs/user/CHATGPT_ACTIONS.md)
+- [Claude connector](docs/user/CLAUDE_CONNECTOR.md)
 - [Self-hosted deployment](docs/user/SELF_HOSTED.md)
 - [Joplin Headless Service](docs/user/JOPLIN_HEADLESS_SERVICE.md)
 
@@ -177,10 +216,10 @@ Review [Conflict handling](docs/user/CONFLICTS.md) before selecting a side.
 - Pull before editing; review `diff` and `push --dry-run` before pushing.
 - Never resolve a conflict by manipulating its bundle directly.
 - Never access Joplin's database, profile, or sync target directly.
-- Never put Joplin, MCP, Actions, sync, or encryption credentials in Git,
-  chat, logs, or process arguments. Configure local `mcp stdio` with
-  `--token-file` or `JOPLIN_TOKEN`; its `--token` form exists only for older
-  IDE configurations.
+- Never put Joplin, MCP, Actions, GitHub OAuth, sync, or encryption
+  credentials in Git, chat, logs, or process arguments. Configure local
+  `mcp stdio` with `--token-file` or `JOPLIN_TOKEN`; its `--token` form exists
+  only for older IDE configurations.
 - Never expose the Joplin Data API to a public network.
 - Do not interleave direct MCP/Actions writes with unpushed Markdown edits.
 

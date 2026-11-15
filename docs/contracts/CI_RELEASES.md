@@ -25,11 +25,15 @@ Linux AMD64 against the checksum-verified ephemeral Joplin Desktop build owned
 by the live-test runtime, and build and smoke each supported native
 distribution. Coverage MUST remain blocking at the reviewed floor. The live
 job MUST NOT use a repository credential or a pre-existing Joplin process or
-profile.
+profile. One `CI result` job MUST depend on every reusable CI job, report even
+when a dependency fails or is cancelled, and pass only when every job
+succeeded; only dependency review may be skipped, and only outside pull
+requests. The default-branch ruleset requires that single check.
 
 **Evidence:**
 
 - [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
+- [`test_ci_result_is_the_single_gate_over_every_ci_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_result_is_the_single_gate_over_every_ci_job`
 - [`test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_live_ci_uses_checksum_verified_ephemeral_joplin_binary`
 - [`test_supported_platform_names`](../../tests/unit/test_standalone.py) - `tests/unit/test_standalone.py::StandaloneNameTest::test_supported_platform_names`
 
@@ -38,12 +42,14 @@ profile.
 **Contract:** Default workflow permission MUST be read-only contents. Only the
 CodeQL job MAY receive `security-events: write`, Pages deployment MAY receive job-scoped
 Pages and OIDC writes, PR-body automation MAY receive pull-request write, and
-GitHub release publication MAY receive job-scoped contents write. PyPI
-publication MAY receive only job-scoped OIDC write and MUST NOT receive a
-stored credential.
+GitHub release publication MAY receive job-scoped contents write. CI's
+pull-request candidate job MAY receive job-scoped contents write and MUST NOT
+check out or run repository code. PyPI publication MAY receive only job-scoped
+OIDC write and MUST NOT receive a stored credential.
 
 **Evidence:**
 
+- [`test_ci_preserves_project_specific_quality_and_platform_gates`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_ci_preserves_project_specific_quality_and_platform_gates`
 - [`test_release_reuses_ci_and_writes_only_in_publish_job`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_release_reuses_ci_and_writes_only_in_publish_job`
 - [`test_pages_validates_prs_and_confines_publish_permissions`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pages_validates_prs_and_confines_publish_permissions`
 - [`test_pr_body_is_the_only_pull_request_target_write_boundary`](../../tests/unit/test_ci_policy.py) - `tests/unit/test_ci_policy.py::test_pr_body_is_the_only_pull_request_target_write_boundary`

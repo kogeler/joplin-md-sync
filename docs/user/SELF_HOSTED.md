@@ -14,6 +14,11 @@ Self-hosting is not one switch. It is control over four separate layers:
 `joplin-md-sync` supports a headless Linux topology and a local desktop
 topology. Neither requires publishing Joplin's own Data API.
 
+Hosted Claude, and currently no other OAuth client, can use
+[GitHub OAuth](CLAUDE_CONNECTOR.md) on `/oauth/mcp`.
+Enable it on the existing bridge and expose its discovery, consent and callback
+routes through the same HTTPS hostname. The bridge keeps one listener and port.
+
 ## Topology A: headless Linux host
 
 ```text
@@ -83,7 +88,8 @@ Treat each URI independently:
 | Joplin Data API (`41184` or `41185`) | Loopback only |
 | `/api/gpt/v1/*` | Public only through authenticated HTTPS when Actions are required |
 | `/mcp` | Loopback, VPN, or trusted private network by default; remote access requires its own bearer token and TLS |
-| `/healthz`, `/readyz` | Operator checks; return no note data or credentials |
+| `/oauth/mcp` and OAuth discovery, consent and callback routes | Public HTTPS only when the hosted Claude connector is enabled; see [route list](CLAUDE_CONNECTOR.md#add-public-routes-on-the-existing-https-hostname) |
+| `/healthz`, `/readyz` | Loopback or private operator checks only; block them on any public hostname or tunnel. They return no note data or credentials |
 
 Remote MCP binding is refused unless both `--allow-remote-mcp` and a protected
 MCP bearer-token file are configured. That check does not provide TLS; put a

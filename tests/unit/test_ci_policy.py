@@ -120,7 +120,11 @@ def test_ci_preserves_project_specific_quality_and_platform_gates() -> None:
         assert contract in ci
     assert "security-events: write" in ci
     assert "pull-requests: write" not in ci
-    assert "contents: write" not in ci
+    jobs = _jobs(ci)
+    # Only candidate publication writes, and it never checks out or runs code.
+    assert {name for name, job in jobs.items() if "contents: write" in job} == {"candidate"}
+    assert "actions/checkout" not in jobs["candidate"]
+    assert "make " not in jobs["candidate"]
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "COVERAGE_MIN ?= 87" in makefile
     assert "--cov-fail-under=$(COVERAGE_MIN)" in makefile
@@ -257,7 +261,9 @@ def test_release_reuses_ci_and_writes_only_in_publish_job() -> None:
     assert "uses: ./.github/workflows/ci.yml" in release
     assert "release-state:" in release
     assert "publish:" in release
-    assert release.count("contents: write") == 1
+    # The CI call only passes the ceiling its candidate job needs.
+    writers = {name for name, job in _jobs(release).items() if "contents: write" in job}
+    assert writers == {"ci", "publish"}
     assert "make build smoke-wheel smoke-sdist" in release
     assert "make zipapp" in release
     assert "actions/download-artifact@" in release
@@ -337,3 +343,20 @@ def test_pr_body_is_the_only_pull_request_target_write_boundary() -> None:
     )[0]
     assert "persist-credentials: false" in checkout
     assert "ref:" not in checkout
+
+
+def _jobs(workflow: str) -> dict[str, str]:
+    body = workflow.split("\njobs:\n", 1)[1]
+    parts = re.split(r"^  ([a-z][a-z0-9-]*):\n", body, flags=re.MULTILINE)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def test_ci_result_is_the_single_gate_over_every_ci_job() -> None:
+    jobs = _jobs(_workflow("ci.yml"))
+    result = jobs["result"]
+    assert "    name: CI result\n" in result
+    # A skipped required check counts as passing, so the gate must always run.
+    assert "    if: always()\n" in result
+    needs = re.findall(r"^      - ([a-z][a-z0-9-]*)$", result.split("    needs:\n", 1)[1], re.M)
+    # Candidate publication is a convenience, not a merge gate.
+    assert set(needs) == set(jobs) - {"result", "candidate"}

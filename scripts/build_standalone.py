@@ -5,10 +5,47 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def oauth_pyinstaller_options() -> list[str]:
+    """Metadata and dynamic backends required by the embedded OAuth runtime."""
+    return [
+        "--recursive-copy-metadata",
+        "fastmcp",
+        "--recursive-copy-metadata",
+        "aiofile",
+        "--collect-data",
+        "fastmcp",
+        "--collect-submodules",
+        "uvicorn",
+        "--collect-submodules",
+        "caio",
+    ]
+
+
+# CI pull request candidates stamp a prerelease of .version, e.g. 1.8.0-pr48.g7bd6520.
+CANDIDATE_VERSION_ENV = "JOPLIN_MD_SYNC_BUILD_VERSION"
+
+
+def version_resource(
+    environ: dict[str, str] | None = None, directory: Path = REPO / "build" / "candidate-version"
+) -> Path:
+    """Return the version file to bundle; a candidate keeps .version as its base."""
+    candidate = (os.environ if environ is None else environ).get(CANDIDATE_VERSION_ENV)
+    if not candidate:
+        return REPO / ".version"
+    release = (REPO / ".version").read_text(encoding="utf-8").strip()
+    if not re.fullmatch(re.escape(release) + r"-pr[1-9][0-9]*\.g[0-9a-f]{7,40}", candidate):
+        raise ValueError(f"{CANDIDATE_VERSION_ENV} must be {release}-prN.gSHA, got {candidate!r}")
+    stamped = directory / ".version"
+    directory.mkdir(parents=True, exist_ok=True)
+    stamped.write_text(candidate + "\n", encoding="utf-8")
+    return stamped
 
 
 def standalone_architecture(machine: str = platform.machine()) -> str:
@@ -62,7 +99,8 @@ def build() -> Path:
             "--paths",
             str(REPO / "src"),
             "--add-data",
-            f"{REPO / '.version'}{os.pathsep}joplin_md_sync",
+            f"{version_resource()}{os.pathsep}joplin_md_sync",
+            *oauth_pyinstaller_options(),
         ]
     )
 

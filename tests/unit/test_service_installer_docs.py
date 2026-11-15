@@ -1,11 +1,12 @@
 """Documentation contract for the headless service installer CLI reference."""
 
 import argparse
-import runpy
+import http.server
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any, cast
 
@@ -80,11 +81,27 @@ def test_custom_s3_example_defaults_to_interactive_credentials() -> None:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
-def test_purge_runbook_example_requires_interactive_confirmation() -> None:
+def test_clean_runbook_example_needs_no_confirmation_flag() -> None:
     args = _remote_arguments("Remove the local installation")
     assert args.purge
     assert not args.yes
     assert not args.non_interactive
+
+
+@pytest.fixture
+def installer_bundle_url():
+    def handler(*args, **kwargs):
+        return http.server.SimpleHTTPRequestHandler(*args, directory=str(SERVICE_SCRIPTS), **kwargs)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
@@ -92,7 +109,9 @@ def test_purge_runbook_example_requires_interactive_confirmation() -> None:
     "heading", ["Install with Nextcloud", "Install with S3", "Remove the local installation"]
 )
 def test_remote_runbook_pipeline_executes_real_installer_dry_run_offline(
-    tmp_path: Path, heading: str
+    tmp_path: Path,
+    heading: str,
+    installer_bundle_url: str,
 ) -> None:
     """Exercise Bash/stdin bootstrap without network, a user bus, secrets, or writes."""
     shell = shutil.which("bash")
@@ -124,6 +143,7 @@ def test_remote_runbook_pipeline_executes_real_installer_dry_run_offline(
             "PATH": str(bin_dir),
             "PYTHONPATH": str(SERVICE_SCRIPTS),
             "PYTHONDONTWRITEBYTECODE": "1",
+            "JOPLIN_TERMINAL_ASSET_BASE_URL": installer_bundle_url,
         },
         cwd=tmp_path,
         capture_output=True,
@@ -139,7 +159,9 @@ def test_remote_runbook_pipeline_executes_real_installer_dry_run_offline(
 def _installer_namespace() -> dict[str, Any]:
     sys.path.insert(0, str(SERVICE_SCRIPTS))
     try:
-        namespace = runpy.run_path(str(SERVICE_SCRIPTS / "install_joplin_terminal.py"))
+        from joplin_terminal_installer import cli
+
+        namespace = {"build_parser": cli.build_parser, "validate_args": cli.validate_args}
     finally:
         sys.path.pop(0)
     return namespace
@@ -182,6 +204,7 @@ def test_service_installer_reference_covers_every_environment_override() -> None
         "JOPLIN_MD_SYNC_VERSION",
         "JOPLIN_MCP_PORT",
         "JOPLIN_TERMINAL_ASSET_BASE_URL",
+        "JOPLIN_TERMINAL_INSTALLER_REF",
     )
     for variable in variables:
         assert f"`{variable}`" in contents

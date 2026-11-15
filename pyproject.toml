@@ -23,8 +23,17 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Utilities",
 ]
-# Development tools are local dependency groups, never runtime requirements.
-dependencies = []
+# HTTP and GitHub OAuth ship with every installation; tools stay in dependency groups.
+dependencies = [
+    "fastmcp>=4.1.6,<4.2",
+    "h11>=0.16,<0.17",
+    "httpx2>=2.16,<3",
+    "mcp>=2.3,<2.4",
+    "py-key-value-aio[filetree,wrappers-encryption]>=0.4.6,<0.5",
+    "pydantic>=2.12,<3",
+    "starlette>=1.10,<2",
+    "uvicorn>=0.54,<0.55",
+]
 
 [project.urls]
 Homepage = "https://joplin-mcp.romancello.net/"
@@ -70,6 +79,13 @@ cache-keys = [{ file = "pyproject.toml" }, { file = ".version" }]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+
+[tool.coverage.run]
+patch = ["subprocess"]
+sigterm = true
+
+[tool.pytest.ini_options]
+markers = ["oauth_e2e(scenario): required OAuth end-to-end acceptance scenario"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]

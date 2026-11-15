@@ -15,7 +15,11 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS_DIR))
 
-import install_joplin_terminal as installer  # noqa: E402
+from joplin_terminal_installer import (  # noqa: E402
+    commands,
+    encryption,
+    models,
+)
 
 
 def free_port() -> int:
@@ -40,12 +44,12 @@ class E2eePtyTests(unittest.TestCase):
         mode: str,
         password: str = "correct-password",
         timeout: float = 3.0,
-        heartbeat_interval: float = installer.LONG_OPERATION_HEARTBEAT,
-        max_output_bytes: int = installer.MAX_LONG_OUTPUT_BYTES,
-    ) -> installer.E2eeResult:
+        heartbeat_interval: float = commands.LONG_OPERATION_HEARTBEAT,
+        max_output_bytes: int = commands.MAX_LONG_OUTPUT_BYTES,
+    ) -> models.E2eeResult:
         env = dict(os.environ)
         env["FAKE_JOPLIN_MODE"] = mode
-        return installer.run_e2ee_decrypt_pty(
+        return encryption.run_e2ee_decrypt_pty(
             self.fake,
             self.profile,
             password,

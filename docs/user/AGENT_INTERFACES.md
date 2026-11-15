@@ -12,6 +12,7 @@ consistency models.
 | Need | Use |
 | --- | --- |
 | Work with current Joplin notes in a private Custom GPT | ChatGPT Actions |
+| Connect hosted Claude with one configured GitHub account | [Built-in OAuth MCP](CLAUDE_CONNECTOR.md) |
 | Search or change current Joplin data from an assistant | MCP |
 | Perform targeted note, notebook, tag, or attachment operations | MCP |
 | Run without a local desktop session | Headless Joplin service plus MCP or Actions |

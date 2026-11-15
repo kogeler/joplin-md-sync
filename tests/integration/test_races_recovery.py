@@ -134,26 +134,31 @@ class LockingIntegrationTest(WorkspaceTestCase):
         lock_path = self.root / ".joplin-sync" / "lock"
         script = textwrap.dedent(
             f"""
-            import sys, time
+            import sys
             sys.path.insert(0, {src!r})
             from joplin_md_sync.locking import WorkspaceLock
-            lock = WorkspaceLock(__import__("pathlib").Path({str(lock_path)!r}))
-            lock.acquire()
-            print("locked", flush=True)
-            time.sleep(20)
+            with WorkspaceLock(__import__("pathlib").Path({str(lock_path)!r})):
+                print("locked", flush=True)
+                sys.stdin.readline()
             """
         )
-        proc = subprocess.Popen([_sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            [_sys.executable, "-c", script],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
         try:
             assert proc.stdout is not None
             self.assertEqual(proc.stdout.readline().strip(), "locked")
             result = self.cli("status", "--root", str(self.root), "--json", expect=5)
             self.assertEqual(result.json["code"], "WORKSPACE_LOCKED")
         finally:
-            proc.kill()
-            proc.wait()
-            if proc.stdout is not None:
-                proc.stdout.close()
+            # Exit through the lock context. Killing a Windows venv launcher
+            # can orphan the interpreter and retain the lock after wait().
+            proc.communicate(input="\n", timeout=10)
+        self.assertEqual(proc.returncode, 0)
+        self.cli("status", "--root", str(self.root), "--json", expect=0)
 
 
 class RecoveryTest(WorkspaceTestCase):

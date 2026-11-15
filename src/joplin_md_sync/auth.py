@@ -205,12 +205,12 @@ if sys.platform == "win32":  # pragma: no cover - exercised by the Windows CI jo
         finally:
             _kernel32.CloseHandle(token)
 
-    def _windows_file_acl_problem(descriptor: int) -> str | None:
+    def _windows_handle_acl_problem(handle: int) -> str | None:
         owner = ctypes.c_void_p()
         dacl = ctypes.c_void_p()
         security_descriptor = ctypes.c_void_p()
         status = _advapi32.GetSecurityInfo(
-            msvcrt.get_osfhandle(descriptor),
+            handle,
             _SE_FILE_OBJECT,
             _OWNER_SECURITY_INFORMATION | _DACL_SECURITY_INFORMATION,
             ctypes.byref(owner),
@@ -242,25 +242,59 @@ if sys.platform == "win32":  # pragma: no cover - exercised by the Windows CI jo
         finally:
             _kernel32.LocalFree(security_descriptor)
 
+    def _windows_file_acl_problem(descriptor: int) -> str | None:
+        return _windows_handle_acl_problem(msvcrt.get_osfhandle(descriptor))
+
+    def _windows_directory_acl_problem(path: Path) -> str | None:
+        create = _kernel32.CreateFileW
+        create.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HANDLE,
+        ]
+        create.restype = wintypes.HANDLE
+        handle = create(str(path), 0x00020000, 7, None, 3, 0x02200000, None)
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return _windows_handle_acl_problem(handle)
+        finally:
+            _kernel32.CloseHandle(handle)
+
 else:
 
     def _windows_file_acl_problem(descriptor: int) -> str | None:  # pragma: no cover
         raise OSError("Windows access control lists are unavailable on this platform")
 
 
-def read_protected_token_line(path: Path, *, label: str) -> bytes:
-    """Read one bounded, non-empty token line from a protected regular file.
+def validate_private_directory(path: Path, *, label: str) -> None:
+    """Validate an existing private directory, rejecting links and junctions."""
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or path.is_symlink() or path.is_junction():
+        raise ProtectedFileError(f"{label} must be a real directory")
+    if os.name == "posix":
+        if info.st_mode & 0o077 or info.st_uid != os.geteuid():
+            raise ProtectedFileError(f"{label} must be owner-only (0700)")
+    elif sys.platform == "win32":
+        if _windows_directory_acl_problem(path) is not None:
+            raise ProtectedFileError(f"{label} must have an owner-only ACL")
 
-    The file is opened without following or racing a symlink. On POSIX it must
-    belong to the current user and grant nothing to group or others; on
-    Windows its ACL must pass ``windows_acl_problem``. Only the single trailing
-    line break is removed; the caller decodes and validates.
-    """
+
+def read_protected_file_bytes(
+    path: Path, *, label: str, max_bytes: int, _metadata_only: bool = False
+) -> bytes:
+    """Read a bounded private regular file through a verified descriptor."""
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be positive")
     descriptor = -1
     try:
         path_info = os.stat(path, follow_symlinks=False)
         if not stat.S_ISREG(path_info.st_mode):
-            raise ProtectedFileError(f"{label} token file must be a regular file: {path}")
+            raise ProtectedFileError(f"{label} file must be a regular file: {path}")
 
         flags = os.O_RDONLY
         for name in ("O_CLOEXEC", "O_NOFOLLOW", "O_NONBLOCK"):
@@ -268,50 +302,63 @@ def read_protected_token_line(path: Path, *, label: str) -> bytes:
         descriptor = os.open(path, flags)
         info = os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode):
-            raise ProtectedFileError(f"{label} token file must be a regular file: {path}")
+            raise ProtectedFileError(f"{label} file must be a regular file: {path}")
         if (path_info.st_dev, path_info.st_ino) != (info.st_dev, info.st_ino):
-            raise ProtectedFileError(f"{label} token file changed while it was being opened")
+            raise ProtectedFileError(f"{label} file changed while it was being opened")
         if os.name == "posix":
             if info.st_mode & 0o077:
                 raise ProtectedFileError(
-                    f"{label} token file must not be accessible by group or others: {path}"
+                    f"{label} file must not be accessible by group or others: {path}"
                 )
             if hasattr(os, "geteuid") and info.st_uid != os.geteuid():
-                raise ProtectedFileError(
-                    f"{label} token file must be owned by the current user: {path}"
-                )
+                raise ProtectedFileError(f"{label} file must be owned by the current user: {path}")
         elif sys.platform == "win32":  # pragma: no cover - exercised by the Windows CI jobs
             problem = _windows_file_acl_problem(descriptor)
             if problem == "owner":
-                raise ProtectedFileError(
-                    f"{label} token file must be owned by the current user: {path}"
-                )
+                raise ProtectedFileError(f"{label} file must be owned by the current user: {path}")
             if problem is not None:
                 raise ProtectedFileError(
-                    f"{label} token file must not be accessible by other accounts: {path}"
+                    f"{label} file must not be accessible by other accounts: {path}"
                 )
-        if info.st_size > MAX_TOKEN_FILE_BYTES:
-            raise ProtectedFileError(f"{label} token file is too large: {path}")
+        if info.st_size > max_bytes:
+            raise ProtectedFileError(f"{label} file is too large: {path}")
+        if _metadata_only:
+            return b""
 
         chunks: list[bytes] = []
         total = 0
-        while total <= MAX_TOKEN_FILE_BYTES:
-            chunk = os.read(descriptor, min(4096, MAX_TOKEN_FILE_BYTES + 1 - total))
+        while total <= max_bytes:
+            chunk = os.read(descriptor, min(4096, max_bytes + 1 - total))
             if not chunk:
                 break
             chunks.append(chunk)
             total += len(chunk)
-        if total > MAX_TOKEN_FILE_BYTES:
-            raise ProtectedFileError(f"{label} token file is too large: {path}")
+        if total > max_bytes:
+            raise ProtectedFileError(f"{label} file is too large: {path}")
         raw = b"".join(chunks)
     except ProtectedFileError:
         raise
     except OSError as exc:
-        raise ProtectedFileError(f"{label} token file cannot be read: {path}: {exc}") from None
+        raise ProtectedFileError(f"{label} file cannot be read: {path}: {exc}") from None
     finally:
         if descriptor >= 0:
             os.close(descriptor)
 
+    return raw
+
+
+def validate_protected_file(path: Path, *, label: str, max_bytes: int) -> None:
+    """Validate the verified descriptor without reading locked file contents.
+
+    Windows byte-range locks prevent reading even through another descriptor
+    in the owning process. Ownership, ACL and size checks remain available.
+    """
+    read_protected_file_bytes(path, label=label, max_bytes=max_bytes, _metadata_only=True)
+
+
+def read_protected_token_line(path: Path, *, label: str) -> bytes:
+    """Read one bounded, non-empty token line without following a symlink."""
+    raw = read_protected_file_bytes(path, label=f"{label} token", max_bytes=MAX_TOKEN_FILE_BYTES)
     if raw.endswith(b"\r\n"):
         raw = raw[:-2]
     elif raw.endswith(b"\n"):

@@ -137,9 +137,11 @@ jobs:
     needs: release-state
     if: needs.release-state.outputs.release_required == 'true'
     uses: ./.github/workflows/ci.yml
+    # The ceiling must cover CI's pull-request candidate job, which is skipped
+    # here; every other CI job keeps the workflow's read-only contents token.
     permissions:
       actions: read
-      contents: read
+      contents: write
       security-events: write
 
   build-python-distributions:
@@ -358,6 +360,16 @@ jobs:
               prerelease: false,
             });
             core.notice(`Published ${published.data.html_url}`);
+
+      - name: Remove this version's pull request candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="$(tr -d '\r\n' < .version)"
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' \
+            | { grep -E "^v${version//./\\.}-pr[0-9]+\.g[0-9a-f]{7}$" || true; } \
+            | while read -r tag; do gh release delete "$tag" --cleanup-tag --yes; done
 
   publish-pypi:
     name: Publish Python distributions to PyPI

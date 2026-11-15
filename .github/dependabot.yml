@@ -6,6 +6,10 @@ updates:
   # uv owns both the manifest and the universal lock, including transitive updates.
   - package-ecosystem: uv
     directory: /
+    # Runtime requirements carry upper bounds because PyPI installs resolve
+    # them without the lock. Raise a bound in the same PR only when a release
+    # falls outside it; in-range releases update the lock alone.
+    versioning-strategy: increase-if-necessary
     # One owner and one version-update PR for the complete Python graph.
     # Grouping alone does not opt transitive lock entries into updates.
     allow:
