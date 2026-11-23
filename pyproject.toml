@@ -25,7 +25,7 @@ classifiers = [
 ]
 # HTTP and GitHub OAuth ship with every installation; tools stay in dependency groups.
 dependencies = [
-    "fastmcp>=4.1.6,<4.2",
+    "fastmcp>=4.1.6,<4.3",
     "h11>=0.16,<0.17",
     "httpx2>=2.16,<3",
     "mcp>=2.3,<2.4",
