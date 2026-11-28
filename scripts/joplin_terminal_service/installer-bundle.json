@@ -37,8 +37,8 @@
       "size": 7892
     },
     "joplin_terminal_installer/lifecycle.py": {
-      "sha256": "8e0dbb7339fceadc4a969ab27c439ec16675c793a0206ce5d9cc5eb3878fd7b1",
-      "size": 26138
+      "sha256": "2da09a6cde99209e0f96d0e9e0c7560f5b9057b7f1ea94de293248bc2224150e",
+      "size": 26081
     },
     "joplin_terminal_installer/managed.py": {
       "sha256": "88a641ab03a3541fdc069ea82d913f2b69b2340c1bb490c877c66941ade12cf6",

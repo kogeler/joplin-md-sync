@@ -17,7 +17,6 @@ from .cli import (
 from .commands import CommandRunner, check_dependencies
 from .common import (
     ADAPTER_SERVICE_NAME,
-    RETIRED_SECRET_ENV_NAMES,
     SERVICE_NAME,
     ProfileLock,
     SecretRedactor,
@@ -503,9 +502,8 @@ class Installer:
             return
         if self.env.get("JOPLIN_MCP_AUTH_TOKEN"):
             LOG.warning("JOPLIN_MCP_AUTH_TOKEN is ignored; the installer manages the MCP token")
-        for name in RETIRED_SECRET_ENV_NAMES:
-            if self.env.get(name):
-                LOG.warning("%s is ignored; joplin-md-sync 2.0.0 removed what it configured", name)
+        if self.env.get("JOPLIN_GPT_ACTIONS_TOKEN"):
+            LOG.warning("JOPLIN_GPT_ACTIONS_TOKEN is ignored; joplin-md-sync 2.0.0 removed Actions")
         mcp_auth_token = resolve_mcp_auth_token(self.paths, self.redactor)
         if self.args.upgrade:
             if "enable_linger" in self.args.explicit_options:

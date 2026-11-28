@@ -7,13 +7,12 @@ import shlex
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
-SYSTEMD = REPO / "scripts" / "joplin_terminal_service" / "systemd"
-sys.path.insert(0, str(REPO / "src"))
-sys.path.insert(0, str(REPO / "scripts" / "joplin_terminal_service"))
+import pytest
 
-from joplin_terminal_installer import cli as installer_cli  # noqa: E402
-from joplin_terminal_installer import service  # noqa: E402
+REPO = Path(__file__).resolve().parents[2]
+SERVICE_SCRIPTS = REPO / "scripts" / "joplin_terminal_service"
+SYSTEMD = SERVICE_SCRIPTS / "systemd"
+sys.path.insert(0, str(REPO / "src"))
 
 from joplin_md_sync.cli import build_parser  # noqa: E402
 from tests.oauth.helpers import OAuthArguments  # noqa: E402
@@ -34,7 +33,14 @@ def _exec_start(unit: str) -> list[str]:
     return [value.replace("%%", "%") for value in shlex.split(line.removeprefix("ExecStart="))]
 
 
-def test_installer_unit_command_is_accepted_by_the_current_cli(tmp_path: Path) -> None:
+@pytest.mark.skipif(sys.platform == "win32", reason="headless installer supports Linux only")
+def test_installer_unit_command_is_accepted_by_the_current_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(SERVICE_SCRIPTS))
+    from joplin_terminal_installer import cli as installer_cli
+    from joplin_terminal_installer import service
+
     env = {"HOME": str(tmp_path)}
     oauth = OAuthArguments(tmp_path)
     plain = installer_cli.build_parser(env).parse_args([])
