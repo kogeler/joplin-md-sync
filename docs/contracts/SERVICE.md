@@ -46,11 +46,11 @@ for snap and filesystem sync targets.
 
 ### `SVC-003` - Service credentials are protected, distinct, and never leaked
 
-**Contract:** Joplin, E2EE, MCP, Actions, and sync credentials MUST be read from
+**Contract:** Joplin, E2EE, MCP, and sync credentials MUST be read from
 protected regular files or bounded interactive prompts and MUST be removed from
-child environments, commands, logs, units, and reports. Generated MCP and
-Actions bearer tokens MUST be preserved across reruns and MUST be distinct
-from each other and from the Joplin token.
+child environments, commands, logs, units, and reports. The generated MCP
+bearer token MUST be preserved across reruns and MUST differ from the Joplin
+token.
 Secret prompts MUST refuse getpass's echo fallback. A non-regular credential
 path, including a FIFO with no writer, MUST fail without blocking.
 
@@ -60,8 +60,8 @@ path, including a FIFO with no writer, MUST fail without blocking.
 - [`test_hidden_input_refuses_getpass_echo_fallback`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_hidden_input_refuses_getpass_echo_fallback`
 - [`test_secret_fifo_is_rejected_without_blocking`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_secret_fifo_is_rejected_without_blocking`
 - [`test_child_environment_removes_every_service_secret`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_child_environment_removes_every_service_secret`
-- [`test_service_tokens_are_generated_and_preserved`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_service_tokens_are_generated_and_preserved`
-- [`test_duplicate_existing_service_tokens_are_rejected`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_duplicate_existing_service_tokens_are_rejected`
+- [`test_mcp_token_is_generated_and_preserved`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_mcp_token_is_generated_and_preserved`
+- [`test_mcp_token_must_differ_from_the_joplin_token`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_mcp_token_must_differ_from_the_joplin_token`
 - [`test_settings_use_stdin_not_process_arguments_and_preserve_json_types`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_settings_use_stdin_not_process_arguments_and_preserve_json_types`
 - [`test_s3_access_key_file_is_protected_and_never_a_child_argument`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::SecretTests::test_s3_access_key_file_is_protected_and_never_a_child_argument`
 
@@ -131,7 +131,15 @@ them; `--upgrade` MUST remain an explicit compatibility option. Upgrade MUST
 update Joplin Terminal and `joplin-md-sync`
 independently without re-requesting stored sync secrets, preserve protected
 service tokens, restart both units in dependency order, and require bounded
-Joplin, MCP, and Actions smoke checks. Failed health checks MUST stop the
+Joplin and MCP smoke checks, including the rejection of an unauthenticated MCP
+request. A setup or upgrade MUST remove a regular file or symlink that an
+earlier installer version managed and the service no longer reads only after
+it has started the services and passed those checks; it MUST keep the file
+when it fails or leaves the services stopped, and MUST NOT remove any other
+kind of file at that path. An upgrade of an adapter unit that still enables
+the 1.x ChatGPT Actions options MUST refuse, before any change, a target
+release older than 2.0.0, and MUST write the new adapter unit before it
+replaces the executable. Failed health checks MUST stop the
 restart loop of both units and retain recoverable prior executable/service
 files without copying or automatically downgrading a Joplin profile. A failed
 Joplin package installation MUST restore the previous isolated npm tree, keep
@@ -154,7 +162,14 @@ through supported interfaces without deleting existing notes.
 - [`test_upgrade_updates_both_without_resolving_sync_secrets`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::DryRunTests::test_upgrade_updates_both_without_resolving_sync_secrets`
 - [`test_partial_service_pair_is_rejected_before_prompts_or_changes`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_partial_service_pair_is_rejected_before_prompts_or_changes`
 - [`test_inconsistent_service_credential_path_is_rejected_before_service_changes`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_inconsistent_service_credential_path_is_rejected_before_service_changes`
-- [`test_upgrade_restarts_both_services_and_smokes_both_api_routes`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_restarts_both_services_and_smokes_both_api_routes`
+- [`test_upgrade_restarts_both_services_and_smokes_the_mcp_route`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_restarts_both_services_and_smokes_the_mcp_route`
+- [`test_authentication_smoke_requires_rejection_without_a_token`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::McpHealthcheckTests::test_authentication_smoke_requires_rejection_without_a_token`
+- [`test_upgrade_migrates_a_1x_unit_and_keeps_its_token_until_a_verified_start`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_migrates_a_1x_unit_and_keeps_its_token_until_a_verified_start`
+- [`test_upgrade_refuses_to_drop_actions_from_a_1x_adapter`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_refuses_to_drop_actions_from_a_1x_adapter`
+- [`test_failure_after_the_executable_swap_leaves_no_actions_options`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_failure_after_the_executable_swap_leaves_no_actions_options`
+- [`test_fresh_setup_removes_a_retired_file_after_a_verified_start`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_fresh_setup_removes_a_retired_file_after_a_verified_start`
+- [`test_dry_run_reports_the_actions_migration`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_dry_run_reports_the_actions_migration`
+- [`test_retired_config_cleanup_removes_only_files`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_retired_config_cleanup_removes_only_files`
 - [`test_failed_upgrade_healthcheck_stops_restart_loop`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_failed_upgrade_healthcheck_stops_restart_loop`
 - [`test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_preserves_custom_units_deploys_helpers_and_keeps_old_files`
 - [`test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_explicit_options_override_units_and_invalid_units_fail_closed`
@@ -166,8 +181,8 @@ through supported interfaces without deleting existing notes.
 **Contract:** `--clean` and its `--purge` alias MUST run without questions or
 a confirmation flag, bypass setup/credential collection, obtain the profile
 lock before deletion,
-remove only managed files and units, preserve unrelated user data, and be safe
-to repeat. Dry-run MUST delete nothing and MUST not require a working systemd
+remove only managed files and units, including files that earlier installer
+versions managed, preserve unrelated user data, and be safe to repeat. Dry-run MUST delete nothing and MUST not require a working systemd
 bus. The `joplin-md-sync` executable MUST be removed only when it matches the
 path and SHA-256 in the private receipt written when the installer placed it;
 symlinks, changed files and executables without a receipt MUST be preserved
@@ -179,6 +194,7 @@ with a message.
 - [`test_profile_lock_blocks_purge_before_data_removal`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_profile_lock_blocks_purge_before_data_removal`
 - [`test_noninteractive_clean_needs_no_yes_and_never_prompts`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_noninteractive_clean_needs_no_yes_and_never_prompts`
 - [`test_purge_dry_run_does_not_require_systemctl_or_delete_data`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_purge_dry_run_does_not_require_systemctl_or_delete_data`
+- [`test_purge_dry_run_lists_a_retired_file_only_when_it_exists`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_purge_dry_run_lists_a_retired_file_only_when_it_exists`
 - [`test_purge_removes_the_adapter_only_when_it_matches_the_installer_receipt`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::PurgeTests::test_purge_removes_the_adapter_only_when_it_matches_the_installer_receipt`
 - [`test_upgrade_records_the_replaced_adapter_for_purge`](../../scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py) - `scripts/joplin_terminal_service/tests/test_install_joplin_terminal.py::ServiceLifecycleTests::test_upgrade_records_the_replaced_adapter_for_purge`
 - [`test_clean_removes_only_the_adapter_executable_recorded_by_the_installer`](../../scripts/joplin_terminal_service/tests/test_wizard_process.py) - `scripts/joplin_terminal_service/tests/test_wizard_process.py::WizardProcessTests::test_clean_removes_only_the_adapter_executable_recorded_by_the_installer`

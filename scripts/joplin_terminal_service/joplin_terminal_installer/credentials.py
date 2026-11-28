@@ -41,13 +41,13 @@ def hidden_input(prompt: str) -> str:
 MAX_SERVICE_BEARER_TOKEN_CHARS = 1024
 
 
-def validate_service_bearer_token(token: str, *, label: str) -> None:
+def validate_mcp_auth_token(token: str) -> None:
     if not token or len(token) > MAX_SERVICE_BEARER_TOKEN_CHARS:
         raise ToolError(
-            f"{label} bearer token must contain at most {MAX_SERVICE_BEARER_TOKEN_CHARS} characters"
+            f"MCP bearer token must contain at most {MAX_SERVICE_BEARER_TOKEN_CHARS} characters"
         )
     if re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", token) is None:
-        raise ToolError(f"{label} bearer token must use URL-safe Base64 encoding")
+        raise ToolError("MCP bearer token must use URL-safe Base64 encoding")
     try:
         encoded = token.encode("ascii")
         decoded = base64.b64decode(
@@ -56,9 +56,9 @@ def validate_service_bearer_token(token: str, *, label: str) -> None:
             validate=True,
         )
     except (UnicodeEncodeError, ValueError, binascii.Error):
-        raise ToolError(f"{label} bearer token must use URL-safe Base64 encoding") from None
+        raise ToolError("MCP bearer token must use URL-safe Base64 encoding") from None
     if len(decoded) < 32:
-        raise ToolError(f"{label} bearer token must encode at least 32 bytes")
+        raise ToolError("MCP bearer token must encode at least 32 bytes")
 
 
 def constant_time_token_equal(left: str, right: str) -> bool:
@@ -67,10 +67,6 @@ def constant_time_token_equal(left: str, right: str) -> bool:
         return hmac.compare_digest(left.encode("ascii"), right.encode("ascii"))
     except UnicodeEncodeError:
         return False
-
-
-def validate_mcp_auth_token(token: str) -> None:
-    validate_service_bearer_token(token, label="MCP")
 
 
 def load_mcp_auth_token(paths: InstallPaths, redactor: SecretRedactor) -> str | None:
@@ -120,95 +116,20 @@ def configure_mcp_auth_token(paths: InstallPaths, token: str) -> None:
     LOG.info("stored protected MCP bearer token")
 
 
-def validate_gpt_actions_token(token: str) -> None:
-    validate_service_bearer_token(token, label="GPT Actions")
-
-
-def load_gpt_actions_token(paths: InstallPaths, redactor: SecretRedactor) -> str | None:
-    if not paths.gpt_actions_token_file.exists():
-        return None
-    if paths.gpt_actions_token_file.is_symlink() or not paths.gpt_actions_token_file.is_file():
-        raise ToolError(f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}")
-    if paths.gpt_actions_token_file.stat().st_size > MAX_SERVICE_BEARER_TOKEN_CHARS + 2:
-        raise ToolError("existing GPT Actions token file is too large")
-    try:
-        token = paths.gpt_actions_token_file.read_text(encoding="utf-8").strip()
-    except (OSError, UnicodeError):
-        raise ToolError("existing GPT Actions token file cannot be read") from None
-    validate_gpt_actions_token(token)
-    paths.gpt_actions_token_file.chmod(0o600)
-    redactor.add(token)
-    return token
-
-
-def resolve_gpt_actions_token(
-    paths: InstallPaths,
-    redactor: SecretRedactor,
-) -> str:
-    if paths.gpt_actions_token_file.exists() and not paths.gpt_actions_token_file.is_file():
-        raise ToolError(f"GPT Actions token path is not a file: {paths.gpt_actions_token_file}")
-    if paths.gpt_actions_token_file.is_file():
-        token = load_gpt_actions_token(paths, redactor)
-        if token is None:  # guarded by is_file(); keeps the type explicit
-            raise ToolError("existing GPT Actions token file cannot be read")
-        LOG.info("preserving existing GPT Actions bearer token")
-        return token
-    token = secrets.token_urlsafe(32)
-    validate_gpt_actions_token(token)
-    redactor.add(token)
-    LOG.info("generated a new GPT Actions bearer token")
-    return token
-
-
-def configure_gpt_actions_token(paths: InstallPaths, token: str) -> None:
-    validate_gpt_actions_token(token)
-    content = f"{token}\n".encode()
-    if (
-        paths.gpt_actions_token_file.is_file()
-        and paths.gpt_actions_token_file.read_bytes() == content
-    ):
-        paths.gpt_actions_token_file.chmod(0o600)
-        LOG.info("protected GPT Actions bearer token is unchanged")
-        return
-    atomic_write(paths.gpt_actions_token_file, content, 0o600)
-    LOG.info("stored protected GPT Actions bearer token")
-
-
-def resolve_service_tokens(
-    paths: InstallPaths,
-    redactor: SecretRedactor,
-) -> tuple[str, str]:
-    mcp_auth_token = resolve_mcp_auth_token(paths, redactor)
-    gpt_actions_token = resolve_gpt_actions_token(paths, redactor)
-    if constant_time_token_equal(mcp_auth_token, gpt_actions_token):
-        raise ToolError("GPT Actions and MCP bearer tokens must be different")
-    return mcp_auth_token, gpt_actions_token
-
-
-def validate_distinct_service_tokens(
-    paths: InstallPaths,
-    gpt_actions_token: str,
-    mcp_auth_token: str,
-) -> None:
-    if constant_time_token_equal(gpt_actions_token, mcp_auth_token):
-        raise ToolError("GPT Actions and MCP bearer tokens must be different")
+def validate_distinct_service_tokens(paths: InstallPaths, mcp_auth_token: str) -> None:
     try:
         joplin_token = paths.token_file.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeError):
         raise ToolError("Joplin API token file cannot be read") from None
     try:
-        if constant_time_token_equal(gpt_actions_token, joplin_token):
-            raise ToolError("GPT Actions and Joplin API tokens must be different")
         if constant_time_token_equal(mcp_auth_token, joplin_token):
             raise ToolError("MCP and Joplin API tokens must be different")
     finally:
         del joplin_token
 
 
-def report_service_token_paths(paths: InstallPaths) -> None:
-    LOG.info("service bearer token files (token values are not printed):")
-    LOG.info("GPT Actions: %s", paths.gpt_actions_token_file)
-    LOG.info("MCP: %s", paths.mcp_auth_token_file)
+def report_mcp_token_path(paths: InstallPaths) -> None:
+    LOG.info("MCP bearer token file (the value is not printed): %s", paths.mcp_auth_token_file)
 
 
 def load_secret_file(value: str | os.PathLike[str], label: str) -> str:

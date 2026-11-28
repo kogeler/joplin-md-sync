@@ -1,6 +1,6 @@
 ---
 title: "Overview: AI agent access to self-hosted Joplin"
-description: "What joplin-md-sync does: Claude, ChatGPT and MCP access to self-hosted Joplin notes, a headless Linux service and a reviewable Markdown workflow."
+description: "What joplin-md-sync does: Claude and MCP access to self-hosted Joplin notes, a headless Linux service and a reviewable Markdown workflow."
 ---
 
 # Overview
@@ -11,24 +11,20 @@ This page explains the product and its intended use.
 `joplin-md-sync` is an independent, open-source bridge between Joplin and the
 tools that coding agents and AI assistants already understand.
 
-It provides three complementary ways to work with the same notes:
+It provides two complementary ways to work with the same notes:
 
 1. **Typed MCP tools.** Give any compatible assistant structured access to
    notes, notebooks, tags, search, and resources over local stdio or Streamable
    HTTP. Hosted Claude connects through GitHub OAuth that is built into the
    server, so no separate OAuth proxy or gateway is needed.
-2. **ChatGPT Actions.** Connect a private Custom GPT to authenticated operations
-   for current notes, notebooks, tags, and search through generated OpenAPI.
-   OpenAI retires Custom GPTs on 2026-12-11; a ChatGPT MCP connector through
-   the same OAuth is planned as the replacement.
-3. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
+2. **A reviewable Markdown workspace.** Pull Joplin notes to ordinary files,
    edit them with an agent or local tools, inspect a three-way diff, dry-run the
    exact push plan, and only then update Joplin.
 
-Both MCP transports and Actions share one operation registry. Streamable HTTP
-MCP and Actions also share one listener while keeping their credentials
-separate. The file workflow uses a distinct consistency model that prioritizes
-review and Git history.
+Every MCP transport shares one operation registry. Streamable HTTP MCP and
+Claude OAuth also share one listener while keeping their credentials separate.
+The file workflow uses a distinct consistency model that prioritizes review and
+Git history.
 
 ## Why this exists
 
@@ -46,8 +42,8 @@ that fails clearly.
 - guarded writes that re-read state before applying and verify afterward;
 - operation journals and explicit recovery after interruption;
 - trash or quarantine instead of default permanent deletion;
-- typed MCP and Actions schemas backed by one shared tool registry; and
-- separate credentials for Joplin, MCP, and ChatGPT Actions.
+- typed MCP schemas backed by one shared tool registry; and
+- separate credentials for Joplin, MCP, and OAuth.
 
 ## What stays under your control
 
@@ -58,7 +54,7 @@ yours:
 | --- | --- |
 | Note application | Joplin Desktop or a dedicated Joplin Terminal profile |
 | Joplin synchronization | Filesystem, Nextcloud, WebDAV, S3, Joplin Server, Joplin Cloud, or another supported Joplin target |
-| Agent access | Claude with built-in GitHub OAuth, ChatGPT Actions, local stdio MCP, Streamable HTTP MCP, or Markdown files |
+| Agent access | Claude with built-in GitHub OAuth, local stdio MCP, Streamable HTTP MCP, or Markdown files |
 | Change review | CLI diff/dry-run, Git review, client-side MCP approval, or a combination |
 | Network boundary | Loopback only, private network, VPN, or a controlled HTTPS publishing layer |
 
@@ -69,16 +65,15 @@ database, profile directory, or sync target directly.
 
 ### A private Joplin assistant
 
-Hosted Claude or a private Custom GPT can search the current Joplin index, read
-selected notes, create and update exact objects, and organize notebooks and
-tags. Claude signs in through the built-in GitHub OAuth; the GPT uses generated
-Actions. The same service gives MCP clients typed tools, including attachment
-operations.
+Hosted Claude can search the current Joplin index, read selected notes, create
+and update exact objects, and organize notebooks and tags. It signs in through
+the built-in GitHub OAuth. The same service gives other MCP clients the same
+typed tools, including attachment operations.
 
 ### A headless knowledge service
 
 On Linux, one installer runs a dedicated Joplin Terminal profile, recurrent
-sync, and the combined MCP, OAuth, and Actions adapter as coordinated systemd
+sync, and the combined MCP and OAuth adapter as coordinated systemd
 user services. It asks for the values it needs, including the GitHub OAuth
 settings for Claude, hides secrets, generates keys and tokens, and verifies the
 result. Joplin syncs to the target you select; its Data API remains private on
@@ -115,7 +110,6 @@ proposed creations.
 
 Start by comparing the integration modes in
 [Choose an agent interface](AGENT_INTERFACES.md). Continue with the
-[Claude connector](CLAUDE_CONNECTOR.md), [ChatGPT Actions](CHATGPT_ACTIONS.md),
-the [MCP API](MCP_API.md), the
+[Claude connector](CLAUDE_CONNECTOR.md), the [MCP API](MCP_API.md), the
 [headless service](JOPLIN_HEADLESS_SERVICE.md#quick-runbook), or the
 [Markdown quick start](GETTING_STARTED.md) for the interface you need.

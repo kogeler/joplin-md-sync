@@ -15,7 +15,6 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 
 from .assets import read_project_asset
 from .cli import github_oauth_arguments
@@ -166,9 +165,6 @@ def render_adapter_unit(
         str(api_port),
         "--token-file",
         paths.token_file,
-        "--gpt-actions",
-        "--gpt-actions-token-file",
-        paths.gpt_actions_token_file,
         "--auth-token-file",
         paths.mcp_auth_token_file,
     ]
@@ -341,6 +337,14 @@ def _mcp_result(payload: object, method: str) -> Mapping[str, object]:
     return result
 
 
+def smoke_test_mcp_authentication(port: int, timeout: float = 5.0) -> None:
+    """Require the authenticated listener to reject a request without a bearer token."""
+    result = ping_mcp(port, None, timeout)
+    if result.reason != "authentication rejected":
+        raise ToolError(f"MCP accepted a request without authentication ({result.reason})")
+    LOG.info("MCP authentication check passed: an unauthenticated request was rejected")
+
+
 def smoke_test_mcp_service(port: int, token: str | None, timeout: float = 5.0) -> None:
     status, initialized = mcp_post(
         port,
@@ -401,47 +405,6 @@ def smoke_test_mcp_service(port: int, token: str | None, timeout: float = 5.0) -
     LOG.info("MCP smoke test passed: joplin_list_notebooks returned a valid listing")
 
 
-def gpt_actions_probe_status(
-    port: int,
-    token: str | None,
-    *,
-    timeout: float = 5.0,
-) -> int:
-    headers = {"Content-Type": "application/json"}
-    if token is not None:
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/api/gpt/v1/tools/__installer_probe__",
-        data=b"{}",
-        headers=headers,
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            response.read(64 * 1024 + 1)
-            return cast(int, response.status)
-    except urllib.error.HTTPError as exc:
-        status = exc.code
-        exc.read(64 * 1024 + 1)
-        exc.close()
-        return status
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ToolError(f"GPT Actions smoke probe failed: {type(exc).__name__}") from None
-
-
-def smoke_test_gpt_actions_service(
-    port: int,
-    token: str,
-    *,
-    timeout: float = 5.0,
-) -> None:
-    if gpt_actions_probe_status(port, None, timeout=timeout) != 401:
-        raise ToolError("GPT Actions route accepted a request without authentication")
-    if gpt_actions_probe_status(port, token, timeout=timeout) != 404:
-        raise ToolError("GPT Actions bearer or route-isolation smoke check failed")
-    LOG.info("GPT Actions smoke test passed: authentication and route isolation verified")
-
-
 def stop_after_startup_failure(
     runner: CommandRunner,
     systemctl: Path,
@@ -458,6 +421,38 @@ def stop_after_startup_failure(
         return
     if result.returncode != 0:
         LOG.warning("systemctl could not stop %s after startup failure", service_name)
+
+
+# joplin-md-sync 1.x served ChatGPT Actions when its unit passed this option;
+# 2.0.0 removed the interface and rejects every --gpt-actions* option.
+RETIRED_ACTIONS_OPTION = "--gpt-actions"
+FIRST_VERSION_WITHOUT_ACTIONS = (2, 0, 0)
+
+
+def adapter_unit_enables_actions(paths: InstallPaths) -> bool:
+    """Whether the installed adapter unit still starts the 1.x ChatGPT Actions interface."""
+    try:
+        lines = paths.adapter_unit_path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeError):
+        raise ToolError(f"cannot read installed unit {paths.adapter_unit_path}") from None
+    for line in lines:
+        if line.startswith("ExecStart="):
+            try:
+                return RETIRED_ACTIONS_OPTION in shlex.split(line.removeprefix("ExecStart="))
+            except ValueError:
+                raise ToolError(f"invalid installed unit {paths.adapter_unit_path}") from None
+    return False
+
+
+def release_removes_actions(version: str) -> bool:
+    """Whether a joplin-md-sync release no longer has the ChatGPT Actions interface."""
+    try:
+        release = tuple(int(part) for part in version.split("-", 1)[0].split("."))
+    except ValueError:
+        raise ToolError(f"invalid joplin-md-sync version: {version}") from None
+    return release >= FIRST_VERSION_WITHOUT_ACTIONS
 
 
 def installed_service_options(paths: InstallPaths) -> dict[str, object]:
@@ -514,7 +509,6 @@ def installed_service_options(paths: InstallPaths) -> dict[str, object]:
         (adapter[0], prefix / "bin" / "joplin-md-sync"),
         (value(adapter, "--token-file"), paths.token_file),
         (value(adapter, "--auth-token-file"), paths.mcp_auth_token_file),
-        (value(adapter, "--gpt-actions-token-file"), paths.gpt_actions_token_file),
         (
             value(backend, "--lock-file"),
             lock_path_for_profile(resolved_path(str(options["profile_dir"])), paths.state_dir),

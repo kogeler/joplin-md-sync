@@ -1,11 +1,10 @@
-# Joplin MCP for Claude and ChatGPT
+# Joplin MCP for Claude
 
-> Open-source bridge that connects Claude, ChatGPT and any MCP client to
-> self-hosted Joplin notes. OAuth for hosted Claude is built into the server
-> (GitHub login, no separate OAuth proxy); ChatGPT uses authenticated Custom
-> GPT Actions; other clients use local stdio or Streamable HTTP MCP. One
-> installer sets up the complete headless Linux stack, and two-way Markdown
-> sync makes broad changes reviewable.
+> Open-source bridge that connects Claude and any MCP client to self-hosted
+> Joplin notes. OAuth for hosted Claude is built into the server (GitHub login,
+> no separate OAuth proxy); other clients use local stdio or Streamable HTTP
+> MCP. One installer sets up the complete headless Linux stack, and two-way
+> Markdown sync makes broad changes reviewable.
 
 Canonical documentation: https://joplin-mcp.romancello.net/
 Source: https://github.com/kogeler/joplin-md-sync
@@ -21,5 +20,5 @@ Package: https://pypi.org/project/joplin-md-sync/
 - Do not edit `.joplin-sync/`.
 - Do not interleave MCP writes with unpushed local edits.
 - Do not expose the Joplin Data API to a network.
-- Never put a Joplin, MCP, Actions, GitHub OAuth, sync, or encryption credential in
+- Never put a Joplin, MCP, GitHub OAuth, sync, or encryption credential in
   chat, Git, logs, or command arguments.

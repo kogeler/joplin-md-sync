@@ -73,7 +73,6 @@ class JsonContractTest(WorkspaceTestCase):
                 "mcp oauth-check",
                 "mcp oauth-reset",
                 "mcp github-user-id",
-                "gpt-actions export-openapi",
             ],
         )
         self.assertEqual(result.json["output_schema_version"], OUTPUT_SCHEMA_VERSION)

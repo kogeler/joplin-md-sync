@@ -1,14 +1,14 @@
 ---
 title: "Run Joplin headless on a Linux server"
-description: "One installer runs Joplin headless on a Linux server, synced with Nextcloud, S3, Joplin Server or Dropbox, with MCP, Claude OAuth and ChatGPT access."
+description: "One installer runs Joplin headless on a Linux server, synced with Nextcloud, S3, Joplin Server or Dropbox, with MCP and Claude OAuth access."
 ---
 
 # Joplin Headless Service
 
 Run Joplin on a Linux server without a desktop, sync it with your other Joplin
-clients, and connect Claude, ChatGPT, or any MCP client. One installer sets up
-Joplin Terminal, recurrent sync, MCP, Actions, and the built-in GitHub OAuth
-for Claude from the values you enter.
+clients, and connect Claude or any MCP client. One installer sets up Joplin
+Terminal, recurrent sync, MCP, and the built-in GitHub OAuth for Claude from
+the values you enter.
 
 ## Quick runbook
 
@@ -141,8 +141,8 @@ Large stores can take a long time: a progress heartbeat appears every minute,
 and each initial sync/decryption stage can run for up to 24 hours. Note titles
 and bodies are not printed as progress.
 
-If startup was selected, success includes Joplin API, MCP notebook-listing
-and Actions authentication smoke checks. Otherwise the units remain stopped. Check the result:
+If startup was selected, success includes Joplin API and MCP notebook-listing
+smoke checks. Otherwise the units remain stopped. Check the result:
 
 ```bash
 systemctl --user status joplin-terminal.service joplin-md-sync.service
@@ -151,8 +151,8 @@ curl --fail http://127.0.0.1:8765/readyz
 ```
 
 `/ping` should return `JoplinClipperServer`; `/readyz` should return HTTP 200.
-To use the result, configure an [MCP client](#mcp-integration) or follow the
-[ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md).
+To use the result, configure an [MCP client](#mcp-integration) or
+[connect Claude](CLAUDE_CONNECTOR.md).
 
 ## What is installed
 
@@ -162,9 +162,9 @@ create a Markdown workspace or need a desktop session.
 | Service | What it does | Default listener |
 | --- | --- | --- |
 | `joplin-terminal.service` | Runs Joplin Terminal, owns its profile, decrypts notes, and syncs every 5 minutes. | Joplin Data API: `127.0.0.1:41185` |
-| `joplin-md-sync.service` | Connects to that API and serves **both** MCP and ChatGPT Actions. | Combined adapter: `127.0.0.1:8765` |
+| `joplin-md-sync.service` | Connects to that API and serves MCP and, when enabled, Claude OAuth. | MCP listener: `127.0.0.1:8765` |
 
-There is no third Actions service. Both listeners are local by default. The
+There is no separate OAuth service. Both listeners are local by default. The
 installer does not configure a firewall, DNS, reverse proxy, or public HTTPS.
 Never publish the Joplin Data API itself.
 
@@ -185,15 +185,13 @@ installer, not root's home.
 | `~/.config/joplin-md-sync/installer-settings.json` | Nonsecret saved version/startup choices; owner-only. |
 | `~/.config/joplin-md-sync/oauth-settings.json` | Saved OAuth values and secret-file paths, without secret values. |
 | `~/.config/joplin-md-sync/oauth-secrets/` | Owner-only Client Secret/signing-key files created by interactive setup. |
-| `~/.config/joplin-md-sync/gpt-actions-token` | Separate bearer credential for ChatGPT Actions at `/api/gpt/v1/*`. |
 | `~/.local/state/joplin-agent/` | Profile lock, retained upgrade backups and the `joplin-md-sync` ownership receipt. |
 | `~/.local/state/joplin-md-sync/oauth/` | Default encrypted OAuth grants when GitHub OAuth is enabled. |
 
-All three token files are owner-only (`0600`). The installer prints their
-paths, not their contents. Reruns preserve valid existing MCP/Actions tokens;
-an invalid existing token is rejected, not silently replaced. The two adapter
-tokens are generated automatically and differ from each other and the API
-token. None is an OpenAI API key.
+Both token files are owner-only (`0600`). The installer prints their paths,
+not their contents. Reruns preserve a valid existing MCP token; an invalid
+existing token is rejected, not silently replaced. The MCP token is generated
+automatically and differs from the API token.
 
 The [full layout and path overrides](#custom-paths-and-full-file-layout) below
 show where the npm packages, helper scripts, and custom installations go.
@@ -270,7 +268,7 @@ the profile is modified.
 | `--profile-dir PATH` | Dedicated profile. Default: `${XDG_DATA_HOME:-$HOME/.local/share}/joplin-agent/profile`. Never use a Desktop profile or one opened by another process. | `JOPLIN_PROFILE_DIR` |
 | `--joplin-prefix PATH` | Program prefix. Default: `~/.local`. Does **not** relocate the profile, config, or state. | `JOPLIN_INSTALL_PREFIX` |
 | `--api-port PORT` | Private loopback API port, passed to both services. Default: `41185`. | `JOPLIN_API_PORT` |
-| `--mcp-port PORT` | Shared MCP/Actions port. Default: `8765`; must differ from the API port. Both ports accept `1..65535`. | `JOPLIN_MCP_PORT` |
+| `--mcp-port PORT` | Shared MCP and OAuth port. Default: `8765`; must differ from the API port. Both ports accept `1..65535`. | `JOPLIN_MCP_PORT` |
 | `--github-oauth` | Enable built-in GitHub OAuth on the existing port. Upgrade preserves installed settings. See [Claude setup](CLAUDE_CONNECTOR.md). | `JOPLIN_GITHUB_OAUTH` (`1`, `true` or `yes`; `0`, `false` or `no` acts as `--no-github-oauth`; other values are rejected) |
 | `--github-oauth-public-url URL` | Public HTTPS origin for discovery and callbacks; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_PUBLIC_URL` |
 | `--github-oauth-client-id ID` | GitHub OAuth App Client ID; same setting as the service CLI. | `JOPLIN_GITHUB_OAUTH_CLIENT_ID` |
@@ -313,9 +311,8 @@ before import. An inconsistent bundle fails before setup starts.
 | `--verbose` | Enable redacted debug logging; sensitive Joplin responses remain suppressed. |
 | `-h`, `--help` | Show built-in help and exit. |
 
-The installer generates MCP/Actions tokens itself; `JOPLIN_MCP_AUTH_TOKEN` and
-`JOPLIN_GPT_ACTIONS_TOKEN` are ignored. No raw bearer-token installer options
-are provided.
+The installer generates the MCP token itself; `JOPLIN_MCP_AUTH_TOKEN` is
+ignored. No raw bearer-token installer options are provided.
 
 ## Advanced installation and maintenance
 
@@ -394,12 +391,12 @@ preflight before replacing a healthy service.
 For a build without a candidate prerelease, such as a fork pull request or a
 local `make standalone`, serve the executable from a local release layout. For
 Linux amd64, place `joplin-md-sync-linux-amd64` in
-`$HOME/joplin-candidate/download/v1.8.1/`, using the version it reports, then
+`$HOME/joplin-candidate/download/v2.0.0/`, using the version it reports, then
 run:
 
 ```bash
 candidate_root="$HOME/joplin-candidate"
-candidate_version='1.8.1'
+candidate_version='2.0.0'
 candidate_asset='joplin-md-sync-linux-amd64'
 (cd "$candidate_root/download/v$candidate_version" && sha256sum "$candidate_asset" > SHA256SUMS.txt)
 candidate_url=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$candidate_root")
@@ -573,7 +570,6 @@ With all defaults, the complete managed layout is:
 ├── joplin-agent/api-token
 ├── joplin-md-sync/
 │   ├── mcp-token
-│   ├── gpt-actions-token
 │   ├── installer-settings.json    saved version/startup choices
 │   ├── oauth-settings.json        OAuth settings (with OAuth only)
 │   ├── oauth-managed-state.json   marks the default OAuth state as managed
@@ -677,8 +673,8 @@ you changed the defaults. Do not expose port 41185 to a public network.
 
 Configure a Streamable HTTP MCP client with URL `http://127.0.0.1:8765/mcp`
 and `Authorization: Bearer <token>`, using the contents of
-`~/.config/joplin-md-sync/mcp-token`. Do not use `api-token` or the Actions
-token. The headless installer always requires MCP authentication.
+`~/.config/joplin-md-sync/mcp-token`. Do not use `api-token`. The headless
+installer always requires MCP authentication.
 
 For a basic authenticated check without putting the secret in process arguments:
 
@@ -698,7 +694,7 @@ a `405` alone is not an end-to-end test.
 
 For a reverse proxy on the same host, keep the default loopback binding.
 If another host must reach the adapter directly, add `--allow-remote-mcp`
-during installation or upgrade. This exposes **both** MCP and Actions on
+during installation or upgrade. This exposes MCP and, when enabled, OAuth on
 `0.0.0.0`; restrict access with a firewall/private network and a trusted TLS
 publishing layer. The flag does not configure either of those for you.
 
@@ -706,14 +702,6 @@ Keep the generated MCP bearer token mandatory and never publish the upstream
 Data API. Browser clients that send `Origin` may need additional MCP origin
 configuration. See [self-hosted deployment](SELF_HOSTED.md) and the
 [MCP API reference](MCP_API.md).
-
-### ChatGPT Actions integration
-
-Actions already run on the same adapter under `/api/gpt/v1/*`. Configure public
-HTTPS through your own publishing layer, preferably for that namespace only,
-and use the separate `gpt-actions-token` file. Do not log authorization headers
-or request bodies. Follow the [ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md)
-for the public endpoint, GPT configuration, and read/write acceptance checks.
 
 ### Updating and rollback
 
@@ -728,14 +716,25 @@ Or run the remote command from the quick runbook with only `--upgrade` after
 
 ```bash
 python3 install_joplin_terminal.py --upgrade \
-  --joplin-version 3.7.1 --joplin-md-sync-version 1.8.1
+  --joplin-version 3.7.1 --joplin-md-sync-version 2.0.0
 ```
 
 The installer resolves versions and downloads, verifies and smoke-tests a
 changed `joplin-md-sync` executable before stopping services. It preserves the
-profile and valid MCP/Actions tokens, updates both programs/helpers/units, and repeats
-the API/MCP/Actions checks. It does not ask for stored sync or E2EE passwords.
-Missing adapter token files are generated; existing valid values are not rotated.
+profile and a valid MCP token, updates both programs/helpers/units, and repeats
+the API and MCP checks. It does not ask for stored sync or E2EE passwords. A
+missing MCP token file is generated; an existing valid value is not rotated.
+Once the restarted services pass these checks, the installer also removes
+credential files that earlier versions managed and the service no longer
+reads; a run that leaves the services stopped keeps them.
+
+An installation made by a 1.x installer still serves ChatGPT Actions, which
+joplin-md-sync 2.0.0 removed. The current installer rewrites its adapter unit
+without them, so it refuses to keep a 1.x executable there and asks for
+`--joplin-md-sync-version latest` instead. To keep Actions on 1.8.1 until
+OpenAI retires Custom GPTs, run the installer from tag `v1.8.1` with
+`--installer-ref v1.8.1 --joplin-md-sync-version 1.8.1`, as described in
+[Run from a branch, tag or commit](#run-from-a-branch-tag-or-commit).
 
 Existing units supply the prefix, profile, ports, interval, remote-binding
 policy, and filesystem sandbox exceptions. Explicit CLI/environment settings
@@ -751,8 +750,10 @@ If the new Joplin package cannot be installed, that tree is moved back, the
 units stay unchanged, and services that were running before the upgrade are
 started again; the installer still reports the failure. Any later failure after
 services are stopped leaves both stopped and reports the backup location; the
-profile is never rolled back automatically. **These are program backups, not
-note backups.** The profile is not copied and Joplin may migrate its schema.
+profile is never rolled back automatically. An adapter unit restored from a
+1.x backup still passes `--gpt-actions*` options and names the removed Actions
+token file; delete those options before starting it. **These are program
+backups, not note backups.** The profile is not copied and Joplin may migrate its schema.
 Keep a verified JEX export before downgrading; selecting an older executable
 does not prove that an existing profile can safely be downgraded.
 
@@ -872,13 +873,13 @@ are in the [service contract](../contracts/SERVICE.md).
 Already running Joplin Desktop? Do not install a second profile merely to get
 MCP. Use [local stdio or HTTP MCP](MCP_API.md),
 [self-hosted deployment](SELF_HOSTED.md), and the
-[ChatGPT Actions setup](CHATGPT_ACTIONS.md) instead.
+[Claude connector](CLAUDE_CONNECTOR.md) instead.
 
 ### Windows autostart
 
 This headless installer is Linux-only. For an existing Windows Joplin setup,
 use the [`install-service-task.ps1`](../../examples/windows/install-service-task.ps1)
-example with its `-JoplinTokenFile`, required `-GptActionsTokenFile`, and
-optional `-McpAuthTokenFile`. Use separate owner-only token files; MCP
-authentication is mandatory if you publish MCP remotely. The example's
+example with its `-JoplinTokenFile` and optional `-McpAuthTokenFile`. Use
+separate owner-only token files; MCP authentication is mandatory if you publish
+MCP remotely. The example's
 parameters and help describe the per-user Task Scheduler setup.

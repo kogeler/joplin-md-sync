@@ -41,7 +41,6 @@ USER_FILES = {
     "CLAUDE_CONNECTOR.md",
     "AGENT_INTERFACES.md",
     "AGENT_WORKFLOWS.md",
-    "CHATGPT_ACTIONS.md",
     "CLI.md",
     "CONFLICTS.md",
     "GETTING_STARTED.md",
@@ -61,6 +60,22 @@ MAINTENANCE_FILES = {
     "SYNCHRONIZATION.md",
 }
 ASSERTION = re.compile(r"^### `([A-Z]{3}-[0-9]{3})` - .+$", re.MULTILINE)
+# Git history is not available to this check, so it pins what is already known:
+# a retired ID stays retired, and no prefix ever ends below its highest ID so
+# far, defined or retired. Raise the floors when adding assertions.
+PERMANENTLY_RETIRED = {"AIF-006", "AIF-007", "SEC-006"}
+HIGHEST_ASSIGNED = {
+    "AIF": 10,
+    "CIR": 12,
+    "CLI": 8,
+    "DEP": 10,
+    "SEC": 10,
+    "SVC": 10,
+    "SYN": 9,
+    "WSP": 6,
+}
+RETIRED = re.compile(r"^Retired IDs: (.+)\.$", re.MULTILINE)
+CONTRACT_ID = re.compile(r"`([A-Z]{3}-[0-9]{3})`")
 EVIDENCE = re.compile(r"^- \[`[^`]+`\]\(([^)]+)\) - `([^`]+)`$", re.MULTILINE)
 MARKDOWN_LINK = re.compile(r"!?\[[^]]*\]\(([^)]+)\)")
 
@@ -86,8 +101,19 @@ def _node_exists(path: Path, node_id: str) -> bool:
     return True
 
 
+def _retired_ids() -> set[str]:
+    (listed,) = RETIRED.findall((CONTRACTS / "README.md").read_text(encoding="utf-8"))
+    retired = CONTRACT_ID.findall(listed)
+    assert len(retired) == len(set(retired)), retired
+    assert PERMANENTLY_RETIRED <= set(retired), PERMANENTLY_RETIRED - set(retired)
+    unknown = {item for item in retired if item[:3] not in CONTRACT_PREFIXES.values()}
+    assert not unknown, unknown
+    return set(retired)
+
+
 def test_contract_assertions_have_unique_ids_and_real_evidence() -> None:
     seen: set[str] = set()
+    retired = _retired_ids()
     for path in sorted(CONTRACTS.glob("*.md")):
         if path.name == "README.md":
             continue
@@ -95,9 +121,20 @@ def test_contract_assertions_have_unique_ids_and_real_evidence() -> None:
         matches = list(ASSERTION.finditer(content))
         assert matches, path
         prefix = CONTRACT_PREFIXES[path.name]
-        assert [match.group(1) for match in matches] == [
-            f"{prefix}-{number:03d}" for number in range(1, len(matches) + 1)
-        ]
+        # Only listed retired IDs may leave a gap, and they are never reused.
+        ids = [match.group(1) for match in matches]
+        highest = max(
+            int(assertion_id[4:])
+            for assertion_id in (*ids, *retired)
+            if assertion_id.startswith(prefix + "-")
+        )
+        # A deleted trailing assertion must be listed as retired, not vanish.
+        assert highest >= HIGHEST_ASSIGNED[prefix], (prefix, highest)
+        assert ids == [
+            assertion_id
+            for number in range(1, highest + 1)
+            if (assertion_id := f"{prefix}-{number:03d}") not in retired
+        ], path
         for index, match in enumerate(matches):
             assertion_id = match.group(1)
             assert assertion_id not in seen, assertion_id

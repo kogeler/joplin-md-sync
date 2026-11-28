@@ -1,4 +1,4 @@
-"""Small JSON Schema subset shared by tool execution and OpenAPI export."""
+"""Small JSON Schema subset shared by tool definitions and execution."""
 
 from __future__ import annotations
 

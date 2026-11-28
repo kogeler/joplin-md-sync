@@ -45,7 +45,7 @@ owned by [`CLI-001`](../contracts/CLI.md#cli-001-json-output-is-deterministic-an
   "success": true,
   "exit_code": 0,
   "code": "OK",
-  "tool_version": "1.8.1",
+  "tool_version": "2.0.0",
   "workspace": "/abs/path/notes"
 }
 ```
@@ -167,10 +167,9 @@ persists command arguments, other processes of the same user can list them,
 and some editors forward the MCP configuration to agents on their command
 lines, so prefer the token file.
 
-This mode does not expose `/mcp`, GPT Actions, `/healthz`, or `/readyz` and
-does not accept `--auth-token-file`, `--gpt-actions`, or
-`--gpt-actions-token-file`. Those bearer credentials protect HTTP interfaces
-that do not exist in stdio mode; only the Joplin token is used.
+This mode does not expose `/mcp`, `/healthz`, or `/readyz` and does not accept
+`--auth-token-file`. That bearer credential protects an HTTP interface that
+does not exist in stdio mode; only the Joplin token is used.
 
 The optional `--timeout SECONDS`, `--retry-timeout SECONDS`, and
 `--retry-delay SECONDS` settings have the same call behavior as `mcp serve`.
@@ -187,8 +186,7 @@ content, attachments, relationship traversal, and full-text search. No
 workspace is required.
 
 This remains the network listener mode. Without the separate `mcp stdio`
-subcommand, the HTTP listener and its existing MCP/Actions options behave as
-before.
+subcommand, the HTTP listener and its existing MCP options behave as before.
 
 For note creation, pass an existing `parent_id` or a `notebook_title` to
 find/create a root notebook. With neither, `MCP Notes` is found or created.
@@ -208,13 +206,6 @@ Joplin connection options are the normal `--base-url`, `--port`,
 - repeatable `--allowed-origin ORIGIN`
 - `--allow-remote-mcp` for an explicit non-loopback bind; this also requires
   `--auth-token-file`
-- `--gpt-actions` to add authenticated `/api/gpt/v1/tools/*` routes to the
-  same listener
-- `--gpt-actions-token-file PATH` (required with `--gpt-actions`)
-- `--gpt-actions-max-request-bytes N`,
-  `--gpt-actions-max-response-chars N`,
-  `--gpt-actions-max-concurrency N`, and
-  `--gpt-actions-rate-limit REQUESTS_PER_MINUTE`
 - `--github-oauth` and its settings flags; see
   [GitHub OAuth](#github-oauth-on-the-existing-mcp-listener)
 
@@ -222,23 +213,6 @@ The command intentionally stays in the foreground. Full protocol behavior,
 security guidance, MCP client configuration, and service-manager examples are
 split by purpose between [MCP API](MCP_API.md) and
 [Joplin Headless Service](JOPLIN_HEADLESS_SERVICE.md).
-
-Actions-only options are rejected unless `--gpt-actions` is present. The
-Actions token file is required, re-read on each request, protected like every
-token file (POSIX mode or Windows ACL), and must differ from the Joplin and MCP
-credentials.
-
-### `gpt-actions export-openapi --server-url URL --output PATH`
-
-Generates deterministic OpenAPI 3.1 JSON from the shared tool registry without
-contacting Joplin. `--server-url` must receive an HTTPS origin on port 443 with
-no path, query, fragment, or credentials. `--output` selects the destination
-JSON file. The result reports `operation_count`, `registry_hash`, `server_url`,
-and `output`.
-
-The repository does not store a generated contract. Export it with the real
-public hostname immediately before importing or updating a Custom GPT. See
-[ChatGPT Actions end-to-end setup](CHATGPT_ACTIONS.md).
 
 ### GitHub OAuth on the existing MCP listener
 
@@ -249,8 +223,8 @@ It ships in the standard package and native executables. See [Claude connector s
 
 - `mcp github-user-id --login USER [--json]` resolves a public GitHub username
   through GitHub's HTTPS API during setup. Save the returned numeric ID.
-- `mcp oauth-check` accepts the same OAuth flags and MCP/Actions/connection
-  options as `mcp serve`. It validates values, private secret files and routes
+- `mcp oauth-check` accepts the same OAuth flags and MCP/connection options as
+  `mcp serve`. It validates values, private secret files and routes
   without network requests, a listener, state creation or migration.
 - `mcp oauth-reset --confirm-reset [--json]` accepts the same OAuth settings
   flags and revokes local grants with the exclusive state lock while the service
@@ -258,9 +232,9 @@ It ships in the standard package and native executables. See [Claude connector s
 
 Check/reset imply OAuth configuration; `mcp serve` requires `--github-oauth`.
 Providing OAuth options to an otherwise disabled service is an error. The
-Client Secret and signing key must differ from each other and from the Joplin,
-MCP and Actions credentials; the signing key is compared as key material in
-any accepted Base64 form.
+Client Secret and signing key must differ from each other and from the Joplin
+and MCP credentials; the signing key is compared as key material in any
+accepted Base64 form.
 
 | OAuth option | Purpose |
 | --- | --- |

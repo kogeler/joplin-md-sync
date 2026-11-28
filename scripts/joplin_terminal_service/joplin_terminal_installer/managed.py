@@ -67,6 +67,11 @@ MANAGED_CONFIG_ENTRIES = (
     "oauth-secrets",
 )
 
+# Files that earlier installer versions managed and the service no longer
+# reads. A run that starts and verifies the services removes them, and so does
+# purge.
+RETIRED_CONFIG_ENTRIES = ("gpt-actions-token",)
+
 
 def managed_purge_paths(paths: InstallPaths) -> tuple[Path, ...]:
     backups = tuple(paths.unit_path.parent.glob(f"{SERVICE_NAME}.bak-*")) + tuple(
@@ -83,8 +88,8 @@ def managed_purge_paths(paths: InstallPaths) -> tuple[Path, ...]:
         paths.config_dir,
         *managed_oauth_state_paths(paths),
         paths.mcp_auth_token_file,
-        paths.gpt_actions_token_file,
         *(paths.mcp_config_dir / name for name in MANAGED_CONFIG_ENTRIES),
+        *retired_config_paths(paths),
         paths.deploy_dir,
     )
 
@@ -102,6 +107,31 @@ def managed_oauth_state_paths(paths: InstallPaths) -> tuple[Path, ...]:
             "managed OAuth state marker is invalid; no arbitrary paths will be purged"
         ) from None
     return (paths.oauth_state_path,)
+
+
+def retired_config_paths(paths: InstallPaths) -> tuple[Path, ...]:
+    return tuple(paths.mcp_config_dir / name for name in RETIRED_CONFIG_ENTRIES)
+
+
+def remove_retired_config_files(paths: InstallPaths) -> None:
+    """Delete regular files left by earlier versions; never a directory.
+
+    The services already run without them, so a failure only warns.
+    """
+    for path in retired_config_paths(paths):
+        if path.is_symlink() or path.is_file():
+            try:
+                remove_managed_path(path)
+            except ToolError as exc:
+                LOG.warning("%s; delete it manually", exc)
+        elif path.exists():
+            LOG.warning("keeping unexpected non-file at retired path %s", path)
+
+
+def keep_retired_config_files(paths: InstallPaths) -> None:
+    for path in retired_config_paths(paths):
+        if path.is_symlink() or path.exists():
+            LOG.info("keeping retired %s until a run starts and verifies the services", path)
 
 
 def remove_managed_path(path: Path) -> None:

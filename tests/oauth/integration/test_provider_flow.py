@@ -20,7 +20,7 @@ from mcp.server.auth.provider import RegistrationError
 from mcp.shared.auth import OAuthClientInformationFull
 from starlette.testclient import TestClient
 
-from joplin_md_sync import github_oauth, gpt_actions
+from joplin_md_sync import github_oauth, rate_limit
 from joplin_md_sync.github_oauth import CLAUDE_CALLBACK, OwnerGitHubOAuth
 from joplin_md_sync.oauth_boundary import OAuthBoundary
 from tests.oauth.fake_github import MockGitHub
@@ -417,7 +417,7 @@ def boundary_client(established: set[str]) -> TestClient:
 
 def test_established_clients_have_separate_token_budgets(monkeypatch) -> None:
     # A fixed clock keeps the buckets from refilling on a slow runner.
-    monkeypatch.setattr(gpt_actions, "time", SimpleNamespace(monotonic=lambda: 0.0))
+    monkeypatch.setattr(rate_limit, "time", SimpleNamespace(monotonic=lambda: 0.0))
     client = boundary_client({"owner", "second"})
 
     def status(**form: str) -> int:

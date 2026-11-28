@@ -126,9 +126,9 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
         allow_abbrev=False,
         description=(
             "Install an isolated Joplin Terminal with any supported sync target, install "
-            "the released joplin-md-sync service with generated Actions and MCP "
-            "credentials, create systemd user services, or purge the complete managed "
-            "local installation."
+            "the released joplin-md-sync service with a generated MCP credential, "
+            "create systemd user services, or purge the complete managed local "
+            "installation."
         ),
     )
     environment_options = {
@@ -230,13 +230,13 @@ def build_parser(env: Mapping[str, str] | None = None) -> argparse.ArgumentParse
         "--mcp-port",
         type=int,
         default=_env_int(values, "JOPLIN_MCP_PORT", DEFAULT_MCP_PORT),
-        help=f"combined MCP and Actions listener port (default: {DEFAULT_MCP_PORT})",
+        help=f"MCP listener port (default: {DEFAULT_MCP_PORT})",
     )
     parser.add_argument(
         "--allow-remote-mcp",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="bind the authenticated combined adapter to 0.0.0.0 instead of loopback",
+        help="bind the authenticated MCP listener to 0.0.0.0 instead of loopback",
     )
     parser.add_argument(
         "--github-oauth",
@@ -359,7 +359,6 @@ def build_paths(args: argparse.Namespace, env: Mapping[str, str] | None = None) 
         mcp_binary=prefix / "bin" / "joplin-md-sync",
         mcp_config_dir=mcp_config_dir,
         mcp_auth_token_file=mcp_config_dir / "mcp-token",
-        gpt_actions_token_file=mcp_config_dir / "gpt-actions-token",
         state_dir=state_dir,
         lock_file=lock_path_for_profile(profile_dir, state_dir),
         deploy_dir=prefix / "lib" / "joplin-terminal-service",

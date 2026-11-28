@@ -53,7 +53,6 @@ def smoke(command: list[str]) -> None:
         token = private("joplin-token", secrets.token_urlsafe(32))
         bearer = secrets.token_urlsafe(32)
         auth = private("mcp-token", bearer)
-        actions = private("actions-token", secrets.token_urlsafe(32))
         secret = private("github-secret", secrets.token_urlsafe(32))
         key = private("signing-key", base64.urlsafe_b64encode(os.urandom(32)).decode())
         state = directory / "state"
@@ -81,7 +80,6 @@ def smoke(command: list[str]) -> None:
                 "JOPLIN_TOKEN",
                 "JOPLIN_TOKEN_FILE",
                 "JOPLIN_MCP_AUTH_TOKEN_FILE",
-                "JOPLIN_GPT_ACTIONS_TOKEN_FILE",
                 "JOPLIN_GITHUB_OAUTH",
             }
         }
@@ -133,9 +131,6 @@ def smoke(command: list[str]) -> None:
                 *common,
                 "--mcp-port",
                 str(port),
-                "--gpt-actions",
-                "--gpt-actions-token-file",
-                str(actions),
             ]
             if oauth:
                 args.extend(oauth_args)
@@ -192,7 +187,8 @@ def smoke(command: list[str]) -> None:
                 assert status == 200 and json.loads(raw)["result"]["tools"], (
                     f"Legacy listing HTTP {status}"
                 )
-                assert request("/api/gpt/v1/tools/__probe__", {})[0] == 401
+                # 2.0.0 removed the 1.x ChatGPT Actions routes.
+                assert request("/api/gpt/v1/tools/__probe__", {})[0] == 404
                 status, headers, _ = request("/oauth/mcp", {})
                 assert status == (401 if oauth else 404)
                 if not oauth:

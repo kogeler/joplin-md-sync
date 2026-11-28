@@ -112,7 +112,6 @@ for path in \
     "$PROFILE" \
     "$STATE_DIR" \
     "$CONFIG_HOME/joplin-agent/api-token" \
-    "$CONFIG_HOME/joplin-md-sync/gpt-actions-token" \
     "$CONFIG_HOME/joplin-md-sync/mcp-token"; do
     metadata "$path"
 done

@@ -459,7 +459,6 @@ def test_security_events_are_recorded_without_credentials(app):
         "/auth/callback",
         "/token",
         "/healthz",
-        "/api/gpt/v1/tools/x",
         "/mcp/",
         "/mcp%2F",
         "/mcp//alias",

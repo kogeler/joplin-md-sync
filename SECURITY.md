@@ -13,4 +13,4 @@ The test-backed security requirements are in the
 boundaries, and residual risks are explained in
 [Security rationale](docs/maintenance/SECURITY.md). Deployment procedures are
 in [Self-hosted deployment](docs/user/SELF_HOSTED.md) and
-[Service operations](docs/user/SERVICE.md).
+[Joplin Headless Service](docs/user/JOPLIN_HEADLESS_SERVICE.md).

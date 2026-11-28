@@ -18,9 +18,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 NAME = "io.github.kogeler/joplin-md-sync"
 SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
-TITLE = "Joplin MCP for Claude & ChatGPT"
+TITLE = "Joplin MCP for Claude"
 DESCRIPTION = (
-    "Self-hosted Joplin MCP server with built-in OAuth for hosted Claude and ChatGPT Actions"
+    "Self-hosted Joplin MCP server with built-in OAuth for hosted Claude and a headless "
+    "Linux service"
 )
 
 

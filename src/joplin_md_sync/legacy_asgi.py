@@ -1,4 +1,4 @@
-"""ASGI I/O for the same legacy MCP and Actions HTTP processing logic."""
+"""ASGI I/O for the same legacy MCP HTTP processing logic."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from http.client import HTTPMessage
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
-from joplin_md_sync.gpt_actions import GptActionsTransport
 from joplin_md_sync.mcp_server import (
     HTTP_CONNECTION_TIMEOUT_SECONDS,
     MAX_REQUEST_BYTES,
@@ -30,7 +29,6 @@ class LegacyContext:
     endpoint: str
     token_source: BearerTokenSource
     allowed_origins: frozenset[str]
-    actions_transport: GptActionsTransport | None
     server_address: tuple[str, int]
 
 
@@ -77,7 +75,6 @@ class LegacyAsgiRequest(LegacyHttpLogic):
 
     def __init__(self, context: LegacyContext, scope: Scope, body: IncomingBody) -> None:
         self.server = context
-        self.command = scope["method"]
         self.path = scope["path"]
         if scope.get("query_string"):
             self.path += "?" + scope["query_string"].decode("ascii", "replace")

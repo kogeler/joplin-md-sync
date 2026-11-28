@@ -1,6 +1,6 @@
 ---
-title: "Choose how AI agents reach Joplin: MCP, Claude, ChatGPT"
-description: "Compare the Claude connector with built-in OAuth, ChatGPT Actions, local stdio MCP, HTTP MCP and Markdown sync for giving an AI agent your Joplin notes."
+title: "Choose how AI agents reach Joplin: Claude, MCP or Markdown"
+description: "Compare the Claude connector with built-in OAuth, local stdio MCP, HTTP MCP and Markdown sync for giving an AI agent your Joplin notes."
 ---
 
 # Choose an agent interface
@@ -10,17 +10,16 @@ authentication, and limit requirements are in the
 [agent-interface contract](../contracts/AGENT_INTERFACES.md).
 
 `joplin-md-sync` exposes three client-facing surfaces backed by two distinct
-consistency models.
+consistency models: the Claude connector, MCP, and the Markdown workspace.
 
 ## Decision guide
 
 | Need | Use |
 | --- | --- |
 | Connect hosted Claude with one configured GitHub account | [Built-in OAuth MCP](CLAUDE_CONNECTOR.md) |
-| Work with current Joplin notes in a private Custom GPT | ChatGPT Actions |
 | Search or change current Joplin data from an assistant | MCP |
 | Perform targeted note, notebook, tag, or attachment operations | MCP |
-| Run without a local desktop session | Headless Joplin service plus MCP, OAuth, or Actions |
+| Run without a local desktop session | Headless Joplin service plus MCP or OAuth |
 | Let a coding agent rewrite notes using repository context | Markdown workspace |
 | See an exact diff and operation plan before Joplin changes | Markdown workspace |
 | Keep selected notebooks in Git | Markdown workspace |
@@ -28,8 +27,8 @@ consistency models.
 Joplin Desktop also has a built-in MCP server on its Web Clipper port. It
 serves only clients on the same computer while the desktop app runs, and it
 adds semantic search. Choose this project when an assistant runs elsewhere,
-such as hosted Claude or ChatGPT, when Joplin runs headless on a server, or
-when you need attachments or reviewable Markdown changes.
+such as hosted Claude, when Joplin runs headless on a server, or when you need
+attachments or reviewable Markdown changes.
 
 ## Claude connector
 
@@ -42,24 +41,6 @@ OAuth client.
 
 [Connect Claude to Joplin](CLAUDE_CONNECTOR.md)
 
-## ChatGPT Actions
-
-OpenAI retires Custom GPTs, and their Actions, on 2026-12-11 for standard
-ChatGPT plans. The interface works until then, and a ChatGPT MCP connector
-through the same built-in OAuth is planned as the replacement.
-
-Actions use a dedicated REST namespace and mandatory bearer token on the same
-listener and operation registry as MCP. The generated OpenAPI contract exposes
-the operations supported by Custom GPT Actions and excludes binary resource
-operations that do not fit its payload model.
-
-Use Actions when ChatGPT is the client and the bridge is reachable through a
-controlled HTTPS hostname. Keep the Actions credential separate from the MCP
-and Joplin tokens. A private Custom GPT can search, read, create, update, move,
-tag, trash, and restore current Joplin objects without a Markdown workspace.
-
-[Configure a private Joplin GPT](CHATGPT_ACTIONS.md)
-
 ## MCP
 
 `joplin-md-sync mcp stdio --token-file PATH` lets a local editor launch the
@@ -67,12 +48,11 @@ native executable directly, while `joplin-md-sync mcp serve` exposes Streamable
 HTTP at `http://127.0.0.1:8765/mcp`. Neither requires a workspace or uses the
 base snapshot.
 
-The stdio process opens no listener and needs no MCP or Actions bearer token;
-it only needs the upstream Joplin Web Clipper token, from a protected
-`--token-file` or from `JOPLIN_TOKEN`, never both. The compatibility `--token`
-argument still works but exposes the token in the process list. `mcp serve`
-retains the existing HTTP, authorization, Origin, and optional Actions
-behavior.
+The stdio process opens no listener and needs no MCP bearer token; it only
+needs the upstream Joplin Web Clipper token, from a protected `--token-file` or
+from `JOPLIN_TOKEN`, never both. The compatibility `--token` argument still
+works but exposes the token in the process list. `mcp serve` retains the
+existing HTTP, authorization, and Origin behavior.
 
 MCP calls operate on current Joplin state immediately. Reads retry bounded
 availability failures. Writes are sent once and are never automatically
@@ -106,17 +86,16 @@ the agent needs files from another repository, large edits, or Git review.
 
 !!! warning "Pull after direct writes"
 
-    MCP and Actions do not update a Markdown workspace's base snapshot. After
-    any direct write, run `pull` before editing local files. Do not make MCP or
-    Actions changes while local edits are waiting to be pushed.
+    MCP does not update a Markdown workspace's base snapshot. After any direct
+    write, run `pull` before editing local files. Do not make MCP changes while
+    local edits are waiting to be pushed.
 
 ## Deployment choices
 
 | Topology | Typical interface |
 | --- | --- |
 | Hosted Claude | Public HTTPS OAuth routes on the same listener; Joplin API stays private |
-| Private Custom GPT | Public HTTPS Actions namespace; Joplin API stays private |
-| Dedicated Linux host with Joplin Terminal | Authenticated MCP, OAuth, and/or Actions |
+| Dedicated Linux host with Joplin Terminal | Authenticated MCP and/or OAuth |
 | Joplin Desktop with a private network client | Authenticated MCP behind TLS |
 | Joplin Desktop and agent on one machine | Local stdio MCP or Markdown workspace |
 

@@ -43,8 +43,12 @@ link their TOML/YAML source followed by `- \`configuration\``. Hosted-service
 behavior is verified on GitHub, not simulated locally.
 
 IDs are permanent. Changing or removing an assertion requires reviewing its
-evidence and every implementation, user, and maintenance reference. External
-specifications may explain a requirement but never replace repository
+evidence and every implementation, user, and maintenance reference. A removed
+assertion retires its ID, which is listed here and never reused:
+
+Retired IDs: `AIF-006`, `AIF-007`, `SEC-006`.
+
+External specifications may explain a requirement but never replace repository
 evidence. A successful supported Make test run is the execution record.
 
 ## Index
@@ -54,7 +58,7 @@ evidence. A successful supported Make test run is the execution record.
 | [CLI and output](CLI.md) | `CLI` | Commands, JSON envelope, exit codes, connection resolution, and read-only inspection |
 | [Workspace](WORKSPACE.md) | `WSP` | Managed Markdown, notebook identity, paths, and local state layout |
 | [Synchronization](SYNCHRONIZATION.md) | `SYN` | Three-way planning, deletes, conflicts, concurrency, journals, and recovery |
-| [Agent interfaces](AGENT_INTERFACES.md) | `AIF` | Shared tool registry, MCP, GPT Actions, OpenAPI, limits, and failure behavior |
+| [Agent interfaces](AGENT_INTERFACES.md) | `AIF` | Shared tool registry, MCP, OAuth, limits, and failure behavior |
 | [Service](SERVICE.md) | `SVC` | Headless installation, credentials, systemd lifecycle, upgrades, and removal |
 | [Security](SECURITY.md) | `SEC` | Token, network, filesystem, content, and destructive-operation boundaries |
 | [Dependencies](DEPENDENCIES.md) | `DEP` | Dependency groups, universal lock, isolated environments, audit, and native updates |

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import http.client
+import io
 import json
 import os
 import socket
@@ -16,12 +18,15 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from joplin_md_sync.api import JoplinClient
+from joplin_md_sync.cli import build_parser
 from joplin_md_sync.errors import ApiError
 from joplin_md_sync.mcp_server import (
+    MAX_REQUEST_BYTES,
     MCP_PROTOCOL_VERSION,
     BearerTokenSource,
     McpDispatcher,
@@ -676,6 +681,111 @@ class McpHttpTest(WorkspaceTestCase):
             self.assertTrue(failed["isError"])
             self.assertEqual(failed["structuredContent"]["error"]["code"], code)
 
+    def test_schema_validation_precedes_side_effects(self) -> None:
+        tags = len(self.server.store.tags)
+        for request_id, (arguments, message) in enumerate(
+            (
+                ({}, "$: missing required property: title"),
+                ({"title": 1}, "$.title: must be a string"),
+                ({"title": "valid", "unexpected": True}, "$: unexpected property: unexpected"),
+            )
+        ):
+            result = self.call_tool(request_id, "joplin_create_tag", arguments)
+            self.assertTrue(result["isError"])
+            error = result["structuredContent"]["error"]
+            self.assertEqual(error["code"], "INVALID_ARGUMENT")
+            # Only the shared schema validator words its errors with a JSON path.
+            self.assertEqual(error["message"], message)
+        self.assertEqual(len(self.server.store.tags), tags)
+
+    def test_request_and_decoded_resource_sizes_are_bounded(self) -> None:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.httpd.server_address[1], timeout=3
+        )
+        try:
+            connection.putrequest("POST", "/mcp")
+            connection.putheader("Accept", "application/json, text/event-stream")
+            connection.putheader("Content-Type", "application/json")
+            connection.putheader("Content-Length", str(MAX_REQUEST_BYTES + 1))
+            connection.endheaders()
+            response = connection.getresponse()
+            response.read()
+            self.assertEqual(response.status, 413)
+        finally:
+            connection.close()
+
+        resources = len(self.server.store.resources)
+        with mock.patch("joplin_md_sync.mcp_service._MAX_RESOURCE_BYTES", 8):
+            oversized = self.call_tool(
+                1,
+                "joplin_create_resource",
+                {
+                    "filename": "large.bin",
+                    "mime": "application/octet-stream",
+                    "content_base64": base64.b64encode(b"x" * 9).decode("ascii"),
+                },
+            )
+        self.assertTrue(oversized["isError"])
+        self.assertEqual(oversized["structuredContent"]["error"]["code"], "RESOURCE_TOO_LARGE")
+        self.assertEqual(len(self.server.store.resources), resources)
+
+    def raw_status(self, method: str, path: str) -> tuple[int, str | None, bytes]:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.httpd.server_address[1], timeout=3
+        )
+        try:
+            connection.request(method, path)
+            response = connection.getresponse()
+            return response.status, response.getheader("Allow"), response.read()
+        finally:
+            connection.close()
+
+    def test_local_health_routes_and_unsupported_methods(self) -> None:
+        for path in ("/healthz", "/readyz"):
+            status, _, body = self.raw_status("GET", path)
+            self.assertEqual((status, json.loads(body)), (200, {"ok": True}), path)
+        for method in ("DELETE", "PUT", "PATCH", "OPTIONS", "TRACE"):
+            status, allow, _ = self.raw_status(method, "/mcp")
+            self.assertEqual((status, allow), (405, "POST"), method)
+
+    def test_removed_actions_routes_are_not_found(self) -> None:
+        # joplin-md-sync 1.x served ChatGPT Actions on these routes.
+        for path in ("/api/gpt/v1/openapi.json", "/api/gpt/v1/notes"):
+            for method in ("GET", "POST"):
+                self.assertEqual(self.raw_status(method, path)[0], 404, (method, path))
+
+    def test_rejected_joplin_token_is_a_non_retryable_tool_error(self) -> None:
+        def rejected_client() -> JoplinClient:
+            return JoplinClient(
+                self.server.base_url, "wrong-" + TOKEN, timeout=0.2, retries=1, backoff_base=0.001
+            )
+
+        service = JoplinMcpService(rejected_client, availability_timeout=0, retry_delay=0.001)
+        httpd = self.server_factory(("127.0.0.1", 0), McpDispatcher(service))
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            status, body, _ = self.request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "joplin_list_notes", "arguments": {}},
+                },
+                url=f"http://127.0.0.1:{httpd.server_address[1]}/mcp",
+            )
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=2)
+        self.assertEqual(status, 200)
+        assert body is not None
+        result = body["result"]
+        self.assertTrue(result["isError"])
+        error = result["structuredContent"]["error"]
+        self.assertEqual((error["code"], error["retryable"]), ("API_AUTH_FAILED", False))
+        self.assertNotIn(TOKEN, json.dumps(body))
+
     def test_http_validation_and_origin_protection(self) -> None:
         payload = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
         status, _, _ = self.request(payload, headers={"Accept": "application/json"})
@@ -861,6 +971,54 @@ class McpCliSafetyTest(WorkspaceTestCase):
         self.assertTrue(result.json["features"]["mcp_streamable_http"])
         self.assertTrue(result.json["features"]["mcp_stdio"])
         self.assertTrue(result.json["features"]["mcp_stdio_token_file"])
+        advertised = [*result.json["commands"], *result.json["features"]]
+        self.assertEqual([name for name in advertised if "gpt" in name], [])
+
+    def test_removed_actions_options_and_command_are_rejected(self) -> None:
+        for argv, message in (
+            (("mcp", "serve", "--gpt-actions"), "unrecognized arguments: --gpt-actions"),
+            (
+                ("mcp", "oauth-check", "--gpt-actions-token-file", "/protected/token"),
+                "unrecognized arguments: --gpt-actions-token-file",
+            ),
+            (("gpt-actions", "export-openapi"), "invalid choice: 'gpt-actions'"),
+        ):
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+                build_parser().parse_args(list(argv))
+            self.assertEqual(raised.exception.code, 2, argv)
+            self.assertIn(message, stderr.getvalue())
+
+    def test_serve_rejects_invalid_or_reused_mcp_tokens_before_listen(self) -> None:
+        listen = mock.patch(
+            "joplin_md_sync.mcp_server.serve_mcp_http",
+            side_effect=AssertionError("must fail before listening"),
+        )
+        with listen, tempfile.TemporaryDirectory(prefix="mcp-token-") as tmp:
+            token_file = Path(tmp) / "mcp-token"
+
+            def write(value: str) -> None:
+                token_file.write_text(value + "\n", encoding="ascii")
+                if os.name == "posix":
+                    token_file.chmod(0o600)
+
+            write("c2hvcnQ")
+            result = run_cli("mcp", "serve", "--auth-token-file", str(token_file), env=self.env)
+            self.assertEqual(result.exit_code, 7)
+            self.assertIn("MCP auth token must encode at least 32 bytes", result.stdout)
+
+            reused = "Zmlyc3Qtc2VjcmV0LWZpcnN0LXNlY3JldC0xMjM0NTY3ODkwMTI"
+            write(reused)
+            result = run_cli(
+                "mcp",
+                "serve",
+                "--auth-token-file",
+                str(token_file),
+                env={**self.env, "JOPLIN_TOKEN": reused},
+            )
+            self.assertEqual(result.exit_code, 7)
+            self.assertIn("MCP token must differ from the Joplin token", result.stdout)
+            self.assertNotIn(reused, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

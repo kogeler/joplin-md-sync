@@ -43,7 +43,6 @@ def install(tmp_path):
         directory.mkdir(mode=0o700, parents=True)
     protected_file(paths.token_file, TOKEN)
     protected_file(paths.mcp_auth_token_file, base64.urlsafe_b64encode(os.urandom(32)).decode())
-    protected_file(paths.gpt_actions_token_file, base64.urlsafe_b64encode(os.urandom(32)).decode())
     oauth = OAuthArguments(tmp_path)
     oauth.values["state_dir"] = str(paths.oauth_state_path)
     args = cli.build_parser(env).parse_args(

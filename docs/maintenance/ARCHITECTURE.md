@@ -32,13 +32,12 @@ oauth_store.py  encrypted, bounded OAuth grants with exclusive process lock
 oauth_tools.py  FastMCP provider backed by the shared registry/dispatcher
 oauth_http.py   socket admission and read deadlines before request headers
 oauth_boundary.py public input limits, safe errors and SDK log suppression
+rate_limit.py   thread-safe token buckets for public request budgets
 oauth_execution.py bounded shared worker execution without mutation replay
 mcp_stdio.py    local newline-delimited MCP transport over stdin/stdout
-tool_registry.py shared immutable definitions, Actions exposure, effect mapping
+tool_registry.py shared immutable definitions and effect mapping
 tool_schema.py  dependency-free JSON Schema subset validation
 tool_executor.py shared handler invocation and failure classification
-gpt_actions.py  authenticated Actions routing, limits, envelopes, audit metadata
-gpt_openapi.py  deterministic OpenAPI 3.1 generation and registry hash
 canonical.py    body/tag canonicalization + SHA-256 component hashing
 metadata.py     managed Markdown header parse/emit (single-line JSON comment)
 paths.py        cross-platform filename sanitization, traversal guards
@@ -68,7 +67,6 @@ engine:
 ```
 HTTP MCP client ---> MCP HTTP adapter ----+
 Local MCP client --> MCP stdio adapter ---+-> tool registry/executor -> mcp_service -> api -> Joplin
-Custom GPT Action -> Actions HTTP adapter +
 Hosted Claude -----> OAuth MCP adapter ---+
 ```
 
@@ -77,16 +75,16 @@ mutate workspace state. The service layer is transport-independent, so future
 transports can reuse its validation, metadata shaping, relationship handling,
 multipart uploads, and outage behavior.
 
-The agent transports share the same in-process executor. The Actions adapter
+The agent transports share the same in-process executor. The OAuth adapter
 never calls `/mcp`, and HTTP controllers never bypass the registry to call the
-Joplin client directly. Binary resource read/create/update stays available to
-MCP but is explicitly disabled in Actions exposure metadata because its 10 MiB
-contract cannot fit the Actions text/payload limit.
+Joplin client directly. The registry rejects a tool without a known effect or
+with a schema outside the supported JSON Schema subset, so every transport
+publishes the same validated definitions.
 
 GitHub OAuth is installed as part of the standard runtime and activated by
 `mcp serve --github-oauth`. The enabled service uses one Uvicorn
-worker and one listener: legacy `/mcp`, Actions, OAuth `/oauth/mcp`, discovery,
-consent and callbacks. The disabled service retains the existing HTTP runtime;
+worker and one listener: legacy `/mcp`, OAuth `/oauth/mcp`, discovery, consent
+and callbacks. The disabled service retains the existing HTTP runtime;
 stdio never opens an HTTP listener. Both HTTP implementations use the same
 legacy request logic, registry, dispatcher, executor and Joplin service.
 

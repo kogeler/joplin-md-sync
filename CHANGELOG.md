@@ -6,6 +6,66 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-28
+
+This major release removes the ChatGPT Custom GPT Actions interface. OpenAI
+retires Custom GPTs, and their actions with them, on 2026-12-11 for standard
+ChatGPT plans. Hosted Claude, MCP clients and the Markdown workflow are
+unchanged; ChatGPT has no supported interface in this release.
+
+### Removed
+
+- The ChatGPT Actions interface: the `/api/gpt/v1/*` routes, which now return
+  `404`, the `gpt-actions export-openapi` command, the `mcp serve` and
+  `mcp oauth-check` options `--gpt-actions`, `--gpt-actions-token-file`,
+  `--gpt-actions-max-request-bytes`, `--gpt-actions-max-response-chars`,
+  `--gpt-actions-max-concurrency` and `--gpt-actions-rate-limit`, the
+  `gpt_actions_optional_transport` and `gpt_actions_openapi_export`
+  capability flags, the `scripts/prepare_chatgpt_action.py` setup assistant,
+  the `-GptActionsTokenFile` parameter of
+  `examples/windows/install-service-task.ps1`, the ChatGPT Actions guide and
+  its contract assertions, whose IDs `AIF-006`, `AIF-007` and `SEC-006` stay
+  retired.
+- The headless installer no longer generates an Actions bearer token, passes
+  Actions options to the service unit or smoke-tests the Actions route. Once
+  the restarted services pass their checks it deletes the retired
+  `~/.config/joplin-md-sync/gpt-actions-token`; `--clean` removes it as well.
+
+### Changed
+
+- The site, README, package and MCP Registry entry are now titled "Joplin MCP
+  for Claude" and no longer advertise ChatGPT.
+- The installer's MCP smoke test also requires that a request without the
+  bearer token is rejected.
+- The OAuth runtime accepts FastMCP 4.2.
+
+### Migration from 1.x
+
+- Remove every `--gpt-actions*` option from your own `mcp serve` and
+  `mcp oauth-check` command lines, service units and scheduled tasks. Version
+  2.0.0 rejects them as unknown arguments, so a unit that still passes them
+  does not start. Rerun the updated `examples/windows/install-service-task.ps1`
+  to re-register a Windows task.
+- Upgrade a headless installation with the current installer from `main`, for
+  example the quick-runbook command with `--upgrade`. It rewrites the adapter
+  unit without the Actions options before it replaces the executable, and it
+  refuses to keep a 1.x executable behind that unit, including a saved
+  `--joplin-md-sync-version` pin; pass `--joplin-md-sync-version latest`.
+- Do not upgrade to 2.0.0 with an installer from 1.x, such as a saved copy.
+  It still writes the Actions options: with GitHub OAuth enabled its
+  preflight check fails and 1.x keeps running; without OAuth it installs
+  2.0.0, the adapter does not start and both services stay stopped. Rerun the
+  current installer with `--upgrade` to recover.
+- To keep a Custom GPT working until OpenAI retires it, stay on 1.8.1: run the
+  installer from tag `v1.8.1` with `--installer-ref v1.8.1
+  --joplin-md-sync-version 1.8.1` and keep its
+  [Actions guide](https://github.com/kogeler/joplin-md-sync/blob/v1.8.1/docs/user/CHATGPT_ACTIONS.md).
+- After upgrading, delete the Custom GPT or its action, remove the public
+  `/api/gpt/v1/*` route from your reverse proxy or tunnel and delete any
+  Actions token file you created yourself. A 1.x adapter unit restored from an
+  upgrade backup still passes `--gpt-actions*` options; remove them before
+  starting it.
+
 ## [1.8.1] - 2026-11-15
 
 ### Added

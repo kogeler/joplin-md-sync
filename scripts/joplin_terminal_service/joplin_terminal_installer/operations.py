@@ -19,9 +19,11 @@ from .common import (
 from .managed import (
     managed_purge_paths,
     owned_mcp_binary,
+    retired_config_paths,
     validate_purge_paths,
 )
 from .models import InstallPaths
+from .service import adapter_unit_enables_actions
 
 LOG = logging.getLogger("joplin-terminal-installer")
 
@@ -47,11 +49,8 @@ def dry_run_plan(
         )
         LOG.info("dry-run: would preserve profile %s", paths.profile_dir)
         if not args.no_start_service:
-            LOG.info(
-                "dry-run: would restart both services and run Joplin, MCP, and GPT Actions smoke tests"
-            )
-        LOG.info("dry-run: managed GPT Actions token file: %s", paths.gpt_actions_token_file)
-        LOG.info("dry-run: managed MCP token file: %s", paths.mcp_auth_token_file)
+            LOG.info("dry-run: would restart both services and run Joplin and MCP smoke tests")
+        _dry_run_token_files(args, paths)
         return
     if not args.sync_target:
         LOG.info(
@@ -81,11 +80,11 @@ def dry_run_plan(
         "dry-run: would install joplin-md-sync standalone %s",
         args.joplin_md_sync_version,
     )
-    LOG.info("dry-run: would generate missing service tokens and preserve valid existing ones")
+    LOG.info("dry-run: would generate a missing MCP bearer token and preserve a valid one")
     LOG.info("dry-run: would require MCP bearer authentication")
     bind_host = "0.0.0.0" if args.allow_remote_mcp else "127.0.0.1"
     LOG.info(
-        "dry-run: would bind the combined MCP and GPT Actions service to %s:%d",
+        "dry-run: would bind the MCP service to %s:%d",
         bind_host,
         args.mcp_port,
     )
@@ -93,17 +92,35 @@ def dry_run_plan(
     if not args.no_enable_service:
         LOG.info("dry-run: would enable %s and %s", SERVICE_NAME, ADAPTER_SERVICE_NAME)
     if not args.no_start_service:
-        LOG.info(
-            "dry-run: would restart both services and run Joplin, MCP, and GPT Actions smoke tests"
-        )
-    LOG.info("dry-run: managed GPT Actions token file: %s", paths.gpt_actions_token_file)
+        LOG.info("dry-run: would restart both services and run Joplin and MCP smoke tests")
+    _dry_run_token_files(args, paths)
+
+
+def _dry_run_token_files(args: argparse.Namespace, paths: InstallPaths) -> None:
     LOG.info("dry-run: managed MCP token file: %s", paths.mcp_auth_token_file)
+    if adapter_unit_enables_actions(paths):
+        LOG.info(
+            "dry-run: would remove ChatGPT Actions from the installed service, "
+            "which requires joplin-md-sync 2.0.0 or newer"
+        )
+    for path in retired_config_paths(paths):
+        if path.is_symlink() or path.is_file():
+            if args.no_start_service:
+                LOG.info("dry-run: would keep retired file %s; services are not started", path)
+            else:
+                LOG.info(
+                    "dry-run: would remove retired file %s after the services pass their checks",
+                    path,
+                )
 
 
 def dry_run_purge(paths: InstallPaths, env: Mapping[str, str]) -> None:
     validate_purge_paths(paths, env)
     LOG.info("dry-run: would stop and disable %s and %s", ADAPTER_SERVICE_NAME, SERVICE_NAME)
+    retired = retired_config_paths(paths)
     for path in (*managed_purge_paths(paths), paths.state_dir):
+        if path in retired and not (path.exists() or path.is_symlink()):
+            continue
         if path == paths.mcp_binary and not owned_mcp_binary(paths):
             if path.exists() or path.is_symlink():
                 LOG.info("dry-run: would preserve unrecorded executable %s", path)

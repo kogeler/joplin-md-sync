@@ -1,11 +1,10 @@
 # joplin-md-sync Agent Runbook
 
 Safe two-way synchronization between Joplin and ordinary Markdown, with local
-stdio and HTTP MCP, built-in GitHub OAuth for hosted Claude, and ChatGPT Actions
-interfaces for agents. Product
-guarantees are defined only by the [contract catalog](docs/contracts/README.md).
-This runbook tells an agent how to operate the project safely; it does not
-replace those contracts.
+stdio and HTTP MCP and built-in GitHub OAuth for hosted Claude as agent
+interfaces. Product guarantees are defined only by the
+[contract catalog](docs/contracts/README.md). This runbook tells an agent how
+to operate the project safely; it does not replace those contracts.
 
 ## Agent authorization and project language
 
@@ -57,9 +56,9 @@ Native release executables include Python.
 ## Install
 
 ```bash
-python -m pip install "joplin-md-sync==1.8.1"
+python -m pip install "joplin-md-sync==2.0.0"
 # or:
-pipx install "joplin-md-sync==1.8.1"
+pipx install "joplin-md-sync==2.0.0"
 python joplin-md-sync.pyz --help
 ./joplin-md-sync-linux-amd64 version
 ```
@@ -155,9 +154,8 @@ are in the [CLI](docs/contracts/CLI.md),
 ## Agent interfaces
 
 Use the Markdown workspace for broad, reviewable transformations. Use MCP for
-immediate structured Joplin operations. Use authenticated Actions for a private
-Custom GPT and the built-in GitHub OAuth interface for hosted Claude. Choose
-deliberately with
+immediate structured Joplin operations and the built-in GitHub OAuth interface
+for hosted Claude. Choose deliberately with
 [Choose an agent interface](docs/user/AGENT_INTERFACES.md).
 
 The foreground server listens on `http://127.0.0.1:8765/mcp` by default and
@@ -174,13 +172,12 @@ Desktop is already running. Configure its process argument vector with
 use exactly one of the two, because both together are rejected. Add
 `--port PORT` only when Joplin does not use the default `41184`. The older
 `mcp stdio --token TOKEN` form still works but exposes the token in the IDE
-configuration and the process list. This mode opens no MCP, Actions, health, or
+configuration and the process list. This mode opens no MCP, health, or
 readiness port and needs no bearer credential for those interfaces.
 
 Setup and operation:
 
 - [MCP API](docs/user/MCP_API.md)
-- [ChatGPT Actions](docs/user/CHATGPT_ACTIONS.md)
 - [Claude connector](docs/user/CLAUDE_CONNECTOR.md)
 - [Self-hosted deployment](docs/user/SELF_HOSTED.md)
 - [Joplin Headless Service](docs/user/JOPLIN_HEADLESS_SERVICE.md)
@@ -218,12 +215,12 @@ Review [Conflict handling](docs/user/CONFLICTS.md) before selecting a side.
 - Pull before editing; review `diff` and `push --dry-run` before pushing.
 - Never resolve a conflict by manipulating its bundle directly.
 - Never access Joplin's database, profile, or sync target directly.
-- Never put Joplin, MCP, Actions, GitHub OAuth, sync, or encryption
-  credentials in Git, chat, logs, or process arguments. Configure local
+- Never put Joplin, MCP, GitHub OAuth, sync, or encryption credentials in
+  Git, chat, logs, or process arguments. Configure local
   `mcp stdio` with `--token-file` or `JOPLIN_TOKEN`; its `--token` form exists
   only for older IDE configurations.
 - Never expose the Joplin Data API to a public network.
-- Do not interleave direct MCP/Actions writes with unpushed Markdown edits.
+- Do not interleave direct MCP writes with unpushed Markdown edits.
 
 The public documentation site is built from `docs/` with `mkdocs.yml` and is
 published at <https://joplin-mcp.romancello.net/>. Documentation ownership and

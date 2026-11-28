@@ -47,8 +47,8 @@ Terminal, unlocks existing E2EE state, and verifies Data API health.
 
 The installer creates two user services. `joplin-terminal.service` owns the
 Joplin profile and private Data API. `joplin-md-sync.service` depends on it and
-exposes the authenticated combined MCP and Actions listener. Keep the backend
-credential, MCP bearer, and Actions bearer as separate trust domains.
+exposes the authenticated combined MCP and OAuth listener. Keep the backend
+credential, MCP bearer, and OAuth secrets as separate trust domains.
 
 ## Automated tests
 

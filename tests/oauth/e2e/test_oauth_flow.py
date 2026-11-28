@@ -41,16 +41,13 @@ class RunningApplication:
         self.listener_file = directory / "listener-port"
         self.proxy = HttpsProxy(self.port, directory)
         self.mcp_token = secrets.token_urlsafe(32)
-        self.actions_token = secrets.token_urlsafe(32)
         self.joplin_token_file = protected_file(directory / "joplin-token", joplin_token)
         self.mcp_token_file = protected_file(directory / "mcp-token", self.mcp_token)
-        self.actions_token_file = protected_file(directory / "actions-token", self.actions_token)
         self.oauth = OAuthArguments(directory, self.proxy.origin)
         self.clock = protected_file(directory / "clock-offset", "0")
         self.log_canaries = {
             joplin_token,
             self.mcp_token,
-            self.actions_token,
             "fixture-secret",
             self.oauth.signing_path.read_text().strip(),
             "created fixture body",
@@ -103,9 +100,6 @@ class RunningApplication:
             str(self.joplin_token_file),
             "--auth-token-file",
             str(self.mcp_token_file),
-            "--gpt-actions",
-            "--gpt-actions-token-file",
-            str(self.actions_token_file),
             "--mcp-port",
             "8765",
             "--base-url",
@@ -478,20 +472,12 @@ def test_mixed_interface_create_race_and_credential_isolation(app):
     first_write, overlapped = threading.Lock(), []
 
     def hold_first_write(method, path, query):
-        # Keep the first create open until all three interface requests have
+        # Keep the first create open until all three create requests have
         # reached the server, so the shared create lock is actually contended.
         if method == "POST" and path == "/notes" and first_write.acquire(blocking=False):
             overlapped.append(app.proxy.wait_forwarded(baseline + 3, timeout=5))
 
     def create(interface):
-        if interface == "actions":
-            response = app.client.post(
-                "/api/gpt/v1/tools/joplin_create_note",
-                json=arguments,
-                headers={"Authorization": "Bearer " + app.actions_token},
-            )
-            assert response.status_code in {200, 409}
-            return response.status_code == 200
         result = app.rpc(
             oauth_token if interface == "oauth" else app.mcp_token,
             "tools/call",
@@ -505,18 +491,14 @@ def test_mixed_interface_create_race_and_credential_isolation(app):
     app.backend.set_before_request(hold_first_write)
     try:
         with ThreadPoolExecutor(max_workers=3) as pool:
-            assert sum(pool.map(create, ("oauth", "legacy", "actions"))) == 1
+            assert sum(pool.map(create, ("oauth", "legacy", "oauth"))) == 1
     finally:
         app.backend.set_before_request(None)
     assert overlapped == [True], "The three create requests did not overlap"
     assert len(app.backend.store.notes) == 1
 
-    for path, accepted in (
-        ("/mcp", app.mcp_token),
-        ("/oauth/mcp", oauth_token),
-        ("/api/gpt/v1/tools/joplin_create_note", app.actions_token),
-    ):
-        for credential in (app.mcp_token, app.actions_token, oauth_token, TOKEN, "fixture-secret"):
+    for path, accepted in (("/mcp", app.mcp_token), ("/oauth/mcp", oauth_token)):
+        for credential in (app.mcp_token, oauth_token, TOKEN, "fixture-secret"):
             if credential != accepted:
                 assert (
                     app.client.post(
