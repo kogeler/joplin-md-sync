@@ -63,8 +63,8 @@ lists the file checks and error cases.
 The IDE launches one process, writes newline-delimited JSON-RPC to stdin, and
 reads JSON-RPC from stdout. Closing stdin stops the process. No TCP MCP port,
 MCP bearer credential, or Markdown workspace is involved. It also exposes no
-GPT Actions, health, or readiness HTTP routes, so their bearer options are not
-accepted. Diagnostics remain on stderr.
+health or readiness HTTP routes, so the HTTP bearer option is not accepted.
+Diagnostics remain on stderr.
 
 Existing configurations with `"--token", "<Joplin Web Clipper token>"` keep
 working, but that form stores the token in the IDE configuration, shows it in
@@ -94,14 +94,13 @@ Joplin is resolved with the normal connection precedence. `--base-url`,
 `--port`, `--token-file`, `--timeout`, and `--allow-remote-api` configure the
 upstream Joplin connection. They do not configure the MCP listener.
 
-The listener also routes GPT Actions in the same process when enabled. MCP
-discovery/calls and Actions operations use one immutable tool
-registry, validator, executor, service, and Joplin client factory. Actions do
-not issue JSON-RPC or make a loopback call to `/mcp`. Actions configuration
-does not change the MCP endpoint, headers, or authentication semantics.
+When GitHub OAuth is enabled, the same listener also serves `/oauth/mcp`.
+Both endpoints use one immutable tool registry, validator, executor, service,
+and Joplin client factory, and OAuth does not change the `/mcp` endpoint,
+headers, or authentication semantics.
 
 `GET /healthz` and `GET /readyz` return only `{"ok": true}` and no credentials
-or Joplin data. They are not part of either client protocol. A publishing layer
+or Joplin data. They are not part of the MCP protocol. A publishing layer
 for the whole shared listener may expose them; clients must not treat them as
 an authentication check.
 
@@ -167,8 +166,7 @@ Name comparison trims surrounding whitespace, uses Unicode NFC, and is
 case-insensitive. The check includes notes and notebooks in trash. An error
 contains `details.existing_ids`, `details.existing_id` when there is one match,
 and `details.recommended_tool`. It is non-retryable and causes no create-side
-effect. MCP returns it as an `isError: true` tool result; the same shared error
-is HTTP `409 Conflict` through GPT Actions.
+effect. MCP returns it as an `isError: true` tool result.
 
 Use the returned ID with the corresponding update tool. When a required
 replacement cannot be expressed as an update, first rename the old object,
@@ -228,8 +226,8 @@ Relevant tuning options:
 
 ## Authorization behavior
 
-MCP bearer authentication is optional and independent of the required Actions
-credential. When configured, the token file is re-read for every request and
+MCP bearer authentication is optional and independent of the Joplin token and
+OAuth credentials. When configured, the token file is re-read for every request and
 clients send `Authorization: Bearer <secret>`. Missing or invalid credentials
 return `401`. The file must be a protected, current-user-owned regular file
 containing one URL-safe Base64 token that encodes at least 32 bytes;
@@ -237,5 +235,5 @@ generate it with `secrets.token_urlsafe(32)`. Symlinks, weak or oversized
 tokens, insecure POSIX modes or Windows ACLs, non-ASCII headers, and duplicate
 Authorization headers are rejected. Browser-originated requests are also checked against the
 allowed Origin set. The [Joplin Headless Service installer](JOPLIN_HEADLESS_SERVICE.md)
-generates these tokens automatically and documents listener binding and
+generates this token automatically and documents listener binding and
 operational commands.

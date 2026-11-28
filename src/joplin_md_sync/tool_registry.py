@@ -1,9 +1,7 @@
-"""Shared Joplin tool definitions and Actions exposure metadata."""
+"""Shared Joplin tool definitions for every agent interface."""
 
 from __future__ import annotations
 
-import re
-import urllib.parse
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -14,11 +12,7 @@ from joplin_md_sync.tool_schema import mutable_json, validate_schema_definition
 
 JsonObject = dict[str, Any]
 ToolHandler = Callable[[Mapping[str, object]], JsonObject]
-ActionExposure = Literal["auto", "disabled"]
 ToolEffect = Literal["read", "write", "destructive", "unknown"]
-
-_SAFE_ROUTE = re.compile(r"^[A-Za-z0-9._~-]+$")
-_OPERATION_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 
 def _freeze(value: object) -> object:
@@ -37,8 +31,6 @@ class ToolDefinition:
     input_schema: Mapping[str, object]
     annotations: Mapping[str, object]
     handler: ToolHandler
-    action_exposure: ActionExposure
-    action_exposure_reason: str | None
     output_schema: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
@@ -74,18 +66,6 @@ def tool_effect(tool: ToolDefinition) -> ToolEffect:
     return "unknown"
 
 
-def action_route(tool: ToolDefinition) -> str:
-    if _SAFE_ROUTE.fullmatch(tool.name):
-        return tool.name
-    return urllib.parse.quote(tool.name, safe="-._~")
-
-
-def operation_id(tool: ToolDefinition) -> str:
-    if not _OPERATION_ID.fullmatch(tool.name):
-        raise ValueError(f"tool {tool.name!r} is not a supported Actions operationId")
-    return tool.name
-
-
 class ToolRegistry:
     """Immutable ordered registry and exact-name lookup."""
 
@@ -93,52 +73,22 @@ class ToolRegistry:
         if not definitions:
             raise ValueError("tool registry must not be empty")
         by_name: dict[str, ToolDefinition] = {}
-        routes: dict[str, str] = {}
-        operation_ids: dict[str, str] = {}
         for tool in definitions:
             if not tool.name or tool.name in by_name:
                 raise ValueError(f"duplicate or empty tool name: {tool.name!r}")
-            if tool.action_exposure not in {"auto", "disabled"}:
-                raise ValueError(f"tool {tool.name} is missing valid Actions exposure metadata")
-            if tool.action_exposure == "disabled":
-                if not tool.action_exposure_reason:
-                    raise ValueError(f"disabled tool {tool.name} requires a reason")
-            elif tool.action_exposure_reason is not None:
-                raise ValueError(f"exposed tool {tool.name} must not have a disabled reason")
-            effect = tool_effect(tool)
-            if tool.action_exposure == "auto":
-                if effect == "unknown":
-                    raise ValueError(f"exposed tool {tool.name} has unknown effect annotations")
-                validate_schema_definition(tool.input_schema, path=f"tool {tool.name}")
-                route = action_route(tool)
-                previous = routes.get(route)
-                if previous is not None:
-                    raise ValueError(f"Actions route collision: {previous} and {tool.name}")
-                routes[route] = tool.name
-                op_id = operation_id(tool)
-                previous = operation_ids.get(op_id)
-                if previous is not None:
-                    raise ValueError(f"Actions operationId collision: {previous} and {tool.name}")
-                operation_ids[op_id] = tool.name
+            if tool_effect(tool) == "unknown":
+                raise ValueError(f"tool {tool.name} has unknown effect annotations")
+            validate_schema_definition(tool.input_schema, path=f"tool {tool.name}")
             by_name[tool.name] = tool
         self._definitions = definitions
         self._by_name = MappingProxyType(by_name)
-        self._exposed = tuple(tool for tool in definitions if tool.action_exposure == "auto")
-        self._by_route = MappingProxyType({action_route(tool): tool for tool in self._exposed})
 
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self._definitions
 
-    @property
-    def exposed(self) -> tuple[ToolDefinition, ...]:
-        return self._exposed
-
     def get(self, name: str) -> ToolDefinition | None:
         return self._by_name.get(name)
-
-    def get_by_action_route(self, route: str) -> ToolDefinition | None:
-        return self._by_route.get(route)
 
     def __iter__(self) -> Iterator[ToolDefinition]:
         return iter(self._definitions)
@@ -221,7 +171,7 @@ class _ToolRegistryBuilder:
         self._service = service
 
     def _build_tools(self) -> tuple[ToolDefinition, ...]:
-        def exposed(
+        def tool(
             name: str,
             title: str,
             description: str,
@@ -229,36 +179,7 @@ class _ToolRegistryBuilder:
             annotations: JsonObject,
             handler: ToolHandler,
         ) -> ToolDefinition:
-            return ToolDefinition(
-                name,
-                title,
-                description,
-                input_schema,
-                annotations,
-                handler,
-                action_exposure="auto",
-                action_exposure_reason=None,
-            )
-
-        def disabled(
-            reason: str,
-            name: str,
-            title: str,
-            description: str,
-            input_schema: JsonObject,
-            annotations: JsonObject,
-            handler: ToolHandler,
-        ) -> ToolDefinition:
-            return ToolDefinition(
-                name,
-                title,
-                description,
-                input_schema,
-                annotations,
-                handler,
-                action_exposure="disabled",
-                action_exposure_reason=reason,
-            )
+            return ToolDefinition(name, title, description, input_schema, annotations, handler)
 
         read_only = {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}
         write = {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True}
@@ -275,7 +196,7 @@ class _ToolRegistryBuilder:
             "openWorldHint": True,
         }
         return (
-            exposed(
+            tool(
                 "joplin_list_notebooks",
                 "List Joplin notebooks",
                 "List notebooks and their parent relationships. Use this to obtain parent_id values.",
@@ -288,7 +209,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_notebooks,
             ),
-            exposed(
+            tool(
                 "joplin_get_notebook",
                 "Read a Joplin notebook",
                 "Read notebook metadata, including parent, icon, timestamps, and trash state.",
@@ -296,7 +217,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._get_notebook,
             ),
-            exposed(
+            tool(
                 "joplin_create_notebook",
                 "Create a Joplin notebook",
                 (
@@ -324,7 +245,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.create_notebook,
             ),
-            exposed(
+            tool(
                 "joplin_update_notebook",
                 "Update a Joplin notebook",
                 "Rename, move, or update metadata of a notebook.",
@@ -349,7 +270,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.update_notebook,
             ),
-            exposed(
+            tool(
                 "joplin_delete_notebook",
                 "Move a Joplin notebook to trash",
                 "Move a notebook to Joplin trash. Permanent deletion is not exposed.",
@@ -357,7 +278,7 @@ class _ToolRegistryBuilder:
                 destructive,
                 self._delete_notebook,
             ),
-            exposed(
+            tool(
                 "joplin_restore_notebook",
                 "Restore a Joplin notebook",
                 "Restore a trashed notebook by clearing its deleted state.",
@@ -365,7 +286,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._restore_notebook,
             ),
-            exposed(
+            tool(
                 "joplin_list_notebook_notes",
                 "List notes in a Joplin notebook",
                 "List notes directly contained in one notebook.",
@@ -381,7 +302,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_notebook_notes,
             ),
-            exposed(
+            tool(
                 "joplin_list_notes",
                 "List Joplin notes",
                 "List note IDs and core metadata without loading note bodies.",
@@ -395,7 +316,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_notes,
             ),
-            exposed(
+            tool(
                 "joplin_get_note",
                 "Read a Joplin note",
                 "Read Markdown body, tags, notebook, timestamps, todo fields, and source metadata.",
@@ -403,7 +324,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._get_note,
             ),
-            exposed(
+            tool(
                 "joplin_create_note",
                 "Create a Joplin note",
                 (
@@ -429,7 +350,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.create_note,
             ),
-            exposed(
+            tool(
                 "joplin_update_note",
                 "Update a Joplin note",
                 "Update only supplied content or metadata fields; tags replace the complete tag set.",
@@ -439,7 +360,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.update_note,
             ),
-            exposed(
+            tool(
                 "joplin_delete_note",
                 "Move a Joplin note to trash",
                 "Move a note to Joplin trash. Permanent deletion is not exposed.",
@@ -447,7 +368,7 @@ class _ToolRegistryBuilder:
                 destructive,
                 self._delete_note,
             ),
-            exposed(
+            tool(
                 "joplin_restore_note",
                 "Restore a Joplin note",
                 "Restore a trashed note by clearing its deleted state.",
@@ -455,7 +376,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._restore_note,
             ),
-            exposed(
+            tool(
                 "joplin_search_notes",
                 "Search Joplin notes",
                 (
@@ -487,7 +408,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.search_notes,
             ),
-            exposed(
+            tool(
                 "joplin_list_tags",
                 "List Joplin tags",
                 "List tag IDs, titles, and timestamps.",
@@ -495,7 +416,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_tags,
             ),
-            exposed(
+            tool(
                 "joplin_get_tag",
                 "Read a Joplin tag",
                 "Read one tag and its metadata.",
@@ -503,7 +424,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._get_tag,
             ),
-            exposed(
+            tool(
                 "joplin_create_tag",
                 "Create a Joplin tag",
                 (
@@ -514,7 +435,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._create_tag,
             ),
-            exposed(
+            tool(
                 "joplin_update_tag",
                 "Rename a Joplin tag",
                 "Update the title of a tag.",
@@ -525,7 +446,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.update_tag,
             ),
-            exposed(
+            tool(
                 "joplin_delete_tag",
                 "Delete a Joplin tag",
                 "Permanently delete a tag and its note associations; Joplin has no tag trash.",
@@ -533,7 +454,7 @@ class _ToolRegistryBuilder:
                 permanent_destructive,
                 self._delete_tag,
             ),
-            exposed(
+            tool(
                 "joplin_list_tag_notes",
                 "List notes with a Joplin tag",
                 "List notes associated with one tag.",
@@ -541,7 +462,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_tag_notes,
             ),
-            exposed(
+            tool(
                 "joplin_add_tag_to_note",
                 "Add a Joplin tag to a note",
                 "Attach one tag without replacing the note's other tags.",
@@ -552,7 +473,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.add_tag_to_note,
             ),
-            exposed(
+            tool(
                 "joplin_remove_tag_from_note",
                 "Remove a Joplin tag from a note",
                 "Detach one tag without changing the note's other tags.",
@@ -563,7 +484,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.remove_tag_from_note,
             ),
-            exposed(
+            tool(
                 "joplin_list_resources",
                 "List Joplin resources",
                 "List attachment metadata without downloading binary content.",
@@ -571,7 +492,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_resources,
             ),
-            exposed(
+            tool(
                 "joplin_get_resource",
                 "Read Joplin resource metadata",
                 "Read attachment metadata without downloading binary content.",
@@ -579,8 +500,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._get_resource,
             ),
-            disabled(
-                "Base64 binary content can exceed the GPT Actions text and payload limits.",
+            tool(
                 "joplin_read_resource",
                 "Read Joplin resource content",
                 "Read attachment metadata and up to 10 MiB of content encoded as base64.",
@@ -588,8 +508,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._read_resource,
             ),
-            disabled(
-                "Base64 binary content can exceed the GPT Actions text and payload limits.",
+            tool(
                 "joplin_create_resource",
                 "Create a Joplin resource",
                 (
@@ -609,8 +528,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.create_resource,
             ),
-            disabled(
-                "Base64 binary content can exceed the GPT Actions text and payload limits.",
+            tool(
                 "joplin_update_resource",
                 "Update a Joplin resource",
                 "Update attachment metadata and optionally replace its base64 binary content.",
@@ -627,7 +545,7 @@ class _ToolRegistryBuilder:
                 write,
                 self._service.update_resource,
             ),
-            exposed(
+            tool(
                 "joplin_delete_resource",
                 "Delete a Joplin resource",
                 "Permanently delete an attachment; Joplin has no resource trash.",
@@ -635,7 +553,7 @@ class _ToolRegistryBuilder:
                 permanent_destructive,
                 self._delete_resource,
             ),
-            exposed(
+            tool(
                 "joplin_list_note_resources",
                 "List resources in a Joplin note",
                 "List attachment metadata referenced by one note.",
@@ -643,7 +561,7 @@ class _ToolRegistryBuilder:
                 read_only,
                 self._service.list_note_resources,
             ),
-            exposed(
+            tool(
                 "joplin_list_resource_notes",
                 "List notes using a Joplin resource",
                 "List notes that reference one attachment.",
@@ -707,5 +625,5 @@ class _ToolRegistryBuilder:
 
 
 def build_tool_registry(service: JoplinMcpService) -> ToolRegistry:
-    """Build the one registry shared by MCP discovery and GPT Actions."""
+    """Build the one registry shared by every MCP transport."""
     return ToolRegistry(_ToolRegistryBuilder(service)._build_tools())

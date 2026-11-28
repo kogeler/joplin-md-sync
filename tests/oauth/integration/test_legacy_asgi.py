@@ -1,4 +1,4 @@
-"""Execute the existing MCP/Actions assertions through the single ASGI listener."""
+"""Execute the existing MCP assertions through the single ASGI listener."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from joplin_md_sync.http_app import CombinedHttpApp
 from joplin_md_sync.legacy_asgi import LegacyAsgiApp, LegacyContext
 from joplin_md_sync.mcp_server import BearerTokenSource
 from joplin_md_sync.oauth_http import BoundedH11Protocol
-from tests.integration import test_gpt_actions, test_mcp_server
+from tests.integration import test_mcp_server
 from tests.oauth.fake_github import MockGitHub
 from tests.oauth.integration.test_provider_flow import application
 
@@ -28,7 +28,6 @@ class AsgiTestServer(LegacyContext):
         endpoint="/mcp",
         token_source=None,
         allowed_origins=frozenset(),
-        actions_transport=None,
         max_http_connections=16,
         connection_timeout=15.0,
     ):
@@ -41,7 +40,6 @@ class AsgiTestServer(LegacyContext):
             endpoint,
             token_source or BearerTokenSource(None),
             allowed_origins,
-            actions_transport,
             self.socket.getsockname(),
         )
         self.workers = ThreadPoolExecutor(max_workers=max_http_connections)
@@ -92,11 +90,3 @@ class McpAsgiTest(test_mcp_server.McpHttpTest):
         while not server.runtime.server_state.connections:
             assert time.monotonic() < deadline, "Connection was not admitted"
             time.sleep(0.01)
-
-
-class ActionsAsgiTest(test_gpt_actions.GptActionsHttpTest):
-    server_factory = staticmethod(AsgiTestServer)
-
-    def setUp(self) -> None:
-        super().setUp()
-        assert isinstance(self.httpd, AsgiTestServer)

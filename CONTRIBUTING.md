@@ -60,9 +60,9 @@ package/checkout/metadata, and `make verify-release` enforces that
 - One logical change per PR; add or extend tests for observable behavior
   (not implementation details).
 - `make check` and `make verify-release` must pass on Python 3.13 and 3.14.
-- `make test-live` provisions an isolated Joplin Desktop and runs the MCP and
-  Actions protocol checks locally and in Linux CI; it never uses your notes
-  or the ignored `./token` file.
+- `make test-live` provisions an isolated Joplin Desktop and runs the MCP
+  protocol checks locally and in Linux CI; it never uses your notes or the
+  ignored `./token` file.
 - Add release-worthy changes to the existing `## [Unreleased]` section of
   `CHANGELOG.md` and keep `.version` unchanged. Changing the changelog
   lets CI generate the PR description. Never manually write or edit its body,

@@ -16,7 +16,7 @@ consistency boundary intact.
 | Workflow | Best for | Review boundary | Writes |
 | --- | --- | --- | --- |
 | Markdown workspace | Multi-file edits, project-aware transformations, Git history, exact previews | Three-way diff and push dry-run | Deferred until explicit push |
-| MCP or Actions | Search, targeted CRUD, tags, notebooks, attachments, conversational access | Client/tool request and returned result | Immediate |
+| MCP or the Claude connector | Search, targeted CRUD, tags, notebooks, attachments, conversational access | Client/tool request and returned result | Immediate |
 
 Do not interleave direct MCP writes with unpushed local edits. After any direct
 write, pull again before the next file-editing session.
@@ -74,7 +74,7 @@ Commit managed `.md` files and `.joplin-folder.json` after a verified push.
 Never commit:
 
 - `.joplin-sync/`;
-- a Joplin, MCP, Actions, sync, or encryption credential;
+- a Joplin, MCP, GitHub OAuth, sync, or encryption credential;
 - the locally installed standalone binary; or
 - generated backups, conflicts, quarantine, or downloaded resources.
 

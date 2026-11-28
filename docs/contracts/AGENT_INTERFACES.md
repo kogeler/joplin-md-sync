@@ -1,6 +1,6 @@
 ---
-title: "MCP, OAuth and Actions interface contract"
-description: "Normative MCP, Claude OAuth and ChatGPT Actions behavior: shared tool registry, transports, authentication, rate limits and resource limits."
+title: "MCP and OAuth interface contract"
+description: "Normative MCP and Claude OAuth behavior: shared tool registry, transports, authentication, rate limits and resource limits."
 ---
 
 <!-- Copyright (c) 2026 kogeler. SPDX-License-Identifier: MIT. -->
@@ -11,25 +11,29 @@ description: "Normative MCP, Claude OAuth and ChatGPT Actions behavior: shared t
 
 ### `AIF-001` - One immutable registry owns every agent operation
 
-**Contract:** MCP and GPT Actions MUST derive tool names, schemas, effects,
-handlers, and exposure from one ordered immutable registry and invoke handlers
-through one validating executor. HTTP adapters MUST NOT maintain a second
-operation list or bypass schema validation and failure classification.
+**Contract:** Every MCP transport MUST derive tool names, schemas, effects,
+and handlers from one ordered immutable registry and invoke handlers through
+one validating executor. Every registered tool MUST declare a known read,
+write, or destructive effect and use only the supported JSON Schema subset.
+HTTP adapters MUST NOT maintain a second operation list or bypass schema
+validation and failure classification.
 
 **Evidence:**
 
 - [`test_registry_is_ordered_exact_and_deeply_immutable`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_registry_is_ordered_exact_and_deeply_immutable`
-- [`test_effect_and_route_are_centralized`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_effect_and_route_are_centralized`
+- [`test_registry_rejects_duplicates_bad_effects_and_unsupported_schemas`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_registry_rejects_duplicates_bad_effects_and_unsupported_schemas`
+- [`test_registry_builds_every_tool_with_effects_matching_their_names`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_registry_builds_every_tool_with_effects_matching_their_names`
+- [`test_effect_is_centralized`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_effect_is_centralized`
 - [`test_executor_validates_and_preserves_domain_errors`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_executor_validates_and_preserves_domain_errors`
-- [`test_generated_operations_match_exposed_registry`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_generated_operations_match_exposed_registry`
+- [`test_lifecycle_and_transport_contract`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_lifecycle_and_transport_contract`
+- [`test_owner_crud_refresh_restart_and_revoke`](../../tests/oauth/e2e/test_oauth_flow.py) - `tests/oauth/e2e/test_oauth_flow.py::test_owner_crud_refresh_restart_and_revoke`
 
 ### `AIF-002` - MCP follows its advertised HTTP and stdio lifecycles
 
 **Contract:** `mcp serve` MUST expose MCP Streamable HTTP on loopback `/mcp` by
 default. `mcp stdio` MUST exchange one JSON-RPC message per line over
-stdin/stdout, write no non-protocol content to stdout, open no MCP, Actions,
-health, or readiness listener, require no bearer credential for those absent
-interfaces, and stop cleanly at stdin EOF. Both transports MUST negotiate only supported protocol versions,
+stdin/stdout, write no non-protocol content to stdout, open no MCP, health, or
+readiness listener, require no bearer credential for those absent interfaces, and stop cleanly at stdin EOF. Both transports MUST negotiate only supported protocol versions,
 implement initialize/initialized, tools/list, and tools/call, and return both
 text content and `structuredContent`. The server MUST advertise both transports
 through CLI capabilities and MUST NOT require a Markdown workspace.
@@ -66,10 +70,7 @@ and mutation MUST be serialized within one bridge process.
 - [`test_notebook_title_resolves_only_one_root_destination`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_notebook_title_resolves_only_one_root_destination`
 - [`test_concurrent_note_create_allows_exactly_one_object`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_concurrent_note_create_allows_exactly_one_object`
 - [`test_create_rejects_matching_trashed_note_and_notebook`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_create_rejects_matching_trashed_note_and_notebook`
-- [`test_existing_note_create_returns_conflict_with_update_target`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_existing_note_create_returns_conflict_with_update_target`
-- [`test_ambiguous_notebook_title_returns_candidate_ids`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_ambiguous_notebook_title_returns_candidate_ids`
 - [`test_02_explicit_creates_reject_existing_natural_identities`](../../tests_live/test_mcp_live.py) - `tests_live/test_mcp_live.py::LiveMcpTest::test_02_explicit_creates_reject_existing_natural_identities`
-- [`test_02_explicit_creates_reject_existing_natural_identities`](../../tests_live/test_gpt_actions_live.py) - `tests_live/test_gpt_actions_live.py::LiveGptActionsTest::test_02_explicit_creates_reject_existing_natural_identities`
 
 ### `AIF-004` - Invalid operations fail before side effects
 
@@ -82,7 +83,7 @@ domain errors rather than transport crashes or partial writes.
 
 - [`test_schema_definition_and_instance_validation`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_schema_definition_and_instance_validation`
 - [`test_entity_and_content_validation_errors_are_structured`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_entity_and_content_validation_errors_are_structured`
-- [`test_http_and_schema_validation_precede_side_effects`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_http_and_schema_validation_precede_side_effects`
+- [`test_schema_validation_precedes_side_effects`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_schema_validation_precedes_side_effects`
 
 ### `AIF-005` - Joplin outages do not terminate the bridge
 
@@ -97,47 +98,16 @@ non-retryable and exposed for operator inspection.
 - [`test_joplin_outage_is_retryable_tool_error_and_server_recovers`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_joplin_outage_is_retryable_tool_error_and_server_recovers`
 - [`test_executor_classifies_expected_failures`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_executor_classifies_expected_failures`
 
-### `AIF-006` - Actions authentication is independent and fail-closed
-
-**Contract:** GPT Actions MUST remain disabled unless explicitly enabled with
-a dedicated protected bearer file. Authentication MUST occur before route
-lookup, files MUST be re-read per request for rotation, malformed or duplicate
-authorization MUST fail closed, and Joplin, MCP, and Actions credentials MUST
-remain independent.
-
-**Evidence:**
-
-- [`test_authentication_is_uniform_independent_and_rotatable`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_authentication_is_uniform_independent_and_rotatable`
-- [`test_malformed_and_duplicate_authorization_fail_closed`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_malformed_and_duplicate_authorization_fail_closed`
-- [`test_route_is_fail_closed_and_auth_hides_route_details`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_route_is_fail_closed_and_auth_hides_route_details`
-- [`test_mcp_actions_and_joplin_credentials_are_independent`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_mcp_actions_and_joplin_credentials_are_independent`
-
-### `AIF-007` - OpenAPI is generated, deterministic, and secret-free
-
-**Contract:** The Actions OpenAPI 3.1 document MUST be generated from the
-exposed registry for one strict production HTTPS origin. It MUST be
-deterministic and contain no credential, note data, local path, upstream Joplin
-URL, MCP route, or health route. Disabled operations MUST not be exported.
-
-**Evidence:**
-
-- [`test_contract_is_deterministic_and_secret_free`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_contract_is_deterministic_and_secret_free`
-- [`test_production_server_url_is_strict`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_production_server_url_is_strict`
-- [`test_cli_exports_contract_and_advertises_optional_transport`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_cli_exports_contract_and_advertises_optional_transport`
-
 ### `AIF-008` - Public transports enforce bounded resource use
 
-**Contract:** MCP and Actions MUST bound request size, decoded resource size,
-JSON nesting, active handlers, and stalled connections. Actions MUST also
-bound response size, concurrent execution, and authenticated request rate.
-Oversized successful write results MAY be replaced by an explicit omitted
-result but MUST NOT be reported as a failed write.
+**Contract:** MCP MUST bound request size, decoded resource size, JSON
+nesting, active handlers, and stalled connections, and MUST reject an oversized
+request or resource before any side effect.
 
 **Evidence:**
 
 - [`test_pre_auth_connection_count_is_bounded`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_pre_auth_connection_count_is_bounded`
-- [`test_request_limit_and_result_limit_semantics`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_request_limit_and_result_limit_semantics`
-- [`test_concurrency_capacity_and_authenticated_rate_limit`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_concurrency_capacity_and_authenticated_rate_limit`
+- [`test_request_and_decoded_resource_sizes_are_bounded`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_request_and_decoded_resource_sizes_are_bounded`
 - [`test_json_nesting_limit_is_independent_of_parser_recursion_behavior`](../../tests/unit/test_json_safety.py) - `tests/unit/test_json_safety.py::test_json_nesting_limit_is_independent_of_parser_recursion_behavior`
 
 ### `AIF-009` - Standard GitHub OAuth shares one listener and tool executor
@@ -145,7 +115,7 @@ result but MUST NOT be reported as a failed write.
 **Contract:** The standard package and native executable MUST include the
 GitHub OAuth runtime. `mcp serve --github-oauth` MUST enable
 `/oauth/mcp` and OAuth endpoints on the existing listener and port, preserving
-legacy MCP and Actions authentication. OAuth tools MUST use the common registry,
+legacy MCP authentication. OAuth tools MUST use the common registry,
 dispatcher, executor and Joplin service with the same schemas, annotations and
 structured results. Concurrent creates across all interfaces MUST retain the
 existing duplicate prevention. The OAuth transport MUST remain stateless and

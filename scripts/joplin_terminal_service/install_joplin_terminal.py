@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 DEFAULT_REF = "main"
-BUNDLE_MANIFEST_SHA256 = "02aba062c404e3f9a95bf4f280d9f06f3398248c481a32e4143b74f56d5eb7d5"
+BUNDLE_MANIFEST_SHA256 = "72490be68b486f269da72a3ee87689be243ea840b31faf7a5afe6e14fae3f18b"
 PACKAGE = "joplin_terminal_installer"
 MAX_FILE_BYTES = 1024 * 1024
 MAX_BUNDLE_BYTES = 8 * 1024 * 1024

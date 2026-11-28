@@ -121,7 +121,6 @@ class InstallPaths:
     mcp_binary: Path
     mcp_config_dir: Path
     mcp_auth_token_file: Path
-    gpt_actions_token_file: Path
     state_dir: Path
     lock_file: Path
     deploy_dir: Path

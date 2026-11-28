@@ -117,7 +117,6 @@ def main(executable: Path) -> None:
         private(paths.token_file, secrets.token_urlsafe(32))
         bearer = secrets.token_urlsafe(32)
         private(paths.mcp_auth_token_file, bearer)
-        private(paths.gpt_actions_token_file, secrets.token_urlsafe(32))
         secret = private(root / "github-secret", secrets.token_urlsafe(32))
         signing = private(root / "signing-key", base64.urlsafe_b64encode(os.urandom(32)).decode())
         shutil.copy2(executable, paths.mcp_binary)
@@ -229,7 +228,8 @@ def main(executable: Path) -> None:
                 "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, bearer
             )
             assert status == 200 and json.loads(body)["result"]["tools"]
-            assert request("/api/gpt/v1/tools/__probe__", {})[0] == 401
+            # 2.0.0 removed the 1.x ChatGPT Actions routes.
+            assert request("/api/gpt/v1/tools/__probe__", {})[0] == 404
             status, headers, _ = request("/oauth/mcp", {})
             assert status == (401 if enabled else 404)
             if enabled:

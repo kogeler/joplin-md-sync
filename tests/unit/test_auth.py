@@ -24,7 +24,6 @@ from joplin_md_sync.auth import (
     windows_acl_problem,
 )
 from joplin_md_sync.errors import AuthError
-from joplin_md_sync.gpt_actions import ActionsTokenSource
 from joplin_md_sync.mcp_server import BearerTokenSource
 
 TOKEN = "dG9rZW4tdG9rZW4tdG9rZW4tdG9rZW4tMDEyMzQ1Njc4OWFiY2RlZg"
@@ -53,12 +52,10 @@ def test_bearer_comparison_rejects_malformed_and_non_ascii_without_raising() -> 
         assert not accepts_bearer_token(authorization, TOKEN)
 
 
-def test_both_token_sources_fail_closed_for_non_ascii_authorization(tmp_path: Path) -> None:
+def test_token_source_fails_closed_for_non_ascii_authorization(tmp_path: Path) -> None:
     token_file = protected_file(tmp_path / "token")
-    actions = ActionsTokenSource(token_file)
     mcp = BearerTokenSource(token_file)
     for authorization in ("Bearer \x80", "Bearer e\N{LATIN SMALL LETTER E WITH ACUTE}"):
-        assert not actions.accepts(authorization)
         assert not mcp.accepts(authorization)
 
 
@@ -91,6 +88,17 @@ def test_protected_reader_rejects_multiline_non_ascii_and_oversized_files(
     oversized.write_bytes(b"a" * (MAX_BEARER_TOKEN_CHARS + 3))
     with pytest.raises(BearerTokenError, match="too large"):
         read_protected_bearer_token(oversized, label="test")
+
+
+def test_mcp_source_rejects_a_directory_before_opening_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_open(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("os.open must not be called for a directory")
+
+    monkeypatch.setattr("joplin_md_sync.auth.os.open", unexpected_open)
+    with pytest.raises(AuthError, match="regular file"):
+        BearerTokenSource(tmp_path)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission and symlink checks")

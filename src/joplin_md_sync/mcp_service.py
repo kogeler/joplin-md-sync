@@ -1,4 +1,4 @@
-"""Joplin note operations shared by MCP and GPT Actions transports."""
+"""Joplin note operations shared by every MCP transport."""
 
 from __future__ import annotations
 

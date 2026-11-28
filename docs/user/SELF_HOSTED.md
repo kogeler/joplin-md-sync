@@ -1,6 +1,6 @@
 ---
 title: "Self-host the Joplin MCP server"
-description: "Deploy the Joplin MCP, OAuth and Actions server on a headless Linux host or a desktop: loopback Data API, HTTPS publishing, network boundaries and rollout."
+description: "Deploy the Joplin MCP and OAuth server on a headless Linux host or a desktop: loopback Data API, HTTPS publishing, network boundaries and rollout."
 ---
 
 # Self-hosted deployment
@@ -29,13 +29,13 @@ bridge keeps one listener and port.
 ## Topology A: headless Linux host
 
 ```text
-MCP client on private network     Claude         ChatGPT
-             |                      |               |
-             | authenticated TLS    | HTTPS OAuth   | HTTPS Actions
-             +------------+---------+---------------+
+MCP client on private network     Claude
+             |                      |
+             | authenticated TLS    | HTTPS OAuth
+             +------------+---------+
                           |
                 joplin-md-sync.service
-            /mcp    /oauth/mcp    /api/gpt/v1/*
+                 /mcp    /oauth/mcp
                           |
                           | loopback only
                           v
@@ -49,10 +49,10 @@ The included non-root installer creates two coordinated systemd user services:
 
 - `joplin-terminal.service` owns a dedicated Joplin Terminal profile, recurrent
   sync, and loopback Data API on port 41185 by default;
-- `joplin-md-sync.service` owns the combined MCP, OAuth, and Actions listener
-  on port 8765 by default.
+- `joplin-md-sync.service` owns the combined MCP and OAuth listener on port
+  8765 by default.
 
-There is no separate Actions or OAuth service. The bridge starts even when Joplin is
+There is no separate OAuth service. The bridge starts even when Joplin is
 temporarily unavailable and retries availability on later calls. Joplin
 Desktop does not need to run on this host or remain online elsewhere.
 
@@ -93,7 +93,6 @@ Treat each URI independently:
 | URI | Recommended exposure |
 | --- | --- |
 | Joplin Data API (`41184` or `41185`) | Loopback only |
-| `/api/gpt/v1/*` | Public only through authenticated HTTPS when Actions are required |
 | `/mcp` | Loopback, VPN, or trusted private network by default; remote access requires its own bearer token and TLS |
 | `/oauth/mcp` and OAuth discovery, consent and callback routes | Public HTTPS only when the hosted Claude connector is enabled; see [route list](CLAUDE_CONNECTOR.md#add-public-routes-on-the-existing-https-hostname) |
 | `/healthz`, `/readyz` | Loopback or private operator checks only; block them on any public hostname or tunnel. They return no note data or credentials |
@@ -102,8 +101,8 @@ Remote MCP binding is refused unless both `--allow-remote-mcp` and a protected
 MCP bearer-token file are configured. That check does not provide TLS; put a
 trusted reverse proxy or private encrypted network in front of it.
 
-The Actions token, MCP token, and Joplin Data API token must all differ. They
-serve different trust boundaries and are never interchangeable.
+The MCP token, the OAuth secrets, and the Joplin Data API token must all
+differ. They serve different trust boundaries and are never interchangeable.
 
 ## What "self-hosted notes" means here
 
@@ -122,19 +121,23 @@ system, the selected sync target remains the data transport, and
 
 ## Recommended rollout
 
-1. Choose the Joplin sync target and whether the client needs Actions, MCP, or
-   both.
+1. Choose the Joplin sync target and whether the client needs the Claude
+   connector, MCP, or both.
 2. Review the headless installer dry-run and its planned filesystem and service
    changes.
 3. Install the coordinated services and verify recurrent Joplin sync.
-4. Keep the Joplin Data API on loopback and retain the three separate generated
+4. Keep the Joplin Data API on loopback and retain the separate generated
    credentials.
 5. Publish only the required adapter routes behind TLS and explicit network
    policy.
-6. Configure the private GPT or MCP client with its dedicated credential.
-7. Run the live acceptance checks before relying on the service.
-8. If you also create a Markdown workspace, pull after every direct MCP or
-   Actions write and never interleave the two write models.
+6. Connect Claude through OAuth or configure the MCP client with its dedicated
+   credential.
+7. Verify the connection before relying on the service: follow
+   [Connect Claude and verify](CLAUDE_CONNECTOR.md#connect-claude-and-verify)
+   for the connector, or list the tools from your MCP client
+   ([Streamable HTTP](MCP_API.md#streamable-http)).
+8. If you also create a Markdown workspace, pull after every direct MCP write
+   and never interleave the two write models.
 
 For commands, installer options, upgrades, rollback, removal, and
 troubleshooting, continue to [Joplin Headless Service](JOPLIN_HEADLESS_SERVICE.md).

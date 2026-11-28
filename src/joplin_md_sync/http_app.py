@@ -8,8 +8,6 @@ from starlette.applications import Starlette
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from joplin_md_sync.gpt_actions import ACTIONS_NAMESPACE
-
 
 class CombinedHttpApp:
     """Dispatch whole ASGI applications, retaining OAuth middleware/lifespan."""
@@ -31,8 +29,6 @@ class CombinedHttpApp:
         reserved = self.oauth_paths | {"/healthz", "/readyz"}
         if (
             mcp_path in reserved
-            or mcp_path == ACTIONS_NAMESPACE
-            or mcp_path.startswith(ACTIONS_NAMESPACE + "/")
             or "%" in mcp_path
             or "//" in mcp_path
             or (mcp_path != "/" and mcp_path.endswith("/"))
@@ -72,11 +68,7 @@ class CombinedHttpApp:
         ):
             await Response(status_code=400)(scope, receive, send)
             return
-        if (
-            path in {self.mcp_path, "/healthz", "/readyz"}
-            or path == ACTIONS_NAMESPACE
-            or path.startswith(ACTIONS_NAMESPACE + "/")
-        ):
+        if path in {self.mcp_path, "/healthz", "/readyz"}:
             await self.legacy(scope, receive, send)
         elif path in self.oauth_paths:
             await self.oauth(scope, receive, send)

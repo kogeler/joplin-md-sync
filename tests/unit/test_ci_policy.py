@@ -37,7 +37,6 @@ def test_tests_do_not_duplicate_owned_version_pins() -> None:
     owned = {
         (ROOT / ".version").read_text(encoding="utf-8").strip(),
         _assigned_string(ROOT / "src" / "joplin_md_sync" / "mcp_server.py", "MCP_PROTOCOL_VERSION"),
-        _assigned_string(ROOT / "src" / "joplin_md_sync" / "gpt_openapi.py", "OPENAPI_VERSION"),
         _assigned_string(live_runtime, "JOPLIN_VERSION"),
         _assigned_string(live_runtime, "JOPLIN_DEB_SHA256"),
         *(
@@ -56,7 +55,12 @@ def test_tests_do_not_duplicate_owned_version_pins() -> None:
     ]
     for path in test_paths:
         content = path.read_text(encoding="utf-8")
-        duplicated = sorted(value for value in owned if value and value in content)
+        # A version must not match as the tail or head of a longer version number.
+        duplicated = sorted(
+            value
+            for value in owned
+            if value and re.search(rf"(?<![0-9.]){re.escape(value)}(?![0-9])", content)
+        )
         assert not duplicated, (path, duplicated)
 
 

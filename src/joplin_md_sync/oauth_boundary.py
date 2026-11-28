@@ -11,11 +11,11 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from joplin_md_sync.github_oauth import MAX_ESTABLISHED_CLIENTS, GitHubUnavailable
-from joplin_md_sync.gpt_actions import TokenBucket
 from joplin_md_sync.json_safety import json_nesting_exceeds
 from joplin_md_sync.mcp_server import MAX_REQUEST_BYTES
 from joplin_md_sync.oauth_audit import audit
 from joplin_md_sync.oauth_errors import OAuthFault, record_fault, request_faults
+from joplin_md_sync.rate_limit import TokenBucket
 
 
 def quiet_oauth_libraries() -> None:

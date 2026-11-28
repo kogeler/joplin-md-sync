@@ -36,7 +36,7 @@ quarantine to keep local failures inspectable.
   read, change, or own it (POSIX mode and owner, or the Windows owner and ACL);
   a token file combined with `JOPLIN_TOKEN` is refused rather than resolved by
   precedence.
-- The MCP and Actions listener authenticates callers independently from the
+- The MCP and OAuth listener authenticates callers independently from the
   private Joplin API credential.
 - The reverse proxy terminates public TLS; it does not make the Joplin Data API
   public.

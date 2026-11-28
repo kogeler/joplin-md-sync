@@ -28,9 +28,6 @@ from joplin_md_sync.mcp_service import JoplinMcpService
 from joplin_md_sync.tool_executor import ToolExecutor
 from joplin_md_sync.tool_registry import ToolRegistry, build_tool_registry
 
-if TYPE_CHECKING:
-    from joplin_md_sync.gpt_actions import GptActionsTransport
-
 log = logging.getLogger("joplin_md_sync.mcp")
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
@@ -218,7 +215,6 @@ class McpHttpServer(ThreadingHTTPServer):
         endpoint: str = DEFAULT_MCP_PATH,
         token_source: BearerTokenSource | None = None,
         allowed_origins: frozenset[str] = frozenset(),
-        actions_transport: GptActionsTransport | None = None,
         max_http_connections: int = MAX_HTTP_CONNECTIONS,
         connection_timeout: float = HTTP_CONNECTION_TIMEOUT_SECONDS,
     ) -> None:
@@ -230,7 +226,6 @@ class McpHttpServer(ThreadingHTTPServer):
         self.endpoint = endpoint
         self.token_source = token_source or BearerTokenSource(None)
         self.allowed_origins = allowed_origins
-        self.actions_transport = actions_transport
         self._request_slots = threading.BoundedSemaphore(max_http_connections)
         self._connection_timeout = connection_timeout
         super().__init__(address, McpRequestHandler)
@@ -262,7 +257,6 @@ class LegacyServerContext(Protocol):
     endpoint: str
     token_source: BearerTokenSource
     allowed_origins: frozenset[str]
-    actions_transport: GptActionsTransport | None
     server_address: Any
 
 
@@ -372,10 +366,6 @@ class LegacyHttpLogic:
             return False
         return self._authorized()
 
-    def _handle_action(self, method: str) -> bool:
-        transport = self.server.actions_transport
-        return transport is not None and transport.handle(self, method)
-
     def _handle_health(self) -> bool:
         try:
             path = urllib.parse.urlsplit(self.path).path
@@ -390,41 +380,34 @@ class LegacyHttpLogic:
         return True
 
     def do_GET(self) -> None:
-        if self._handle_action("GET") or self._handle_health():
+        if self._handle_health():
             return
         if self._common_checks():
             self._empty(HTTPStatus.METHOD_NOT_ALLOWED, allow="POST")
 
     def do_DELETE(self) -> None:
-        if self._handle_action("DELETE"):
-            return
-        if self._common_checks():
-            self._empty(HTTPStatus.METHOD_NOT_ALLOWED, allow="POST")
+        self._unsupported_method()
 
-    def _unsupported_method(self, method: str) -> None:
-        if self._handle_action(method):
-            return
+    def _unsupported_method(self) -> None:
         if self._common_checks():
             self._empty(HTTPStatus.METHOD_NOT_ALLOWED, allow="POST")
 
     def do_HEAD(self) -> None:
-        self._unsupported_method("HEAD")
+        self._unsupported_method()
 
     def do_PUT(self) -> None:
-        self._unsupported_method("PUT")
+        self._unsupported_method()
 
     def do_PATCH(self) -> None:
-        self._unsupported_method("PATCH")
+        self._unsupported_method()
 
     def do_OPTIONS(self) -> None:
-        self._unsupported_method("OPTIONS")
+        self._unsupported_method()
 
     def do_TRACE(self) -> None:
-        self._unsupported_method("TRACE")
+        self._unsupported_method()
 
     def do_POST(self) -> None:
-        if self._handle_action("POST"):
-            return
         if not self._common_checks():
             return
         content_type = self.headers.get_content_type()
@@ -506,7 +489,6 @@ def serve_mcp_http(
     endpoint: str = DEFAULT_MCP_PATH,
     auth_token_file: Path | None = None,
     allowed_origins: frozenset[str] = frozenset(),
-    actions_transport: GptActionsTransport | None = None,
 ) -> None:
     """Run the foreground MCP HTTP process until interrupted or terminated."""
     server = McpHttpServer(
@@ -515,7 +497,6 @@ def serve_mcp_http(
         endpoint=endpoint,
         token_source=BearerTokenSource(auth_token_file),
         allowed_origins=allowed_origins,
-        actions_transport=actions_transport,
     )
     log.info("MCP server listening on http://%s:%d%s", host, port, endpoint)
     try:

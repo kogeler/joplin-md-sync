@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from joplin_md_sync.api import AmbiguousWriteError
 from joplin_md_sync.errors import ApiError, AuthError, JoplinSyncError
-from joplin_md_sync.mcp_service import ToolServiceError
+from joplin_md_sync.mcp_service import JoplinMcpService, ToolServiceError
 from joplin_md_sync.tool_executor import ToolExecutor
 from joplin_md_sync.tool_registry import (
     ToolDefinition,
     ToolRegistry,
-    action_route,
+    build_tool_registry,
     tool_effect,
 )
 from joplin_md_sync.tool_schema import (
@@ -33,8 +33,6 @@ def definition(
     *,
     schema: dict[str, Any] | None = None,
     annotations: dict[str, Any] | None = None,
-    exposure: str = "auto",
-    reason: str | None = None,
     handler: Any = None,
 ) -> ToolDefinition:
     def default_handler(arguments: Any) -> dict[str, Any]:
@@ -51,8 +49,6 @@ def definition(
             else {"readOnlyHint": True, "destructiveHint": False}
         ),
         handler=handler or default_handler,
-        action_exposure=cast(Any, exposure),
-        action_exposure_reason=reason,
     )
 
 
@@ -67,27 +63,40 @@ def test_registry_is_ordered_exact_and_deeply_immutable() -> None:
         cast(Any, first.input_schema)["type"] = "string"
 
 
-def test_registry_rejects_duplicate_missing_exposure_and_bad_effect() -> None:
+def test_registry_rejects_duplicates_bad_effects_and_unsupported_schemas() -> None:
     with pytest.raises(ValueError, match="duplicate"):
         ToolRegistry((definition("same"), definition("same")))
-    with pytest.raises(ValueError, match="exposure"):
-        ToolRegistry((definition(exposure=""),))
     with pytest.raises(ValueError, match="both read-only and destructive"):
         ToolRegistry((definition(annotations={"readOnlyHint": True, "destructiveHint": True}),))
     with pytest.raises(ValueError, match="unknown effect"):
         ToolRegistry((definition(annotations={}),))
+    with pytest.raises(SchemaDefinitionError, match="unsupported keyword"):
+        ToolRegistry((definition(schema={"type": "object", "oneOf": []}),))
 
 
-def test_disabled_tools_require_reason_and_may_use_unsupported_schema() -> None:
-    with pytest.raises(ValueError, match="requires a reason"):
-        ToolRegistry((definition(exposure="disabled"),))
-    disabled = definition(
-        exposure="disabled",
-        reason="Not compatible.",
-        schema={"type": "object", "oneOf": []},
-    )
-    registry = ToolRegistry((disabled, definition("visible")))
-    assert registry.exposed == (registry.get("visible"),)
+def test_registry_builds_every_tool_with_effects_matching_their_names() -> None:
+    def unavailable_client() -> Any:
+        raise AssertionError("building the registry must not contact Joplin")
+
+    registry = build_tool_registry(JoplinMcpService(unavailable_client, availability_timeout=0))
+    assert len(registry) == 30
+    # The registry already rejects unknown effects; check that each declared
+    # effect matches what the tool name promises to clients.
+    expected_effects = {
+        "list": "read",
+        "get": "read",
+        "search": "read",
+        "read": "read",
+        "create": "write",
+        "update": "write",
+        "add": "write",
+        "remove": "write",
+        "restore": "write",
+        "delete": "destructive",
+    }
+    for tool in registry:
+        verb = tool.name.removeprefix("joplin_").split("_", 1)[0]
+        assert tool_effect(tool) == expected_effects[verb], tool.name
 
 
 def test_schema_definition_and_instance_validation() -> None:
@@ -115,7 +124,7 @@ def test_schema_definition_and_instance_validation() -> None:
         validate_schema_definition({"type": "object", "oneOf": []})
 
 
-def test_effect_and_route_are_centralized() -> None:
+def test_effect_is_centralized() -> None:
     assert tool_effect(definition()) == "read"
     assert (
         tool_effect(definition(annotations={"readOnlyHint": False, "destructiveHint": False}))
@@ -125,7 +134,6 @@ def test_effect_and_route_are_centralized() -> None:
         tool_effect(definition(annotations={"readOnlyHint": False, "destructiveHint": True}))
         == "destructive"
     )
-    assert action_route(definition("safe_tool-1")) == "safe_tool-1"
 
 
 def test_executor_validates_and_preserves_domain_errors() -> None:
@@ -150,7 +158,8 @@ def test_executor_validates_and_preserves_domain_errors() -> None:
     executor = ToolExecutor(registry)
     invalid = executor.execute(tool, {})
     assert invalid.failure is not None
-    assert invalid.failure.category == "schema_error"
+    assert (invalid.failure.code, invalid.failure.retryable) == ("INVALID_ARGUMENT", False)
+    assert "missing required property: name" in invalid.failure.message
     assert calls == []
     failed = executor.execute(tool, {"name": "domain"})
     assert failed.failure is not None
@@ -160,23 +169,33 @@ def test_executor_validates_and_preserves_domain_errors() -> None:
 
 
 @pytest.mark.parametrize(
-    ("exception", "category"),
+    ("exception", "code", "retryable", "message"),
     (
-        (AuthError("auth"), "backend_auth_error"),
-        (AmbiguousWriteError("ambiguous"), "ambiguous_write"),
-        (ApiError("upstream"), "upstream_error"),
-        (ApiError("timeout", timed_out=True), "upstream_timeout"),
-        (JoplinSyncError("expected"), "expected_error"),
-        (ToolServiceError("partial", code="PARTIAL_WRITE"), "partial_write"),
-        (ToolServiceError("exists", code="NOTE_ALREADY_EXISTS"), "conflict_error"),
-        (RuntimeError("unexpected"), "internal_error"),
+        (AuthError("auth"), "API_AUTH_FAILED", False, "auth"),
+        (AmbiguousWriteError("ambiguous"), "AMBIGUOUS_WRITE", False, "ambiguous"),
+        (ApiError("upstream"), "API_UNAVAILABLE", True, "upstream"),
+        (ApiError("timeout", timed_out=True), "API_UNAVAILABLE", True, "timeout"),
+        (ApiError("server", status=502), "API_UNAVAILABLE", True, "server"),
+        (ApiError("rejected", status=404), "API_UNAVAILABLE", False, "rejected"),
+        (JoplinSyncError("expected", code="EXPECTED"), "EXPECTED", False, "expected"),
+        (ToolServiceError("partial", code="PARTIAL_WRITE"), "PARTIAL_WRITE", False, "partial"),
+        (
+            ToolServiceError("busy", code="NOTE_BUSY", retryable=True),
+            "NOTE_BUSY",
+            True,
+            "busy",
+        ),
+        (RuntimeError("secret detail"), "INTERNAL_ERROR", False, "internal tool failure"),
     ),
 )
-def test_executor_classifies_expected_failures(exception: Exception, category: str) -> None:
+def test_executor_classifies_expected_failures(
+    exception: Exception, code: str, retryable: bool, message: str
+) -> None:
     def handler(_arguments: Any) -> dict[str, Any]:
         raise exception
 
     tool = definition(handler=handler)
     execution = ToolExecutor(ToolRegistry((tool,))).execute(tool, {})
     assert execution.failure is not None
-    assert execution.failure.category == category
+    assert (execution.failure.code, execution.failure.retryable) == (code, retryable)
+    assert execution.failure.message == message

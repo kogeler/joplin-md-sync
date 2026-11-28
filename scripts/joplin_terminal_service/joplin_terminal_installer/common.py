@@ -23,11 +23,14 @@ PING_RESPONSE = "JoplinClipperServer"
 SERVICE_NAME = "joplin-terminal.service"
 ADAPTER_SERVICE_NAME = "joplin-md-sync.service"
 SUPPORTED_SYNC_INTERVALS = (300, 600, 1800, 3600, 43200, 86400)
+# joplin-md-sync 1.x read the ChatGPT Actions token from this variable. An old
+# operator environment may still export that live 1.x credential.
+RETIRED_SECRET_ENV_NAMES = ("JOPLIN_GPT_ACTIONS_TOKEN",)
 SECRET_ENV_NAMES = (
-    "JOPLIN_GPT_ACTIONS_TOKEN",
     "JOPLIN_MCP_AUTH_TOKEN",
     "JOPLIN_TOKEN",
     "JOPLIN_SYNC_USERNAME",
+    *RETIRED_SECRET_ENV_NAMES,
 )
 
 

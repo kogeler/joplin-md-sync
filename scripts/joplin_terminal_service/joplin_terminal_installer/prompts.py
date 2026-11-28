@@ -195,7 +195,7 @@ def complete_setup_options(
             ("joplin_version", "Joplin version (or latest)"),
             ("joplin_md_sync_version", "joplin-md-sync version (or latest)"),
             ("api_port", "Local Joplin API port"),
-            ("mcp_port", "MCP/Actions port"),
+            ("mcp_port", "MCP port"),
             ("sync_interval", "Sync interval in seconds"),
         ):
             prompts.value(
@@ -219,7 +219,7 @@ def complete_setup_options(
         )
         if not args.deferred_sync:
             complete_sync_options(args, prompts)
-        prompts.toggle("allow_remote_mcp", "Allow remote MCP/Actions connections?")
+        prompts.toggle("allow_remote_mcp", "Allow remote MCP connections?")
         if not args.no_github_oauth:
             prompts.toggle("github_oauth", "Enable GitHub OAuth for Claude?")
         prompts.toggle("enable_linger", "Enable user services after logout?")

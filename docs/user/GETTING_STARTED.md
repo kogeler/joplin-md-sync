@@ -11,7 +11,7 @@ The behavioral guarantees used by this tutorial are defined by the
 This path connects a local Joplin Desktop installation to a reviewable
 Markdown workspace. Use it when an agent needs ordinary files, repository
 context, an exact three-way diff, or Git history. For direct note operations,
-start with [ChatGPT Actions](CHATGPT_ACTIONS.md) or the [MCP API](MCP_API.md);
+start with the [Claude connector](CLAUDE_CONNECTOR.md) or the [MCP API](MCP_API.md);
 for a server without a desktop session, use the
 [Joplin Headless Service quick runbook](JOPLIN_HEADLESS_SERVICE.md#quick-runbook).
 
@@ -35,14 +35,14 @@ for a server without a desktop session, use the
 === "pipx"
 
     ```bash
-    pipx install "joplin-md-sync==1.8.1"
+    pipx install "joplin-md-sync==2.0.0"
     joplin-md-sync version --json
     ```
 
 === "pip"
 
     ```bash
-    python -m pip install "joplin-md-sync==1.8.1"
+    python -m pip install "joplin-md-sync==2.0.0"
     joplin-md-sync version --json
     ```
 
@@ -178,6 +178,5 @@ Git-reviewed knowledge, conflicts, deletions, and when to use MCP instead.
 | Understand every CLI flag and result | [CLI reference](CLI.md) |
 | Connect an MCP-capable client | [MCP API](MCP_API.md) |
 | Connect hosted Claude with GitHub login | [Claude connector](CLAUDE_CONNECTOR.md) |
-| Build a private Joplin Custom GPT | [ChatGPT Actions](CHATGPT_ACTIONS.md) |
 | Run Joplin and the bridge on Linux | [Self-hosted deployment](SELF_HOSTED.md) |
 | Understand conflicts and recovery | [Synchronization design](../maintenance/SYNCHRONIZATION.md) and [Conflict handling](CONFLICTS.md) |

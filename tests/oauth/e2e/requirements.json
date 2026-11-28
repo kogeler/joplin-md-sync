@@ -8,7 +8,7 @@
       ]
     },
     "T02": {
-      "description": "Actions and legacy credential independence",
+      "description": "Legacy MCP and OAuth credential independence",
       "cases": [
         "test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation"
       ]
@@ -123,7 +123,7 @@
       ]
     },
     "T14": {
-      "description": "Concurrent create across three interfaces",
+      "description": "Concurrent create across OAuth and bearer MCP",
       "cases": [
         "test_oauth_flow.py::test_mixed_interface_create_race_and_credential_isolation"
       ]
@@ -172,7 +172,6 @@
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/auth/callback]",
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/token]",
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/healthz]",
-        "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/api/gpt/v1/tools/x]",
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp/]",
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp%2F]",
         "test_oauth_security.py::test_cli_route_collisions_fail_without_binding_or_state[/mcp//alias]",

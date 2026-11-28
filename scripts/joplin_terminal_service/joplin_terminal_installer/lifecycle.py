@@ -17,6 +17,7 @@ from .cli import (
 from .commands import CommandRunner, check_dependencies
 from .common import (
     ADAPTER_SERVICE_NAME,
+    RETIRED_SECRET_ENV_NAMES,
     SERVICE_NAME,
     ProfileLock,
     SecretRedactor,
@@ -25,19 +26,20 @@ from .common import (
     systemd_quote,
 )
 from .credentials import (
-    configure_gpt_actions_token,
     configure_mcp_auth_token,
     hidden_input,
-    report_service_token_paths,
-    resolve_service_tokens,
+    report_mcp_token_path,
+    resolve_mcp_auth_token,
     validate_distinct_service_tokens,
 )
 from .encryption import bootstrap_e2ee
 from .managed import (
     configure_lingering,
+    keep_retired_config_files,
     purge_installation,
     purge_systemctl_path,
     remove_managed_path,
+    remove_retired_config_files,
     validate_purge_paths,
 )
 from .models import GITHUB_OAUTH_FIELDS, SYNC_OPTIONS, Dependencies
@@ -62,12 +64,14 @@ from .releases import (
     resolve_latest_version,
 )
 from .service import (
+    adapter_unit_enables_actions,
     deploy_supervisor,
     install_adapter_unit,
     install_unit,
     installed_service_options,
+    release_removes_actions,
     service_active,
-    smoke_test_gpt_actions_service,
+    smoke_test_mcp_authentication,
     smoke_test_mcp_service,
     stop_after_startup_failure,
     systemctl_command,
@@ -112,6 +116,8 @@ class Installer:
         self._upgrade_changed = False
         self._prepared_mcp: Path | None = None
         self._resume_units: tuple[str, ...] = ()
+        # Set once this run has restarted and smoke-tested the new units.
+        self._services_verified = False
 
     def _recover_setup(self) -> bool:
         terminal_installed = self.paths.unit_path.is_file()
@@ -228,12 +234,7 @@ class Installer:
             for unit in (SERVICE_NAME, ADAPTER_SERVICE_NAME):
                 systemctl_command(self.runner, dependencies.systemctl, action, unit)
 
-    def _restart_and_smoke(
-        self,
-        dependencies: Dependencies,
-        mcp_auth_token: str,
-        gpt_actions_token: str,
-    ) -> None:
+    def _restart_and_smoke(self, dependencies: Dependencies, mcp_auth_token: str) -> None:
         systemctl_command(self.runner, dependencies.systemctl, "restart", SERVICE_NAME)
         try:
             if not service_active(self.runner, dependencies.systemctl, SERVICE_NAME):
@@ -257,11 +258,8 @@ class Installer:
             if not service_active(self.runner, dependencies.systemctl, ADAPTER_SERVICE_NAME):
                 raise ToolError(f"{ADAPTER_SERVICE_NAME} is not active after restart")
             wait_for_mcp(self.args.mcp_port, mcp_auth_token)
+            smoke_test_mcp_authentication(self.args.mcp_port)
             smoke_test_mcp_service(self.args.mcp_port, mcp_auth_token)
-            smoke_test_gpt_actions_service(
-                self.args.mcp_port,
-                gpt_actions_token,
-            )
             if getattr(self.args, "github_oauth", False):
                 smoke_test_oauth_service(self.args.mcp_port, self.args.github_oauth_public_base_url)
         except ToolError:
@@ -271,13 +269,19 @@ class Installer:
                 ADAPTER_SERVICE_NAME,
             )
             raise
+        self._services_verified = True
 
-    def _upgrade(
-        self,
-        dependencies: Dependencies,
-        mcp_auth_token: str,
-        gpt_actions_token: str,
-    ) -> None:
+    def _clean_retired_config_files(self) -> None:
+        """Delete files only 1.x read, once this run has proven the new units work.
+
+        Until then a unit restored from an upgrade backup may still need them.
+        """
+        if self._services_verified:
+            remove_retired_config_files(self.paths)
+        else:
+            keep_retired_config_files(self.paths)
+
+    def _upgrade(self, dependencies: Dependencies, mcp_auth_token: str) -> None:
         if not self.paths.unit_path.is_file() or not self.paths.adapter_unit_path.is_file():
             raise ToolError(
                 "--upgrade requires an existing Joplin and joplin-md-sync service installation"
@@ -292,6 +296,16 @@ class Installer:
             if self.args.joplin_md_sync_version == "latest"
             else self.args.joplin_md_sync_version
         )
+        if adapter_unit_enables_actions(self.paths) and not release_removes_actions(mcp_version):
+            # The rewritten unit drops Actions, which 1.x would otherwise keep
+            # serving; the 1.x installer then also refuses that unit.
+            raise ToolError(
+                "the installed joplin-md-sync service still serves ChatGPT Actions, which "
+                f"this installer removes, and joplin-md-sync {mcp_version} would keep running "
+                "without them; install 2.0.0 or newer with --joplin-md-sync-version latest, "
+                "or keep Actions with the installer from tag v1.8.1 and --installer-ref v1.8.1; "
+                "nothing was changed"
+            )
         # Download, verify and smoke-test a changed adapter before stopping
         # healthy services, so a release or network failure leaves them running.
         if installed_mcp_version(self.runner, self.paths.mcp_binary) != mcp_version:
@@ -352,6 +366,10 @@ class Installer:
                     "active before the upgrade are restarted"
                 ) from exc
             LOG.info("verified Joplin %s", installed_joplin)
+            # The new adapter unit runs 1.x and 2.x alike. Writing it before the
+            # executable changes means no later failure leaves 2.x behind a 1.x
+            # unit whose removed --gpt-actions options it rejects.
+            install_adapter_unit(self.paths, self.args)
             if self._prepared_mcp is not None:
                 os.replace(self._prepared_mcp, self.paths.mcp_binary)
                 self.paths.mcp_binary.chmod(0o700)
@@ -361,13 +379,8 @@ class Installer:
             else:
                 installed_mcp = install_or_update_mcp(self.runner, self.paths, mcp_version)
             LOG.info("verified joplin-md-sync standalone %s", installed_mcp)
-            validate_distinct_service_tokens(
-                self.paths,
-                gpt_actions_token,
-                mcp_auth_token,
-            )
+            validate_distinct_service_tokens(self.paths, mcp_auth_token)
             configure_mcp_auth_token(self.paths, mcp_auth_token)
-            configure_gpt_actions_token(self.paths, gpt_actions_token)
             prepare_oauth_service(self.runner, self.paths, self.args)
             if self.args.update_sync:
                 self._configure_sync()
@@ -391,7 +404,7 @@ class Installer:
         if self.args.no_start_service:
             LOG.info("services remain stopped due to --no-start-service")
             return
-        self._restart_and_smoke(dependencies, mcp_auth_token, gpt_actions_token)
+        self._restart_and_smoke(dependencies, mcp_auth_token)
         LOG.info("Joplin Terminal and joplin-md-sync service upgrade completed")
 
     def _restore_joplin_tree(self, previous_tree: Path) -> bool:
@@ -481,27 +494,26 @@ class Installer:
         LOG.info("Joplin Data API port: %d", self.args.api_port)
         mcp_host = "0.0.0.0" if self.args.allow_remote_mcp else "127.0.0.1"
         LOG.info(
-            "joplin-md-sync listener: http://%s:%d (MCP /mcp; GPT Actions /api/gpt/v1/*)",
+            "joplin-md-sync listener: http://%s:%d (MCP /mcp)",
             mcp_host,
             self.args.mcp_port,
         )
         if self.args.dry_run:
             dry_run_plan(self.args, self.paths)
             return
-        for name in ("JOPLIN_GPT_ACTIONS_TOKEN", "JOPLIN_MCP_AUTH_TOKEN"):
+        if self.env.get("JOPLIN_MCP_AUTH_TOKEN"):
+            LOG.warning("JOPLIN_MCP_AUTH_TOKEN is ignored; the installer manages the MCP token")
+        for name in RETIRED_SECRET_ENV_NAMES:
             if self.env.get(name):
-                LOG.warning("%s is ignored; the installer manages service tokens", name)
-        mcp_auth_token, gpt_actions_token = resolve_service_tokens(
-            self.paths,
-            self.redactor,
-        )
+                LOG.warning("%s is ignored; joplin-md-sync 2.0.0 removed what it configured", name)
+        mcp_auth_token = resolve_mcp_auth_token(self.paths, self.redactor)
         if self.args.upgrade:
             if "enable_linger" in self.args.explicit_options:
                 configure_lingering(
                     self.runner, dependencies.loginctl, self.args, input_fn=self.input_fn
                 )
             try:
-                self._upgrade(dependencies, mcp_auth_token, gpt_actions_token)
+                self._upgrade(dependencies, mcp_auth_token)
             except BaseException:
                 # Any failure, including an unexpected one, must not leave the
                 # new backend restarting or modifying a possibly migrated profile.
@@ -521,9 +533,9 @@ class Installer:
                 if self._prepared_mcp is not None:
                     self._prepared_mcp.unlink(missing_ok=True)
                     self._prepared_mcp = None
-            report_service_token_paths(self.paths)
+            self._clean_retired_config_files()
+            report_mcp_token_path(self.paths)
             del mcp_auth_token
-            del gpt_actions_token
             return
 
         configure_lingering(
@@ -574,13 +586,8 @@ class Installer:
                 "verified joplin-md-sync standalone %s",
                 mcp_installed_version,
             )
-            validate_distinct_service_tokens(
-                self.paths,
-                gpt_actions_token,
-                mcp_auth_token,
-            )
+            validate_distinct_service_tokens(self.paths, mcp_auth_token)
             configure_mcp_auth_token(self.paths, mcp_auth_token)
-            configure_gpt_actions_token(self.paths, gpt_actions_token)
             prepare_oauth_service(self.runner, self.paths, self.args)
             supervisor, _common = deploy_supervisor(self.paths)
             joplin_unit_changed = install_unit(
@@ -600,12 +607,8 @@ class Installer:
         if self.args.no_start_service:
             LOG.info("services were not started due to --no-start-service")
         else:
-            self._restart_and_smoke(
-                dependencies,
-                mcp_auth_token,
-                gpt_actions_token,
-            )
+            self._restart_and_smoke(dependencies, mcp_auth_token)
+        self._clean_retired_config_files()
         LOG.info("Joplin Terminal and joplin-md-sync service installation completed")
-        report_service_token_paths(self.paths)
+        report_mcp_token_path(self.paths)
         del mcp_auth_token
-        del gpt_actions_token

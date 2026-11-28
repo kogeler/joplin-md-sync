@@ -14,9 +14,8 @@ description: "Security requirements for joplin-md-sync: credential handling, the
 **Contract:** The Joplin token MUST be accepted only from `JOPLIN_TOKEN` or a
 token file, except that the local process `mcp stdio` MAY also accept the
 compatibility argument `--token TOKEN`, whose value is visible to other local
-processes and IDE configuration readers. Every Joplin, MCP, and Actions token
-file MUST be a bounded single-line regular file opened without following
-symlinks. On POSIX it MUST be owned by the current user with no group or other
+processes and IDE configuration readers. Every Joplin and MCP token file MUST
+be a bounded single-line regular file opened without following symlinks. On POSIX it MUST be owned by the current user with no group or other
 access. On Windows it MUST be owned by the current user, SYSTEM, or
 Administrators, and no effective allow entry of its ACL MAY give another
 account read, write, or permission-change rights. Rejections MUST NOT echo the
@@ -58,8 +57,8 @@ requests MUST pass the configured Origin policy.
 
 ### `SEC-003` - Bearer sources are strong, protected, and rotatable
 
-**Contract:** MCP and Actions bearer sources MUST be token files protected as
-defined by `SEC-001` on POSIX and Windows, not symlinks or directories, and
+**Contract:** MCP bearer sources MUST be token files protected as defined by
+`SEC-001` on POSIX and Windows, not symlinks or directories, and
 contain one bounded URL-safe Base64 value encoding at least 256 bits.
 Files MUST be re-read per request and comparisons MUST fail closed for
 non-ASCII, malformed, oversized, or duplicate authorization.
@@ -70,7 +69,6 @@ non-ASCII, malformed, oversized, or duplicate authorization.
 - [`test_mcp_source_rejects_insecure_permissions_and_symlinks`](../../tests/unit/test_auth.py) - `tests/unit/test_auth.py::test_mcp_source_rejects_insecure_permissions_and_symlinks`
 - [`test_windows_token_file_rejects_access_for_other_accounts`](../../tests/unit/test_auth.py) - `tests/unit/test_auth.py::test_windows_token_file_rejects_access_for_other_accounts`
 - [`test_bearer_authentication_and_rotation`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_bearer_authentication_and_rotation`
-- [`test_malformed_and_duplicate_authorization_fail_closed`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_malformed_and_duplicate_authorization_fail_closed`
 
 ### `SEC-004` - Filesystem inputs cannot escape or redirect traversal
 
@@ -96,27 +94,14 @@ arguments outside their validated domain adapters.
 **Evidence:**
 
 - [`test_runtime_has_no_code_execution_surface`](../../tests/unit/test_security_policy.py) - `tests/unit/test_security_policy.py::test_runtime_has_no_code_execution_surface`
-- [`test_http_and_schema_validation_precede_side_effects`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_http_and_schema_validation_precede_side_effects`
-
-### `SEC-006` - Public Actions logs and contracts disclose no note content
-
-**Contract:** Actions audit logs MAY contain request IDs, timing, sizes, effect,
-status, and result class but MUST NOT contain authorization, arguments, results,
-note content, or backend credentials. Generated OpenAPI MUST be token-free and
-MUST expose only explicitly approved registry operations.
-
-**Evidence:**
-
-- [`test_backend_auth_is_not_public_actions_auth_and_logs_are_redacted`](../../tests/integration/test_gpt_actions.py) - `tests/integration/test_gpt_actions.py::GptActionsHttpTest::test_backend_auth_is_not_public_actions_auth_and_logs_are_redacted`
-- [`test_contract_is_deterministic_and_secret_free`](../../tests/unit/test_gpt_openapi.py) - `tests/unit/test_gpt_openapi.py::test_contract_is_deterministic_and_secret_free`
-- [`test_disabled_tools_require_reason_and_may_use_unsupported_schema`](../../tests/unit/test_tool_registry.py) - `tests/unit/test_tool_registry.py::test_disabled_tools_require_reason_and_may_use_unsupported_schema`
+- [`test_schema_validation_precedes_side_effects`](../../tests/integration/test_mcp_server.py) - `tests/integration/test_mcp_server.py::McpHttpTest::test_schema_validation_precedes_side_effects`
 
 ### `SEC-007` - Destructive boundaries match Joplin recovery capabilities
 
 **Contract:** Sync and direct note/notebook operations MUST use Joplin trash and
 support restore. Tag and resource deletion MAY be permanent because Joplin has
 no trash API for them and MUST be marked destructive in registry metadata.
-Actions and MCP MUST report the actual deletion class.
+MCP MUST report the actual deletion class.
 
 **Evidence:**
 
@@ -139,8 +124,8 @@ redirect URIs MUST exactly match the hosted Claude callback
 code/refresh binding MUST remain enforced. Unverified registrations MUST stay
 pending with a bounded count and lifetime until an owner login establishes
 them; registration, token and browser-flow requests MUST have separate rate
-budgets. Client credentials MUST remain independent across OAuth, legacy MCP,
-Actions and Joplin, comparing the signing key as key material in every accepted
+budgets. Client credentials MUST remain independent across OAuth, legacy MCP
+and Joplin, comparing the signing key as key material in every accepted
 encoding. Codes, credentials and note bodies MUST NOT enter application/SDK
 logs. GitHub expiring access and refresh token formats MUST be validated before
 issuing client credentials. The consent page MUST warn the owner not to approve

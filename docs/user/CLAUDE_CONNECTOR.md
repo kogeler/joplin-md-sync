@@ -18,16 +18,14 @@ rest.
   `https://claude.ai/api/mcp/auth_callback`, used by custom connectors added in
   Claude. Other MCP clients are rejected at registration, including ChatGPT
   connectors and Claude Code or other local clients with loopback redirects.
-  Local clients keep using `/mcp` with its Bearer token. A ChatGPT connector
-  is planned to replace Actions, which OpenAI retires with Custom GPTs on
-  2026-12-11.
+  Local clients keep using `/mcp` with its Bearer token.
 - **One GitHub.com account.** Access is bound to one numeric GitHub user ID.
   GitHub Enterprise Server and organization or team rules are not supported.
 - **Public HTTPS.** Claude connects from the internet, so the OAuth routes need
   a public HTTPS origin through a reverse proxy or tunnel. The listener itself
   can stay on loopback.
-- **Separate credentials.** `/mcp` and Actions keep their own Bearer tokens and
-  do not accept OAuth tokens; `/oauth/mcp` accepts only OAuth tokens. Enabling
+- **Separate credentials.** `/mcp` keeps its own Bearer token and does not
+  accept OAuth tokens; `/oauth/mcp` accepts only OAuth tokens. Enabling
   OAuth requires a protected `/mcp` Bearer token, even on loopback. Joplin's
   Data API stays local.
 - **Full tool access.** The account can use every registered MCP tool; there are
@@ -142,10 +140,8 @@ joplin-md-sync mcp oauth-check \
   --auth-token-file /protected/mcp-token --json
 ```
 
-If Actions is enabled, also supply its `--gpt-actions` and
-`--gpt-actions-token-file` options. This command makes no GitHub calls, opens
-no listener and creates no OAuth state. Startup in the actual service sandbox
-checks writing and locking.
+This command makes no GitHub calls, opens no listener and creates no OAuth
+state. Startup in the actual service sandbox checks writing and locking.
 
 Foreground operation uses the same port as before:
 
@@ -188,7 +184,7 @@ state directories and operator-owned config/secret files are preserved.
 
 ## Add public routes on the existing HTTPS hostname
 
-Keep the current `/mcp` and Actions proxy rules. Add the OAuth routes to the
+Keep the current `/mcp` proxy rules. Add the OAuth routes to the
 same upstream listener. The public hostname/origin is fixed by configuration;
 the service does not trust forwarded headers to construct it.
 
@@ -262,14 +258,14 @@ Validate the deployed connection with these checks:
 
 1. Run the read-only `oauth-check` with the intended CLI values, check the
    public routes as shown above, and confirm continued access for existing
-   MCP/Actions clients.
+   MCP clients.
 2. Complete Claude registration, consent and GitHub login with the permitted
    account, then list tools and perform a read.
 3. In a dedicated temporary notebook, create, read and update a test note and
    exercise the attachment operations you need. Keep test object IDs and clean
    up through supported Joplin operations, touching only those test objects.
 4. Restart the service with the same signing key and state directory; confirm
-   Claude reconnects and existing MCP/Actions clients still work.
+   Claude reconnects and existing MCP clients still work.
 5. After the configured access-token lifetime expires, confirm Claude can
    continue calling tools without another browser login. Do not extract or log
    credentials. Replay rejection is covered by mandatory automated E2E.

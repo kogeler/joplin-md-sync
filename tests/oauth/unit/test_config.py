@@ -178,7 +178,6 @@ def test_reset_requires_explicit_confirmation(oauth):
         "/auth/callback",
         "/token",
         "/healthz",
-        "/api/gpt/v1/tools/x",
         "/mcp/",
         "/mcp%2F",
         "/mcp//alias",
@@ -251,7 +250,6 @@ STANDARD_KEY = base64.standard_b64encode(REUSED_KEY).decode()
         pytest.param(None, None, id="distinct"),
         pytest.param("mcp", URLSAFE_KEY, id="mcp-padded"),
         pytest.param("mcp", URLSAFE_KEY.rstrip("="), id="mcp-unpadded"),
-        pytest.param("actions", URLSAFE_KEY, id="actions-padded"),
         pytest.param("joplin", URLSAFE_KEY, id="joplin-urlsafe"),
         pytest.param("joplin", STANDARD_KEY, id="joplin-standard"),
         pytest.param("joplin", STANDARD_KEY.rstrip("="), id="joplin-standard-unpadded"),
@@ -264,7 +262,6 @@ def test_signing_key_reuse_is_rejected_in_any_accepted_encoding(oauth, role, reu
     values = {
         "joplin": TOKEN,
         "mcp": base64.urlsafe_b64encode(os.urandom(32)).decode(),
-        "actions": base64.urlsafe_b64encode(os.urandom(32)).decode(),
     }
     if role == "client_secret":
         protected_file(oauth.secret_path, reused)
@@ -282,9 +279,6 @@ def test_signing_key_reuse_is_rejected_in_any_accepted_encoding(oauth, role, reu
         str(files["joplin"]),
         "--auth-token-file",
         str(files["mcp"]),
-        "--gpt-actions",
-        "--gpt-actions-token-file",
-        str(files["actions"]),
         "--json",
     )
     if role is None:

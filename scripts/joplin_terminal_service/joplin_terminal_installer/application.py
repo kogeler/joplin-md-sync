@@ -10,6 +10,7 @@ from .cli import (
     build_parser,
 )
 from .common import (
+    RETIRED_SECRET_ENV_NAMES,
     SecretRedactor,
     ToolError,
 )
@@ -34,8 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     redactor = SecretRedactor()
     try:
         args = build_parser(env).parse_args(argv)
-        redactor.add(env.get("JOPLIN_MCP_AUTH_TOKEN"))
-        redactor.add(env.get("JOPLIN_GPT_ACTIONS_TOKEN"))
+        for name in ("JOPLIN_MCP_AUTH_TOKEN", *RETIRED_SECRET_ENV_NAMES):
+            redactor.add(env.get(name))
         configure_logging(args.verbose, redactor)
         Installer(args, env=env, redactor=redactor).run()
         return 0

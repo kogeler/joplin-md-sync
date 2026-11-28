@@ -136,14 +136,18 @@ class McpStdioCliTest(WorkspaceTestCase):
 
     def test_stdio_has_no_http_listener_or_interface_bearer_options(self) -> None:
         args = build_parser().parse_args(["mcp", "stdio", "--token", TOKEN])
-        for attribute in ("mcp_port", "auth_token_file", "gpt_actions_token_file"):
+        for attribute in ("mcp_port", "auth_token_file"):
             self.assertFalse(hasattr(args, attribute), attribute)
 
-        for option in ("--auth-token-file", "--gpt-actions-token-file"):
+        for option, value in (
+            ("--auth-token-file", "/protected/mcp-token"),
+            ("--mcp-port", "8765"),
+        ):
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
-                build_parser().parse_args(["mcp", "stdio", "--token", TOKEN, option, "unused"])
+                build_parser().parse_args(["mcp", "stdio", "--token", TOKEN, option, value])
             self.assertEqual(raised.exception.code, 2)
+            self.assertIn(f"unrecognized arguments: {option} {value}", stderr.getvalue())
 
         with (
             mock.patch("joplin_md_sync.mcp_server.serve_mcp_http") as serve_http,
